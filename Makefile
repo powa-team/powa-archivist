@@ -1,6 +1,6 @@
 MODULES = powa
 EXTENSION = powa
-DATA = powa--2.0.sql
+DATA = $(wildcard *--*.sql)
 DOCS = README.md
 
 PG_CONFIG = pg_config
