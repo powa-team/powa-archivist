@@ -1,3 +1,18 @@
+## 2.0.1 (upcoming)
+
+  - Handle creation/suppression of supported extensions.
+
+## 2.0 (2015-02-06)
+
+Major rework of the extension. PoWA 2 is now only compatible with PostgreSQL
+version 9.4 and above. PoWA 2 is also now compatible with external extensions,
+such as [pg_qualstats](https://github.com/dalibo/pg_qualstats) or
+[pg_stat_kcache](https://github.com/dalibo/pg_stat_kcache). Third-part
+extensions can also now be implemented easily.
+
+The UI is also now in a [new repository](https://github.com/dalibo/powa-web),
+with more frequent release cycle.
+
 ## 1.2.1 (2015-01-16)
 
 No changes in core.
