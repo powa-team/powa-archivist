@@ -1,0 +1,35 @@
+{
+   "name": "powa",
+   "abstract": "An extension gathering pg_stat_statements and other plugins statistics",
+   "version": "__VERSION__",
+   "maintainer": "Julien Rouhaud <julien.rouhaud@dalibo.com>",
+   "license": "postgresql",
+   "release_status": "stable",
+   "provides": {
+      "powa": {
+         "abstract": "An extension gathering pg_stat_statements and other plugins statistics",
+         "file": "powa.sql",
+         "docfile": "README.md",
+         "version": "__VERSION__"
+      }
+   },
+   "resources": {
+      "bugtracker": {
+         "web": "http://github.com/dalibo/powa/issues/"
+      },
+      "repository": {
+        "url":  "git://github.com/dalibo/powa-archivist.git",
+        "web":  "http://github.com/dalibo/powa-archivist/",
+        "type": "git"
+      }
+   },
+   "generated_by": "Julien Rouhaud",
+   "meta-spec": {
+      "version": "1.0.0",
+      "url": "http://pgxn.org/meta/spec.txt"
+   },
+   "tags": [
+      "monitoring",
+      "workload"
+   ]
+}
