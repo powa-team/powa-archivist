@@ -159,5 +159,108 @@ UPDATE public.powa_functions
     SET added_manually = false WHERE module = 'pg_stat_kcache';
 
 
+-----------------------------------------------------------
+-- Fix the tstzrange inclusive upper bounds for
+-- * powa_kcache_aggregate() function
+-- * powa_qualstats_aggregate_constvalues_current view
+-- * powa_qualstats_aggregate() function
+-----------------------------------------------------------
+CREATE OR REPLACE FUNCTION powa_kcache_aggregate() RETURNS void AS $PROC$
+DECLARE
+  result bool;
+BEGIN
+    RAISE DEBUG 'running powa_kcache_aggregate';
+
+    -- aggregate metrics table
+    LOCK TABLE powa_kcache_metrics_current IN SHARE MODE; -- prevent any other update
+
+    INSERT INTO powa_kcache_metrics (coalesce_range, queryid, dbid, userid, metrics)
+        SELECT tstzrange(min((metrics).ts), max((metrics).ts),'[]'),
+        queryid, dbid, userid, array_agg(metrics)
+        FROM powa_kcache_metrics_current
+        GROUP BY queryid, dbid, userid;
+
+    TRUNCATE powa_kcache_metrics_current;
+
+    -- aggregate metrics_db table
+    LOCK TABLE powa_kcache_metrics_current_db IN SHARE MODE; -- prevent any other update
+
+    INSERT INTO powa_kcache_metrics_db (coalesce_range, dbid, metrics)
+        SELECT tstzrange(min((metrics).ts), max((metrics).ts),'[]'),
+        dbid, array_agg(metrics)
+        FROM powa_kcache_metrics_current_db
+        GROUP BY dbid;
+
+    TRUNCATE powa_kcache_metrics_current_db;
+END
+$PROC$ language plpgsql;
+
+CREATE OR REPLACE VIEW powa_qualstats_aggregate_constvalues_current AS
+WITH consts AS (
+  SELECT qualid, queryid, dbid, userid, min(ts) as mints, max(ts) as maxts, sum(nbfiltered) as nbfiltered,
+  sum(count) as count, constvalues
+  FROM powa_qualstats_constvalues_history_current
+  GROUP BY qualid, queryid, dbid, userid, constvalues
+),
+groups AS (
+  SELECT qualid, queryid, dbid, userid, tstzrange(min(mints), max(maxts),'[]')
+  FROM consts
+  GROUP BY qualid, queryid, dbid, userid
+)
+SELECT *
+FROM groups,
+LATERAL (
+  SELECT array_agg(constvalues) as mf
+  FROM (
+    SELECT (constvalues, nbfiltered, count)::qual_values as constvalues
+    FROM consts
+    WHERE consts.qualid = groups.qualid AND consts.queryid = groups.queryid
+    AND consts.dbid = groups.dbid AND consts.userid = groups.userid
+    ORDER BY CASE WHEN count = 0 THEN 0 ELSE nbfiltered / count::numeric END DESC
+    LIMIT 20
+  ) s
+) as mf,
+LATERAL (
+  SELECT array_agg(constvalues) as lf
+  FROM (
+    SELECT (constvalues, nbfiltered, count)::qual_values as constvalues
+    FROM consts
+    WHERE consts.qualid = groups.qualid AND consts.queryid = groups.queryid
+    AND consts.dbid = groups.dbid AND consts.userid = groups.userid
+    ORDER BY CASE WHEN count = 0 THEN 0 ELSE nbfiltered / count::numeric END DESC
+    LIMIT 20
+  ) s
+) as lf,
+LATERAL (
+  SELECT array_agg(constvalues) as me
+  FROM (
+    SELECT (constvalues, nbfiltered, count)::qual_values as constvalues
+    FROM consts
+    WHERE consts.qualid = groups.qualid AND consts.queryid = groups.queryid
+    AND consts.dbid = groups.dbid AND consts.userid = groups.userid
+    ORDER BY count desc
+    LIMIT 20
+  ) s
+) as me;
+
+CREATE OR REPLACE FUNCTION powa_qualstats_aggregate() RETURNS void AS $PROC$
+DECLARE
+  result bool;
+BEGIN
+  RAISE DEBUG 'running powa_qualstats_aggregate';
+  LOCK TABLE powa_qualstats_constvalues_history_current IN SHARE MODE;
+  LOCK TABLE powa_qualstats_quals_history_current IN SHARE MODE;
+  INSERT INTO powa_qualstats_constvalues_history (
+    qualid, queryid, dbid, userid, coalesce_range, most_filtering, least_filtering, most_executed)
+    SELECT * FROM powa_qualstats_aggregate_constvalues_current;
+  INSERT INTO powa_qualstats_quals_history (qualid, queryid, dbid, userid, coalesce_range, records)
+    SELECT qualid, queryid, dbid, userid, tstzrange(min(ts), max(ts),'[]'), array_agg((ts, count, nbfiltered)::powa_qualstats_history_item)
+    FROM powa_qualstats_quals_history_current
+    GROUP BY qualid, queryid, dbid, userid;
+  TRUNCATE powa_qualstats_constvalues_history_current;
+  TRUNCATE powa_qualstats_quals_history_current;
+END
+$PROC$ language plpgsql;
+
 -- Try to register handled extensions
 SELECT * FROM public.powa_qualstats_register();

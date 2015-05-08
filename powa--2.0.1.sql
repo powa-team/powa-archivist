@@ -613,7 +613,7 @@ BEGIN
     LOCK TABLE powa_kcache_metrics_current IN SHARE MODE; -- prevent any other update
 
     INSERT INTO powa_kcache_metrics (coalesce_range, queryid, dbid, userid, metrics)
-        SELECT tstzrange(min((metrics).ts), max((metrics).ts)),
+        SELECT tstzrange(min((metrics).ts), max((metrics).ts),'[]'),
         queryid, dbid, userid, array_agg(metrics)
         FROM powa_kcache_metrics_current
         GROUP BY queryid, dbid, userid;
@@ -624,7 +624,7 @@ BEGIN
     LOCK TABLE powa_kcache_metrics_current_db IN SHARE MODE; -- prevent any other update
 
     INSERT INTO powa_kcache_metrics_db (coalesce_range, dbid, metrics)
-        SELECT tstzrange(min((metrics).ts), max((metrics).ts)),
+        SELECT tstzrange(min((metrics).ts), max((metrics).ts),'[]'),
         dbid, array_agg(metrics)
         FROM powa_kcache_metrics_current_db
         GROUP BY dbid;
@@ -690,7 +690,7 @@ WITH consts AS (
   GROUP BY qualid, queryid, dbid, userid, constvalues
 ),
 groups AS (
-  SELECT qualid, queryid, dbid, userid, tstzrange(min(mints), max(maxts))
+  SELECT qualid, queryid, dbid, userid, tstzrange(min(mints), max(maxts),'[]')
   FROM consts
   GROUP BY qualid, queryid, dbid, userid
 )
@@ -786,7 +786,7 @@ BEGIN
     qualid, queryid, dbid, userid, coalesce_range, most_filtering, least_filtering, most_executed)
     SELECT * FROM powa_qualstats_aggregate_constvalues_current;
   INSERT INTO powa_qualstats_quals_history (qualid, queryid, dbid, userid, coalesce_range, records)
-    SELECT qualid, queryid, dbid, userid, tstzrange(min(ts), max(ts)), array_agg((ts, count, nbfiltered)::powa_qualstats_history_item)
+    SELECT qualid, queryid, dbid, userid, tstzrange(min(ts), max(ts),'[]'), array_agg((ts, count, nbfiltered)::powa_qualstats_history_item)
     FROM powa_qualstats_quals_history_current
     GROUP BY qualid, queryid, dbid, userid;
   TRUNCATE powa_qualstats_constvalues_history_current;
