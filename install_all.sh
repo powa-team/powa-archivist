@@ -1,19 +1,19 @@
 #!/bin/bash
 # This script is meant to install every PostgreSQL extension compatbile with
 # PoWA.
-wget https://github.com/dalibo/pg_qualstats/archive/master.zip > /dev/null 2>&1
-unzip master.zip  > /dev/null 2>&1
+wget https://github.com/dalibo/pg_qualstats/archive/master.tar.gz > /dev/null 2>&1
+tar zxvf master.tar.gz  > /dev/null 2>&1
 cd pg_qualstats-master/
 (make && sudo make install)  > /dev/null 2>&1
 cd ..
-rm master.zip
+rm master.tar.gz
 rm pg_qualstats-master/ -rf
-wget https://github.com/dalibo/pg_stat_kcache/archive/master.zip > /dev/null 2>&1
-unzip master.zip  > /dev/null 2>&1
+wget https://github.com/dalibo/pg_stat_kcache/archive/master.tar.gz > /dev/null 2>&1
+tar -zxvf master.tar.gz  > /dev/null 2>&1
 cd pg_stat_kcache-master/
 (make && sudo make install)  > /dev/null 2>&1
 cd ..
-rm master.zip
+rm master.tar.gz
 rm pg_stat_kcache-master/ -rf
 (make && sudo make install)  > /dev/null 2>&1
 echo ""

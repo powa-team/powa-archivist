@@ -1,6 +1,7 @@
 ## 2.0.1 (upcoming)
 
   - Handle creation/suppression of supported extensions.
+  - Change install_all.sh script to use .tar.gz instead of zips
 
 ## 2.0 (2015-02-06)
 
