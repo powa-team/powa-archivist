@@ -1,3 +1,13 @@
+/*-------------------------------------------------------------------------
+ *
+ * powa.c: PoWA background worker
+ *
+ * This program is open source, licensed under the PostgreSQL license.
+ * For license terms, see the LICENSE file.
+ *
+ *-------------------------------------------------------------------------
+ */
+
 #include "postgres.h"
 
 /* For a bgworker */
@@ -24,11 +34,32 @@
 /* There is a GUC */
 #include "utils/guc.h"
 
+/* We use tuplestore */
+#include "funcapi.h"
+
+/* pgsats access */
+#include "pgstat.h"
+
 PG_MODULE_MAGIC;
+
+#define POWA_STAT_FUNC_COLS 4 /* # of cols for functions stat SRF */
+#define POWA_STAT_TAB_COLS 21 /* # of cols for relations stat SRF */
+
+typedef enum
+{
+	POWA_STAT_FUNCTION,
+	POWA_STAT_TABLE
+} PowaStatKind;
 
 void        _PG_init(void);
 void        die_on_too_small_frequency(void);
 
+Datum			powa_stat_user_functions(PG_FUNCTION_ARGS);
+Datum			powa_stat_all_rel(PG_FUNCTION_ARGS);
+static Datum	powa_stat_common(PG_FUNCTION_ARGS, PowaStatKind kind);
+
+PG_FUNCTION_INFO_V1(powa_stat_user_functions);
+PG_FUNCTION_INFO_V1(powa_stat_all_rel);
 
 static bool got_sigterm = false;
 
@@ -211,4 +242,173 @@ static void powa_sighup(SIGNAL_ARGS)
 {
     ProcessConfigFile(PGC_SIGHUP);
     die_on_too_small_frequency();
+}
+
+Datum
+powa_stat_user_functions(PG_FUNCTION_ARGS)
+{
+	return powa_stat_common(fcinfo, POWA_STAT_FUNCTION);
+}
+
+Datum
+powa_stat_all_rel(PG_FUNCTION_ARGS)
+{
+	return powa_stat_common(fcinfo, POWA_STAT_TABLE);
+}
+
+static Datum	powa_stat_common(PG_FUNCTION_ARGS, PowaStatKind kind)
+{
+	Oid			dbid = PG_GETARG_OID(0);
+	Oid			currentdbid = MyDatabaseId;
+	ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
+	MemoryContext per_query_ctx;
+	MemoryContext oldcontext;
+	TupleDesc	tupdesc;
+	Tuplestorestate *tupstore;
+	PgStat_StatDBEntry *dbentry;
+	HASH_SEQ_STATUS hash_seq;
+
+	/* check to see if caller supports us returning a tuplestore */
+	if (rsinfo == NULL || !IsA(rsinfo, ReturnSetInfo))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("set-valued function called in context that cannot accept a set")));
+	if (!(rsinfo->allowedModes & SFRM_Materialize))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("materialize mode required, but it is not " \
+						"allowed in this context")));
+
+	per_query_ctx = rsinfo->econtext->ecxt_per_query_memory;
+	oldcontext = MemoryContextSwitchTo(per_query_ctx);
+
+	/* Build a tuple descriptor for our result type */
+	if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
+		elog(ERROR, "return type must be a row type");
+
+	tupstore = tuplestore_begin_heap(true, false, work_mem);
+	rsinfo->returnMode = SFRM_Materialize;
+	rsinfo->setResult = tupstore;
+	rsinfo->setDesc = tupdesc;
+
+	MemoryContextSwitchTo(oldcontext);
+
+	/*
+	 * Lookup the requested database, then retrieve all functions stats. This
+	 * function will read the statistic collector stats file if not already
+	 * done in the transaction. As we may (and probably) have to access
+	 * statistics on multiple databases, force a cluster wide and deep stats
+	 * retrieval, by setting MyDatabaseId to InvalidOid. However, by doing so we
+	 * won't force a fresh statsfile read. Having slighty outdated stat is not
+	 * an issue, but after a cluster restart, it may take some time before
+	 * having any data returned.
+	 */
+	MyDatabaseId = InvalidOid;
+	dbentry = pgstat_fetch_stat_dbentry(dbid);
+	/* And restore it */
+	MyDatabaseId = currentdbid;
+
+	if (dbentry != NULL && dbentry->functions != NULL)
+	{
+		switch (kind)
+		{
+			case POWA_STAT_FUNCTION:
+			{
+				PgStat_StatFuncEntry *funcentry = NULL;
+
+				hash_seq_init(&hash_seq, dbentry->functions);
+				while ((funcentry = hash_seq_search(&hash_seq)) != NULL)
+				{
+					Datum		values[POWA_STAT_FUNC_COLS];
+					bool		nulls[POWA_STAT_FUNC_COLS];
+					int			i = 0;
+
+					memset(values, 0, sizeof(values));
+					memset(nulls, 0, sizeof(nulls));
+
+					values[i++] = ObjectIdGetDatum(funcentry->functionid);
+					values[i++] = Int64GetDatum(funcentry->f_numcalls);
+					values[i++] = Float8GetDatum(((double) funcentry->f_total_time) / 1000.0);
+					values[i++] = Float8GetDatum(((double) funcentry->f_self_time) / 1000.0);
+
+					Assert(i == POWA_STAT_FUNC_COLS);
+
+					tuplestore_putvalues(tupstore, tupdesc, values, nulls);
+				}
+				break;
+			}
+			case POWA_STAT_TABLE:
+			{
+				PgStat_StatTabEntry *tabentry = NULL;
+
+				hash_seq_init(&hash_seq, dbentry->tables);
+				while ((tabentry = hash_seq_search(&hash_seq)) != NULL)
+				{
+					Datum		values[POWA_STAT_TAB_COLS];
+					bool		nulls[POWA_STAT_TAB_COLS];
+					int			i = 0;
+
+					memset(values, 0, sizeof(values));
+					memset(nulls, 0, sizeof(nulls));
+
+					/* Oid of the table (or index) */
+					values[i++] = ObjectIdGetDatum(tabentry->tableid);
+
+					values[i++] = Int64GetDatum((int64) tabentry->numscans);
+
+					values[i++] = Int64GetDatum((int64) tabentry->tuples_returned);
+					values[i++] = Int64GetDatum((int64) tabentry->tuples_fetched);
+					values[i++] = Int64GetDatum((int64) tabentry->tuples_inserted);
+					values[i++] = Int64GetDatum((int64) tabentry->tuples_updated);
+					values[i++] = Int64GetDatum((int64) tabentry->tuples_deleted);
+					values[i++] = Int64GetDatum((int64) tabentry->tuples_hot_updated);
+
+					values[i++] = Int64GetDatum((int64) tabentry->n_live_tuples);
+					values[i++] = Int64GetDatum((int64) tabentry->n_dead_tuples);
+					values[i++] = Int64GetDatum((int64) tabentry->changes_since_analyze);
+
+					values[i++] = Int64GetDatum((int64) (tabentry->blocks_fetched - tabentry->blocks_hit));
+					values[i++] = Int64GetDatum((int64) tabentry->blocks_hit);
+
+					/* last vacuum */
+					if (tabentry->vacuum_timestamp == 0)
+						nulls[i++] = true;
+					else
+						values[i++] = TimestampTzGetDatum(tabentry->vacuum_timestamp);
+					values[i++] = Int64GetDatum((int64) tabentry->vacuum_count);
+
+					/* last_autovacuum */
+					if (tabentry->autovac_vacuum_timestamp == 0)
+						nulls[i++] = true;
+					else
+						values[i++] = TimestampTzGetDatum(tabentry->autovac_vacuum_timestamp);
+					values[i++] = Int64GetDatum((int64) tabentry->autovac_vacuum_count);
+
+					/* last_analyze */
+					if (tabentry->analyze_timestamp == 0)
+						nulls[i++] = true;
+					else
+						values[i++] = TimestampTzGetDatum(tabentry->analyze_timestamp);
+					values[i++] = Int64GetDatum((int64) tabentry->analyze_count);
+
+					/* last_autoanalyze */
+					if (tabentry->autovac_analyze_timestamp == 0)
+						nulls[i++] = true;
+					else
+						values[i++] = TimestampTzGetDatum(tabentry->autovac_analyze_timestamp);
+					values[i++] = Int64GetDatum((int64) tabentry->autovac_analyze_count);
+
+					Assert(i == POWA_STAT_TAB_COLS);
+
+					tuplestore_putvalues(tupstore, tupdesc, values, nulls);
+				}
+				break;
+			}
+		}
+	}
+
+	/* clean up and return the tuplestore */
+	tuplestore_donestoring(tupstore);
+
+	return (Datum) 0;
 }

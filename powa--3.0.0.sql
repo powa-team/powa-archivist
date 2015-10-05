@@ -9,6 +9,40 @@ SET client_min_messages = warning;
 SET escape_string_warning = off;
 SET search_path = public, pg_catalog;
 
+CREATE FUNCTION powa_stat_user_functions(IN dbid oid, OUT funcid oid,
+    OUT calls bigint,
+    OUT total_time double precision,
+    OUT self_time double precision)
+    RETURNS SETOF record
+    LANGUAGE c COST 100
+AS '$libdir/powa', 'powa_stat_user_functions';
+
+CREATE FUNCTION powa_stat_all_rel(IN dbid oid,
+    OUT relid oid,
+    OUT numscan bigint,
+    OUT tup_returned bigint,
+    OUT tup_fetched bigint,
+    OUT n_tup_ins bigint,
+    OUT n_tup_upd bigint,
+    OUT n_tup_del bigint,
+    OUT n_tup_hot_upd bigint,
+    OUT n_liv_tup bigint,
+    OUT n_dead_tup bigint,
+    OUT n_mod_since_analyze bigint,
+    OUT blks_read bigint,
+    OUT blks_hit bigint,
+    OUT last_vacuum timestamp with time zone,
+    OUT vacuum_count bigint,
+    OUT last_autovacuum timestamp with time zone,
+    OUT autovacuum_count bigint,
+    OUT last_analyze timestamp with time zone,
+    OUT analyze_count bigint,
+    OUT last_autoanalyze timestamp with time zone,
+    OUT autoanalyze_count bigint)
+    RETURNS SETOF record
+    LANGUAGE c COST 100
+AS '$libdir/powa', 'powa_stat_all_rel';
+
 CREATE TYPE powa_statement_history_record AS (
     ts timestamp with time zone,
     calls bigint,
