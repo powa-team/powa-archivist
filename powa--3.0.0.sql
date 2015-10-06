@@ -62,6 +62,37 @@ CREATE TYPE powa_statement_history_record AS (
     blk_write_time double precision
 );
 
+CREATE TYPE powa_user_functions_history_record AS (
+    ts timestamp with time zone,
+    calls bigint,
+    total_time double precision,
+    self_time double precision
+);
+
+CREATE TYPE powa_all_relations_history_record AS (
+    ts timestamp with time zone,
+    numscan bigint,
+    tup_returned bigint,
+    tup_fetched bigint,
+    n_tup_ins bigint,
+    n_tup_upd bigint,
+    n_tup_del bigint,
+    n_tup_hot_upd bigint,
+    n_liv_tup bigint,
+    n_dead_tup bigint,
+    n_mod_since_analyze bigint,
+    blks_read bigint,
+    blks_hit bigint,
+    last_vacuum timestamp with time zone,
+    vacuum_count bigint,
+    last_autovacuum timestamp with time zone,
+    autovacuum_count bigint,
+    last_analyze timestamp with time zone,
+    analyze_count bigint,
+    last_autoanalyze timestamp with time zone,
+    autoanalyze_count bigint
+);
+
 CREATE TABLE powa_last_aggregation (
     aggts timestamp with time zone
 );
@@ -116,6 +147,36 @@ CREATE TABLE powa_statements_history_current (
 CREATE TABLE powa_statements_history_current_db (
     dbid oid NOT NULL,
     record powa_statement_history_record NOT NULL
+);
+
+CREATE TABLE powa_user_functions_history (
+    dbid oid NOT NULL,
+    funcid oid NOT NULL,
+    coalesce_range tstzrange NOT NULL,
+    records powa_user_functions_history_record[] NOT NULL
+);
+
+CREATE INDEX powa_user_functions_history_funcid_ts ON powa_user_functions_history USING gist (funcid, coalesce_range);
+
+CREATE TABLE powa_user_functions_history_current (
+    dbid oid NOT NULL,
+    funcid oid NOT NULL,
+    record powa_user_functions_history_record NOT NULL
+);
+
+CREATE TABLE powa_all_relations_history (
+    dbid oid NOT NULL,
+    relid oid NOT NULL,
+    coalesce_range tstzrange NOT NULL,
+    records powa_all_relations_history_record[] NOT NULL
+);
+
+CREATE INDEX powa_all_relations_history_relid_ts ON powa_all_relations_history USING gist (relid, coalesce_range);
+
+CREATE TABLE powa_all_relations_history_current (
+    dbid oid NOT NULL,
+    relid oid NOT NULL,
+    record powa_all_relations_history_record NOT NULL
 );
 
 CREATE SEQUENCE powa_coalesce_sequence INCREMENT BY 1
@@ -273,6 +334,10 @@ SELECT pg_catalog.pg_extension_config_dump('powa_statements_history','');
 SELECT pg_catalog.pg_extension_config_dump('powa_statements_history_db','');
 SELECT pg_catalog.pg_extension_config_dump('powa_statements_history_current','');
 SELECT pg_catalog.pg_extension_config_dump('powa_statements_history_current_db','');
+SELECT pg_catalog.pg_extension_config_dump('powa_user_functions_history','');
+SELECT pg_catalog.pg_extension_config_dump('powa_user_functions_history_current','');
+SELECT pg_catalog.pg_extension_config_dump('powa_all_relations_history','');
+SELECT pg_catalog.pg_extension_config_dump('powa_all_relations_history_current','');
 SELECT pg_catalog.pg_extension_config_dump('powa_functions','WHERE added_manually');
 SELECT pg_catalog.pg_extension_config_dump('powa_kcache_metrics','');
 SELECT pg_catalog.pg_extension_config_dump('powa_kcache_metrics_db','');
@@ -510,6 +575,38 @@ BEGIN
     )
 
     SELECT true::boolean INTO result; -- For now we don't care. What could we do on error except crash anyway?
+
+    -- Insert cluster-wide user function statistics
+    WITH func(dbid,funcid, r) AS (
+        SELECT oid,
+            (powa_stat_user_functions(oid)).funcid,
+            powa_stat_user_functions(oid)
+        FROM pg_database
+    )
+    INSERT INTO powa_user_functions_history_current
+        SELECT dbid, funcid,
+        ROW(now(), (r).calls,
+            (r).total_time,
+            (r).self_time)::powa_user_functions_history_record AS record
+        FROM func;
+
+    -- Insert cluster-wide relation statistics
+    WITH rel(dbid, relid, r) AS (
+        SELECT oid,
+            (powa_stat_all_rel(oid)).relid,
+            powa_stat_all_rel(oid)
+        FROM pg_database
+    )
+    INSERT INTO powa_all_relations_history_current
+        SELECT dbid, relid,
+        ROW(now(),(r).numscan, (r).tup_returned, (r).tup_fetched,
+            (r).n_tup_ins, (r).n_tup_upd, (r).n_tup_del, (r).n_tup_hot_upd,
+            (r).n_liv_tup, (r).n_dead_tup, (r).n_mod_since_analyze,
+            (r).blks_read, (r).blks_hit, (r).last_vacuum, (r).vacuum_count,
+            (r).last_autovacuum, (r).autovacuum_count, (r).last_analyze,
+            (r).analyze_count, (r).last_autoanalyze,
+            (r).autoanalyze_count)::powa_all_relations_history_record AS record
+        FROM rel;
 END;
 $PROC$ language plpgsql;
 
@@ -519,7 +616,9 @@ BEGIN
     -- Delete obsolete datas. We only bother with already coalesced data
     DELETE FROM powa_statements_history WHERE upper(coalesce_range)< (now() - current_setting('powa.retention')::interval);
     DELETE FROM powa_statements_history_db WHERE upper(coalesce_range)< (now() - current_setting('powa.retention')::interval);
-    -- FIXME maybe we should cleanup the powa_statements table ? But it will take a while: unnest all records...
+    DELETE FROM powa_user_functions_history WHERE upper(coalesce_range)< (now() - current_setting('powa.retention')::interval);
+    DELETE FROM powa_all_relations_history WHERE upper(coalesce_range)< (now() - current_setting('powa.retention')::interval);
+    -- FIXME maybe we should cleanup the powa_*_history tables ? But it will take a while: unnest all records...
 END;
 $PROC$ LANGUAGE plpgsql;
 
@@ -550,6 +649,30 @@ BEGIN
         GROUP BY dbid;
 
     TRUNCATE powa_statements_history_current_db;
+
+    -- aggregate user_functions table
+    LOCK TABLE powa_user_functions_history_current IN SHARE MODE; -- prevent any other update
+
+    INSERT INTO powa_user_functions_history
+        SELECT dbid, funcid,
+            tstzrange(min((record).ts), max((record).ts),'[]'),
+            array_agg(record)
+        FROM powa_user_functions_history_current
+        GROUP BY dbid, funcid;
+
+    TRUNCATE powa_user_functions_history_current;
+
+    -- aggregate all_relations table
+    LOCK TABLE powa_all_relations_history_current IN SHARE MODE; -- prevent any other update
+
+    INSERT INTO powa_all_relations_history
+        SELECT dbid, relid,
+            tstzrange(min((record).ts), max((record).ts),'[]'),
+            array_agg(record)
+        FROM powa_all_relations_history_current
+        GROUP BY dbid, relid;
+
+    TRUNCATE powa_all_relations_history_current;
  END;
 $PROC$ LANGUAGE plpgsql;
 
@@ -562,6 +685,10 @@ BEGIN
     TRUNCATE TABLE powa_statements_history_current;
     TRUNCATE TABLE powa_statements_history_db;
     TRUNCATE TABLE powa_statements_history_current_db;
+    TRUNCATE TABLE powa_user_functions_history;
+    TRUNCATE TABLE powa_user_functions_history_current;
+    TRUNCATE TABLE powa_all_relations_history;
+    TRUNCATE TABLE powa_all_relations_history_current;
     TRUNCATE TABLE powa_statements;
     RETURN true;
 END;
