@@ -189,13 +189,14 @@ CREATE TABLE powa_functions (
     operation text NOT NULL,
     function_name text NOT NULL,
     added_manually boolean NOT NULL default true,
-    CHECK (operation IN ('snapshot','aggregate','purge','unregister'))
+    CHECK (operation IN ('snapshot','aggregate','purge','unregister','reset'))
 );
 
 INSERT INTO powa_functions (module, operation, function_name, added_manually) VALUES
     ('pg_stat_statements', 'snapshot', 'powa_statements_snapshot', false),
     ('pg_stat_statements', 'aggregate','powa_statements_aggregate', false),
-    ('pg_stat_statements', 'purge', 'powa_statements_purge', false);
+    ('pg_stat_statements', 'purge', 'powa_statements_purge', false),
+    ('pg_stat_statements', 'reset', 'powa_statements_reset', false);
 
 /* pg_stat_kcache integration - part 1 */
 
@@ -680,6 +681,46 @@ CREATE OR REPLACE FUNCTION public.powa_stats_reset()
  RETURNS boolean
  LANGUAGE plpgsql
 AS $function$
+DECLARE
+  funcname text;
+  v_state   text;
+  v_msg     text;
+  v_detail  text;
+  v_hint    text;
+  v_context text;
+BEGIN
+    -- Find reset function for every supported datasource, including pgss
+    FOR funcname IN SELECT function_name
+                 FROM powa_functions
+                 WHERE operation='reset' LOOP
+      -- Call all of them, with no parameter
+      BEGIN
+        EXECUTE 'SELECT ' || quote_ident(funcname)||'()';
+      EXCEPTION
+        WHEN OTHERS THEN
+          GET STACKED DIAGNOSTICS
+              v_state   = RETURNED_SQLSTATE,
+              v_msg     = MESSAGE_TEXT,
+              v_detail  = PG_EXCEPTION_DETAIL,
+              v_hint    = PG_EXCEPTION_HINT,
+              v_context = PG_EXCEPTION_CONTEXT;
+          RAISE warning 'powa_stats_reset(): function "%" failed:
+              state  : %
+              message: %
+              detail : %
+              hint   : %
+              context: %', funcname, v_state, v_msg, v_detail, v_hint, v_context;
+
+      END;
+    END LOOP;
+    RETURN true;
+END;
+$function$;
+
+CREATE OR REPLACE FUNCTION public.powa_statements_reset()
+ RETURNS boolean
+ LANGUAGE plpgsql
+AS $function$
 BEGIN
     TRUNCATE TABLE powa_statements_history;
     TRUNCATE TABLE powa_statements_history_current;
@@ -689,7 +730,8 @@ BEGIN
     TRUNCATE TABLE powa_user_functions_history_current;
     TRUNCATE TABLE powa_all_relations_history;
     TRUNCATE TABLE powa_all_relations_history_current;
-    TRUNCATE TABLE powa_statements;
+    -- if 3rd part datasource has FK on it, throw everything away
+    TRUNCATE TABLE powa_statements CASCADE;
     RETURN true;
 END;
 $function$;
@@ -714,7 +756,8 @@ BEGIN
             VALUES ('pg_stat_kcache', 'snapshot',   'powa_kcache_snapshot',   false),
                    ('pg_stat_kcache', 'aggregate',  'powa_kcache_aggregate',  false),
                    ('pg_stat_kcache', 'unregister', 'powa_kcache_unregister', false),
-                   ('pg_stat_kcache', 'purge',      'powa_kcache_purge',      false);
+                   ('pg_stat_kcache', 'purge',      'powa_kcache_purge',      false),
+                   ('pg_stat_kcache', 'reset',      'powa_kcache_reset',      false);
         END IF;
     END IF;
 
@@ -811,6 +854,20 @@ BEGIN
 END;
 $PROC$ language plpgsql;
 
+/*
+ * powa_kcache reset
+ */
+CREATE OR REPLACE FUNCTION powa_kcache_reset() RETURNS void as $PROC$
+BEGIN
+    RAISE DEBUG 'running powa_kcache_reset';
+
+    TRUNCATE TABLE powa_kcache_metrics;
+    TRUNCATE TABLE powa_kcache_metrics_db;
+    TRUNCATE TABLE powa_kcache_metrics_current;
+    TRUNCATE TABLE powa_kcache_metrics_current_db;
+END;
+$PROC$ language plpgsql;
+
 -- By default, try to register pg_stat_kcache, in case it's alreay here
 SELECT * FROM public.powa_kcache_register();
 
@@ -836,7 +893,8 @@ BEGIN
             VALUES ('pg_qualstats', 'snapshot',   'powa_qualstats_snapshot',   false),
                    ('pg_qualstats', 'aggregate',  'powa_qualstats_aggregate',  false),
                    ('pg_qualstats', 'unregister', 'powa_qualstats_unregister', false),
-                   ('pg_qualstats', 'purge',      'powa_qualstats_purge',      false);
+                   ('pg_qualstats', 'purge',      'powa_qualstats_purge',      false),
+                   ('pg_qualstats', 'reset',      'powa_qualstats_reset',      false);
         END IF;
     END IF;
 
@@ -981,6 +1039,21 @@ BEGIN
   RAISE DEBUG 'running powa_qualstats_purge';
   DELETE FROM powa_qualstats_constvalues_history WHERE upper(coalesce_range) < (now() - current_setting('powa.retention')::interval);
   DELETE FROM powa_qualstats_quals_history WHERE upper(coalesce_range) < (now() - current_setting('powa.retention')::interval);
+END;
+$PROC$ language plpgsql;
+
+/*
+ * powa_qualstats_reset
+ */
+CREATE OR REPLACE FUNCTION powa_qualstats_reset() RETURNS void as $PROC$
+BEGIN
+  RAISE DEBUG 'running powa_qualstats_reset';
+  TRUNCATE TABLE powa_qualstats_quals CASCADE;
+  -- cascaded :
+  -- powa_qualstats_quals_history
+  -- powa_qualstats_quals_history_current
+  -- powa_qualstats_constvalues_history
+  -- powa_qualstats_constvalues_history_current
 END;
 $PROC$ language plpgsql;
 
