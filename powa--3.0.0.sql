@@ -43,7 +43,7 @@ CREATE FUNCTION powa_stat_all_rel(IN dbid oid,
     LANGUAGE c COST 100
 AS '$libdir/powa', 'powa_stat_all_rel';
 
-CREATE TYPE powa_statement_history_record AS (
+CREATE TYPE powa_statements_history_record AS (
     ts timestamp with time zone,
     calls bigint,
     total_time double precision,
@@ -124,9 +124,9 @@ CREATE TABLE powa_statements_history (
     dbid oid NOT NULL,
     userid oid NOT NULL,
     coalesce_range tstzrange NOT NULL,
-    records powa_statement_history_record[] NOT NULL,
-    mins_in_range powa_statement_history_record NOT NULL,
-    maxs_in_range powa_statement_history_record NOT NULL
+    records powa_statements_history_record[] NOT NULL,
+    mins_in_range powa_statements_history_record NOT NULL,
+    maxs_in_range powa_statements_history_record NOT NULL
 );
 
 CREATE INDEX powa_statements_history_query_ts ON powa_statements_history USING gist (queryid, coalesce_range);
@@ -134,7 +134,7 @@ CREATE INDEX powa_statements_history_query_ts ON powa_statements_history USING g
 CREATE TABLE powa_statements_history_db (
     dbid oid NOT NULL,
     coalesce_range tstzrange NOT NULL,
-    records powa_statement_history_record[] NOT NULL
+    records powa_statements_history_record[] NOT NULL
 );
 
 CREATE INDEX powa_statements_history_db_ts ON powa_statements_history_db USING gist (dbid, coalesce_range);
@@ -143,12 +143,12 @@ CREATE TABLE powa_statements_history_current (
     queryid bigint NOT NULL,
     dbid oid NOT NULL,
     userid oid NOT NULL,
-    record powa_statement_history_record NOT NULL
+    record powa_statements_history_record NOT NULL
 );
 
 CREATE TABLE powa_statements_history_current_db (
     dbid oid NOT NULL,
-    record powa_statement_history_record NOT NULL
+    record powa_statements_history_record NOT NULL
 );
 
 CREATE TABLE powa_user_functions_history (
@@ -560,7 +560,7 @@ BEGIN
                 shared_blks_dirtied, shared_blks_written, local_blks_hit, local_blks_read,
                 local_blks_dirtied, local_blks_written, temp_blks_read, temp_blks_written,
                 blk_read_time, blk_write_time
-            )::powa_statement_history_record AS record
+            )::powa_statements_history_record AS record
             FROM capture
     ),
 
@@ -572,7 +572,7 @@ BEGIN
                 sum(shared_blks_dirtied), sum(shared_blks_written), sum(local_blks_hit), sum(local_blks_read),
                 sum(local_blks_dirtied), sum(local_blks_written), sum(temp_blks_read), sum(temp_blks_written),
                 sum(blk_read_time), sum(blk_write_time)
-            )::powa_statement_history_record AS record
+            )::powa_statements_history_record AS record
             FROM capture
             GROUP BY dbid
     )
@@ -643,7 +643,7 @@ BEGIN
                 min((record).local_blks_hit),min((record).local_blks_read),
                 min((record).local_blks_dirtied),min((record).local_blks_written),
                 min((record).temp_blks_read),min((record).temp_blks_written),
-                min((record).blk_read_time),min((record).blk_write_time))::powa_statement_history_record,
+                min((record).blk_read_time),min((record).blk_write_time))::powa_statements_history_record,
             ROW(max((record).ts),
                 max((record).calls),max((record).total_time),max((record).rows),
                 max((record).shared_blks_hit),max((record).shared_blks_read),
@@ -651,7 +651,7 @@ BEGIN
                 max((record).local_blks_hit),max((record).local_blks_read),
                 max((record).local_blks_dirtied),max((record).local_blks_written),
                 max((record).temp_blks_read),max((record).temp_blks_written),
-                max((record).blk_read_time),max((record).blk_write_time))::powa_statement_history_record
+                max((record).blk_read_time),max((record).blk_write_time))::powa_statements_history_record
         FROM powa_statements_history_current
         GROUP BY queryid, dbid, userid;
 
