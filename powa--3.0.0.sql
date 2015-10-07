@@ -695,7 +695,7 @@ BEGIN
  END;
 $PROC$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE FUNCTION public.powa_stats_reset()
+CREATE OR REPLACE FUNCTION public.powa_reset()
  RETURNS boolean
  LANGUAGE plpgsql
 AS $function$
@@ -722,7 +722,7 @@ BEGIN
               v_detail  = PG_EXCEPTION_DETAIL,
               v_hint    = PG_EXCEPTION_HINT,
               v_context = PG_EXCEPTION_CONTEXT;
-          RAISE warning 'powa_stats_reset(): function "%" failed:
+          RAISE warning 'powa_reset(): function "%" failed:
               state  : %
               message: %
               detail : %
