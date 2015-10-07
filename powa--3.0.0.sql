@@ -124,7 +124,9 @@ CREATE TABLE powa_statements_history (
     dbid oid NOT NULL,
     userid oid NOT NULL,
     coalesce_range tstzrange NOT NULL,
-    records powa_statement_history_record[] NOT NULL
+    records powa_statement_history_record[] NOT NULL,
+    mins_in_range powa_statement_history_record NOT NULL,
+    maxs_in_range powa_statement_history_record NOT NULL
 );
 
 CREATE INDEX powa_statements_history_query_ts ON powa_statements_history USING gist (queryid, coalesce_range);
@@ -633,7 +635,23 @@ BEGIN
     INSERT INTO powa_statements_history
         SELECT queryid, dbid, userid,
             tstzrange(min((record).ts), max((record).ts),'[]'),
-            array_agg(record)
+            array_agg(record),
+            ROW(min((record).ts),
+                min((record).calls),min((record).total_time),min((record).rows),
+                min((record).shared_blks_hit),min((record).shared_blks_read),
+                min((record).shared_blks_dirtied),min((record).shared_blks_written),
+                min((record).local_blks_hit),min((record).local_blks_read),
+                min((record).local_blks_dirtied),min((record).local_blks_written),
+                min((record).temp_blks_read),min((record).temp_blks_written),
+                min((record).blk_read_time),min((record).blk_write_time))::powa_statement_history_record,
+            ROW(max((record).ts),
+                max((record).calls),max((record).total_time),max((record).rows),
+                max((record).shared_blks_hit),max((record).shared_blks_read),
+                max((record).shared_blks_dirtied),max((record).shared_blks_written),
+                max((record).local_blks_hit),max((record).local_blks_read),
+                max((record).local_blks_dirtied),max((record).local_blks_written),
+                max((record).temp_blks_read),max((record).temp_blks_written),
+                max((record).blk_read_time),max((record).blk_write_time))::powa_statement_history_record
         FROM powa_statements_history_current
         GROUP BY queryid, dbid, userid;
 
