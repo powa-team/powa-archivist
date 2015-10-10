@@ -196,9 +196,17 @@ CREATE TABLE powa_functions (
 
 INSERT INTO powa_functions (module, operation, function_name, added_manually) VALUES
     ('pg_stat_statements', 'snapshot', 'powa_statements_snapshot', false),
+    ('powa_stat_user_functions', 'snapshot', 'powa_user_functions_snapshot', false),
+    ('powa_stat_all_relations', 'snapshot', 'powa_all_relations_snapshot', false),
     ('pg_stat_statements', 'aggregate','powa_statements_aggregate', false),
+    ('powa_stat_user_functions', 'aggregate','powa_user_functions_aggregate', false),
+    ('powa_stat_all_relations', 'aggregate','powa_all_relations_aggregate', false),
     ('pg_stat_statements', 'purge', 'powa_statements_purge', false),
-    ('pg_stat_statements', 'reset', 'powa_statements_reset', false);
+    ('powa_stat_user_functions', 'purge', 'powa_user_functions_purge', false),
+    ('powa_stat_all_relations', 'purge', 'powa_all_relations_purge', false),
+    ('pg_stat_statements', 'reset', 'powa_statements_reset', false),
+    ('powa_stat_user_functions', 'reset', 'powa_user_functions_reset', false),
+    ('powa_stat_all_relations', 'reset', 'powa_all_relations_reset', false);
 
 /* pg_stat_kcache integration - part 1 */
 
@@ -578,7 +586,14 @@ BEGIN
     )
 
     SELECT true::boolean INTO result; -- For now we don't care. What could we do on error except crash anyway?
+END;
+$PROC$ language plpgsql;
 
+CREATE OR REPLACE FUNCTION powa_user_functions_snapshot() RETURNS void AS $PROC$
+DECLARE
+    result boolean;
+BEGIN
+    RAISE DEBUG 'running powa_user_functions_snapshot';
     -- Insert cluster-wide user function statistics
     WITH func(dbid,funcid, r) AS (
         SELECT oid,
@@ -593,6 +608,15 @@ BEGIN
             (r).self_time)::powa_user_functions_history_record AS record
         FROM func;
 
+    result := true;
+END;
+$PROC$ language plpgsql;
+
+CREATE OR REPLACE FUNCTION powa_all_relations_snapshot() RETURNS void AS $PROC$
+DECLARE
+    result boolean;
+BEGIN
+    RAISE DEBUG 'running powa_all_relations_snapshot';
     -- Insert cluster-wide relation statistics
     WITH rel(dbid, relid, r) AS (
         SELECT oid,
@@ -606,10 +630,12 @@ BEGIN
             (r).n_tup_ins, (r).n_tup_upd, (r).n_tup_del, (r).n_tup_hot_upd,
             (r).n_liv_tup, (r).n_dead_tup, (r).n_mod_since_analyze,
             (r).blks_read, (r).blks_hit, (r).last_vacuum, (r).vacuum_count,
-            (r).last_autovacuum, (r).autovacuum_count, (r).last_analyze,
+        (r).last_autovacuum, (r).autovacuum_count, (r).last_analyze,
             (r).analyze_count, (r).last_autoanalyze,
             (r).autoanalyze_count)::powa_all_relations_history_record AS record
         FROM rel;
+
+    result := true;
 END;
 $PROC$ language plpgsql;
 
@@ -619,7 +645,23 @@ BEGIN
     -- Delete obsolete datas. We only bother with already coalesced data
     DELETE FROM powa_statements_history WHERE upper(coalesce_range)< (now() - current_setting('powa.retention')::interval);
     DELETE FROM powa_statements_history_db WHERE upper(coalesce_range)< (now() - current_setting('powa.retention')::interval);
+    -- FIXME maybe we should cleanup the powa_*_history tables ? But it will take a while: unnest all records...
+END;
+$PROC$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION powa_user_functions_purge() RETURNS void AS $PROC$
+BEGIN
+    RAISE DEBUG 'running powa_user_functions_purge';
+    -- Delete obsolete datas. We only bother with already coalesced data
     DELETE FROM powa_user_functions_history WHERE upper(coalesce_range)< (now() - current_setting('powa.retention')::interval);
+    -- FIXME maybe we should cleanup the powa_*_history tables ? But it will take a while: unnest all records...
+END;
+$PROC$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION powa_all_relations_purge() RETURNS void AS $PROC$
+BEGIN
+    RAISE DEBUG 'running powa_all_relations_purge';
+    -- Delete obsolete datas. We only bother with already coalesced data
     DELETE FROM powa_all_relations_history WHERE upper(coalesce_range)< (now() - current_setting('powa.retention')::interval);
     -- FIXME maybe we should cleanup the powa_*_history tables ? But it will take a while: unnest all records...
 END;
@@ -668,6 +710,12 @@ BEGIN
         GROUP BY dbid;
 
     TRUNCATE powa_statements_history_current_db;
+ END;
+$PROC$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION powa_user_functions_aggregate() RETURNS void AS $PROC$
+BEGIN
+    RAISE DEBUG 'running powa_user_functions_aggregate';
 
     -- aggregate user_functions table
     LOCK TABLE powa_user_functions_history_current IN SHARE MODE; -- prevent any other update
@@ -680,6 +728,12 @@ BEGIN
         GROUP BY dbid, funcid;
 
     TRUNCATE powa_user_functions_history_current;
+ END;
+$PROC$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION powa_all_relations_aggregate() RETURNS void AS $PROC$
+BEGIN
+    RAISE DEBUG 'running powa_all_relations_aggregate';
 
     -- aggregate all_relations table
     LOCK TABLE powa_all_relations_history_current IN SHARE MODE; -- prevent any other update
@@ -744,12 +798,30 @@ BEGIN
     TRUNCATE TABLE powa_statements_history_current;
     TRUNCATE TABLE powa_statements_history_db;
     TRUNCATE TABLE powa_statements_history_current_db;
-    TRUNCATE TABLE powa_user_functions_history;
-    TRUNCATE TABLE powa_user_functions_history_current;
-    TRUNCATE TABLE powa_all_relations_history;
-    TRUNCATE TABLE powa_all_relations_history_current;
     -- if 3rd part datasource has FK on it, throw everything away
     TRUNCATE TABLE powa_statements CASCADE;
+    RETURN true;
+END;
+$function$;
+
+CREATE OR REPLACE FUNCTION public.powa_user_functions_reset()
+ RETURNS boolean
+ LANGUAGE plpgsql
+AS $function$
+BEGIN
+    TRUNCATE TABLE powa_user_functions_history;
+    TRUNCATE TABLE powa_user_functions_history_current;
+    RETURN true;
+END;
+$function$;
+
+CREATE OR REPLACE FUNCTION public.powa_all_relations_reset()
+ RETURNS boolean
+ LANGUAGE plpgsql
+AS $function$
+BEGIN
+    TRUNCATE TABLE powa_all_relations_history;
+    TRUNCATE TABLE powa_all_relations_history_current;
     RETURN true;
 END;
 $function$;
