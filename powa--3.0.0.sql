@@ -191,22 +191,23 @@ CREATE TABLE powa_functions (
     operation text NOT NULL,
     function_name text NOT NULL,
     added_manually boolean NOT NULL default true,
+    enabled boolean NOT NULL default true,
     CHECK (operation IN ('snapshot','aggregate','purge','unregister','reset'))
 );
 
-INSERT INTO powa_functions (module, operation, function_name, added_manually) VALUES
-    ('pg_stat_statements', 'snapshot', 'powa_statements_snapshot', false),
-    ('powa_stat_user_functions', 'snapshot', 'powa_user_functions_snapshot', false),
-    ('powa_stat_all_relations', 'snapshot', 'powa_all_relations_snapshot', false),
-    ('pg_stat_statements', 'aggregate','powa_statements_aggregate', false),
-    ('powa_stat_user_functions', 'aggregate','powa_user_functions_aggregate', false),
-    ('powa_stat_all_relations', 'aggregate','powa_all_relations_aggregate', false),
-    ('pg_stat_statements', 'purge', 'powa_statements_purge', false),
-    ('powa_stat_user_functions', 'purge', 'powa_user_functions_purge', false),
-    ('powa_stat_all_relations', 'purge', 'powa_all_relations_purge', false),
-    ('pg_stat_statements', 'reset', 'powa_statements_reset', false),
-    ('powa_stat_user_functions', 'reset', 'powa_user_functions_reset', false),
-    ('powa_stat_all_relations', 'reset', 'powa_all_relations_reset', false);
+INSERT INTO powa_functions (module, operation, function_name, added_manually, enabled) VALUES
+    ('pg_stat_statements', 'snapshot', 'powa_statements_snapshot', false, true),
+    ('powa_stat_user_functions', 'snapshot', 'powa_user_functions_snapshot', false, true),
+    ('powa_stat_all_relations', 'snapshot', 'powa_all_relations_snapshot', false, true),
+    ('pg_stat_statements', 'aggregate','powa_statements_aggregate', false, true),
+    ('powa_stat_user_functions', 'aggregate','powa_user_functions_aggregate', false, true),
+    ('powa_stat_all_relations', 'aggregate','powa_all_relations_aggregate', false, true),
+    ('pg_stat_statements', 'purge', 'powa_statements_purge', false, true),
+    ('powa_stat_user_functions', 'purge', 'powa_user_functions_purge', false, true),
+    ('powa_stat_all_relations', 'purge', 'powa_all_relations_purge', false, true),
+    ('pg_stat_statements', 'reset', 'powa_statements_reset', false, true),
+    ('powa_stat_user_functions', 'reset', 'powa_user_functions_reset', false, true),
+    ('powa_stat_all_relations', 'reset', 'powa_all_relations_reset', false, true);
 
 /* pg_stat_kcache integration - part 1 */
 
@@ -394,6 +395,7 @@ DECLARE
     v_hint    text;
     v_context text;
 BEGIN
+    -- We unregister extensions regardless the "enabled" field
     WITH ext AS (
         SELECT object_name
         FROM pg_event_trigger_dropped_objects() d
@@ -444,10 +446,10 @@ DECLARE
   v_context text;
 
 BEGIN
-    -- For all snapshot functions in the powa_functions table, execute
+    -- For all enabled snapshot functions in the powa_functions table, execute
     FOR funcname IN SELECT function_name
                  FROM powa_functions
-                 WHERE operation='snapshot' LOOP
+                 WHERE operation='snapshot' AND enabled LOOP
       -- Call all of them, with no parameter
       RAISE debug 'fonction: %',funcname;
       BEGIN
@@ -478,7 +480,7 @@ BEGIN
     THEN
       FOR funcname IN SELECT function_name
                    FROM powa_functions
-                   WHERE operation='aggregate' LOOP
+                   WHERE operation='aggregate' AND enabled LOOP
         -- Call all of them, with no parameter
         BEGIN
           EXECUTE 'SELECT ' || quote_ident(funcname)||'()';
@@ -507,7 +509,7 @@ BEGIN
     THEN
       FOR funcname IN SELECT function_name
                    FROM powa_functions
-                   WHERE operation='purge' LOOP
+                   WHERE operation='purge' AND enabled LOOP
         -- Call all of them, with no parameter
         BEGIN
           EXECUTE 'SELECT ' || quote_ident(funcname)||'()';
@@ -762,6 +764,7 @@ DECLARE
   v_context text;
 BEGIN
     -- Find reset function for every supported datasource, including pgss
+    -- Also call reset function even if they're not enabled
     FOR funcname IN SELECT function_name
                  FROM powa_functions
                  WHERE operation='reset' LOOP
@@ -842,12 +845,12 @@ BEGIN
     IF ( v_ext_present ) THEN
         SELECT COUNT(*) > 0 INTO v_func_present FROM public.powa_functions WHERE module = 'pg_stat_kcache';
         IF ( NOT v_func_present) THEN
-            INSERT INTO powa_functions (module, operation, function_name, added_manually)
-            VALUES ('pg_stat_kcache', 'snapshot',   'powa_kcache_snapshot',   false),
-                   ('pg_stat_kcache', 'aggregate',  'powa_kcache_aggregate',  false),
-                   ('pg_stat_kcache', 'unregister', 'powa_kcache_unregister', false),
-                   ('pg_stat_kcache', 'purge',      'powa_kcache_purge',      false),
-                   ('pg_stat_kcache', 'reset',      'powa_kcache_reset',      false);
+            INSERT INTO powa_functions (module, operation, function_name, added_manually, enabled)
+            VALUES ('pg_stat_kcache', 'snapshot',   'powa_kcache_snapshot',   false, true),
+                   ('pg_stat_kcache', 'aggregate',  'powa_kcache_aggregate',  false, true),
+                   ('pg_stat_kcache', 'unregister', 'powa_kcache_unregister', false, true),
+                   ('pg_stat_kcache', 'purge',      'powa_kcache_purge',      false, true),
+                   ('pg_stat_kcache', 'reset',      'powa_kcache_reset',      false, true);
         END IF;
     END IF;
 
@@ -979,12 +982,12 @@ BEGIN
     IF ( v_ext_present) THEN
         SELECT COUNT(*) > 0 INTO v_func_present FROM public.powa_functions WHERE function_name IN ('powa_qualstats_snapshot', 'powa_qualstats_aggregate', 'powa_qualstats_purge');
         IF ( NOT v_func_present) THEN
-            INSERT INTO powa_functions (module, operation, function_name, added_manually)
-            VALUES ('pg_qualstats', 'snapshot',   'powa_qualstats_snapshot',   false),
-                   ('pg_qualstats', 'aggregate',  'powa_qualstats_aggregate',  false),
-                   ('pg_qualstats', 'unregister', 'powa_qualstats_unregister', false),
-                   ('pg_qualstats', 'purge',      'powa_qualstats_purge',      false),
-                   ('pg_qualstats', 'reset',      'powa_qualstats_reset',      false);
+            INSERT INTO powa_functions (module, operation, function_name, added_manually, enabled)
+            VALUES ('pg_qualstats', 'snapshot',   'powa_qualstats_snapshot',   false, true),
+                   ('pg_qualstats', 'aggregate',  'powa_qualstats_aggregate',  false, true),
+                   ('pg_qualstats', 'unregister', 'powa_qualstats_unregister', false, true),
+                   ('pg_qualstats', 'purge',      'powa_qualstats_purge',      false, true),
+                   ('pg_qualstats', 'reset',      'powa_qualstats_reset',      false, true);
         END IF;
     END IF;
 
