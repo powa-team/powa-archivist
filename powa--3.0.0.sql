@@ -1199,4 +1199,7 @@ BEGIN
 END;
 $_$
 language plpgsql;
+
+-- By default, try to register pg_track_settings, in case it's alreay here
+SELECT * FROM public.powa_track_settings_register();
 /* end pg_track_settings integration */
