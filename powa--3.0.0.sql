@@ -375,6 +375,7 @@ BEGIN
      */
     PERFORM public.powa_kcache_register();
     PERFORM public.powa_qualstats_register();
+    PERFORM public.powa_track_settings_register();
 END;
 $_$;
 
@@ -1165,3 +1166,37 @@ language plpgsql;
 SELECT * FROM public.powa_qualstats_register();
 
 /* end of pg_qualstats_integration - part 2 */
+
+/* pg_track_settings integration */
+
+CREATE OR REPLACE FUNCTION powa_track_settings_register() RETURNS bool AS $_$
+DECLARE
+    v_func_present bool;
+    v_ext_present bool;
+BEGIN
+    SELECT COUNT(*) = 1 INTO v_ext_present FROM pg_extension WHERE extname = 'pg_track_settings';
+
+    IF ( v_ext_present ) THEN
+        SELECT COUNT(*) > 0 INTO v_func_present FROM public.powa_functions WHERE module = 'pg_track_settings';
+        IF ( NOT v_func_present) THEN
+            -- This extension handles its own storage, just its snapshot
+            -- function and an unregister function.
+            INSERT INTO powa_functions (module, operation, function_name, added_manually, enabled)
+            VALUES ('pg_track_settings', 'snapshot',   'pg_track_settings_snapshot',   false, true),
+                   ('pg_track_settings', 'unregister', 'powa_track_settings_unregister',   false, true);
+        END IF;
+    END IF;
+
+    RETURN true;
+END;
+$_$ language plpgsql;
+
+CREATE OR REPLACE function public.powa_track_settings_unregister() RETURNS bool AS
+$_$
+BEGIN
+    DELETE FROM public.powa_functions WHERE module = 'pg_track_settings';
+    RETURN true;
+END;
+$_$
+language plpgsql;
+/* end pg_track_settings integration */
