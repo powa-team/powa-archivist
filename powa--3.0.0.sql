@@ -546,9 +546,11 @@ BEGIN
     -- of different statements
     RAISE DEBUG 'running powa_statements_snapshot';
     WITH capture AS(
-        SELECT pg_stat_statements.*
-        FROM pg_stat_statements
-        WHERE pg_stat_statements.query !~* ignore_regexp
+        SELECT pgss.*
+        FROM pg_stat_statements pgss
+        JOIN pg_roles r ON pgss.userid = r.oid
+        WHERE pgss.query !~* ignore_regexp
+        AND NOT (r.rolname = ANY (string_to_array(current_setting('powa.ignored_users'),',')))
     ),
 
     missing_statements AS(
@@ -883,7 +885,9 @@ BEGIN
 
     WITH capture AS (
         SELECT *
-        FROM pg_stat_kcache()
+        FROM pg_stat_kcache() k
+        JOIN pg_roles r ON r.oid = k.userid
+        WHERE NOT (r.rolname = ANY (string_to_array(current_setting('powa.ignored_users'),',')))
     ),
 
     by_query AS (
@@ -1071,6 +1075,8 @@ BEGIN
     SELECT pgqs.*, s.query
     FROM pg_qualstats_by_query pgqs
     JOIN powa_statements s USING(queryid, dbid, userid)
+    JOIN pg_roles r ON s.userid = r.oid
+    AND NOT (r.rolname = ANY (string_to_array(current_setting('powa.ignored_users'),',')))
   ),
   missing_quals AS (
       INSERT INTO powa_qualstats_quals (qualid, queryid, dbid, userid, quals)

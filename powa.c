@@ -72,6 +72,7 @@ static int  min_powa_frequency = 5000;
 static int  powa_retention;
 static int  powa_coalesce;
 static char *powa_database = NULL;
+static char *powa_ignored_users = NULL;
 
 void die_on_too_small_frequency(void)
 {
@@ -117,6 +118,12 @@ void _PG_init(void)
                                NULL,
                                &powa_database,
                                "powa", PGC_POSTMASTER, 0, NULL, NULL, NULL);
+
+    DefineCustomStringVariable("powa.ignored_users",
+                               "Defines a coma-separated list of users to ignore when taking activity snapshot",
+                               NULL,
+                               &powa_ignored_users,
+                               NULL, PGC_SIGHUP, 0, NULL, NULL, NULL);
     /*
        Register the worker processes
      */
