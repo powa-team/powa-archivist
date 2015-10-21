@@ -134,7 +134,9 @@ CREATE INDEX powa_statements_history_query_ts ON powa_statements_history USING g
 CREATE TABLE powa_statements_history_db (
     dbid oid NOT NULL,
     coalesce_range tstzrange NOT NULL,
-    records powa_statements_history_record[] NOT NULL
+    records powa_statements_history_record[] NOT NULL,
+    mins_in_range powa_statements_history_record NOT NULL,
+    maxs_in_range powa_statements_history_record NOT NULL
 );
 
 CREATE INDEX powa_statements_history_db_ts ON powa_statements_history_db USING gist (dbid, coalesce_range);
@@ -155,7 +157,9 @@ CREATE TABLE powa_user_functions_history (
     dbid oid NOT NULL,
     funcid oid NOT NULL,
     coalesce_range tstzrange NOT NULL,
-    records powa_user_functions_history_record[] NOT NULL
+    records powa_user_functions_history_record[] NOT NULL,
+    mins_in_range powa_user_functions_history_record NOT NULL,
+    maxs_in_range powa_user_functions_history_record NOT NULL
 );
 
 CREATE INDEX powa_user_functions_history_funcid_ts ON powa_user_functions_history USING gist (funcid, coalesce_range);
@@ -170,7 +174,9 @@ CREATE TABLE powa_all_relations_history (
     dbid oid NOT NULL,
     relid oid NOT NULL,
     coalesce_range tstzrange NOT NULL,
-    records powa_all_relations_history_record[] NOT NULL
+    records powa_all_relations_history_record[] NOT NULL,
+    mins_in_range powa_all_relations_history_record NOT NULL,
+    maxs_in_range powa_all_relations_history_record NOT NULL
 );
 
 CREATE INDEX powa_all_relations_history_relid_ts ON powa_all_relations_history USING gist (relid, coalesce_range);
@@ -225,6 +231,8 @@ CREATE TABLE public.powa_kcache_metrics (
     dbid oid NOT NULL,
     userid oid NOT NULL,
     metrics public.kcache_type[] NOT NULL,
+    mins_in_range public.kcache_type NOT NULL,
+    maxs_in_range public.kcache_type NOT NULL,
     PRIMARY KEY (coalesce_range, queryid, dbid, userid)
 );
 
@@ -234,6 +242,8 @@ CREATE TABLE public.powa_kcache_metrics_db (
     coalesce_range tstzrange NOT NULL,
     dbid oid NOT NULL,
     metrics public.kcache_type[] NOT NULL,
+    mins_in_range public.kcache_type NOT NULL,
+    maxs_in_range public.kcache_type NOT NULL,
     PRIMARY KEY (coalesce_range, dbid)
 );
 
@@ -291,6 +301,8 @@ CREATE TABLE public.powa_qualstats_quals_history (
     userid oid,
     coalesce_range tstzrange,
     records powa_qualstats_history_item[],
+    mins_in_range powa_qualstats_history_item,
+    maxs_in_range powa_qualstats_history_item,
     FOREIGN KEY (qualid, queryid, dbid, userid) REFERENCES public.powa_qualstats_quals (qualid, queryid, dbid, userid) MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
 );
 
@@ -710,7 +722,23 @@ BEGIN
     INSERT INTO powa_statements_history_db
         SELECT dbid,
             tstzrange(min((record).ts), max((record).ts),'[]'),
-            array_agg(record)
+            array_agg(record),
+            ROW(min((record).ts),
+                min((record).calls),min((record).total_time),min((record).rows),
+                min((record).shared_blks_hit),min((record).shared_blks_read),
+                min((record).shared_blks_dirtied),min((record).shared_blks_written),
+                min((record).local_blks_hit),min((record).local_blks_read),
+                min((record).local_blks_dirtied),min((record).local_blks_written),
+                min((record).temp_blks_read),min((record).temp_blks_written),
+                min((record).blk_read_time),min((record).blk_write_time))::powa_statements_history_record,
+            ROW(max((record).ts),
+                max((record).calls),max((record).total_time),max((record).rows),
+                max((record).shared_blks_hit),max((record).shared_blks_read),
+                max((record).shared_blks_dirtied),max((record).shared_blks_written),
+                max((record).local_blks_hit),max((record).local_blks_read),
+                max((record).local_blks_dirtied),max((record).local_blks_written),
+                max((record).temp_blks_read),max((record).temp_blks_written),
+                max((record).blk_read_time),max((record).blk_write_time))::powa_statements_history_record
         FROM powa_statements_history_current_db
         GROUP BY dbid;
 
@@ -728,7 +756,11 @@ BEGIN
     INSERT INTO powa_user_functions_history
         SELECT dbid, funcid,
             tstzrange(min((record).ts), max((record).ts),'[]'),
-            array_agg(record)
+            array_agg(record),
+            ROW(min((record).ts), min((record).calls),min((record).total_time),
+                min((record).self_time))::powa_user_functions_history_record,
+            ROW(max((record).ts), max((record).calls),max((record).total_time),
+                max((record).self_time))::powa_user_functions_history_record
         FROM powa_user_functions_history_current
         GROUP BY dbid, funcid;
 
@@ -746,7 +778,29 @@ BEGIN
     INSERT INTO powa_all_relations_history
         SELECT dbid, relid,
             tstzrange(min((record).ts), max((record).ts),'[]'),
-            array_agg(record)
+            array_agg(record),
+            ROW(min((record).ts),
+                min((record).numscan),min((record).tup_returned),min((record).tup_fetched),
+                min((record).n_tup_ins),min((record).n_tup_upd),
+                min((record).n_tup_del),min((record).n_tup_hot_upd),
+                min((record).n_liv_tup),min((record).n_dead_tup),
+                min((record).n_mod_since_analyze),min((record).blks_read),
+                min((record).blks_hit),min((record).last_vacuum),
+                min((record).vacuum_count),min((record).last_autovacuum),
+                min((record).autovacuum_count),min((record).last_analyze),
+                min((record).analyze_count),min((record).last_autoanalyze),
+                min((record).autoanalyze_count))::powa_all_relations_history_record,
+            ROW(max((record).ts),
+                max((record).numscan),max((record).tup_returned),max((record).tup_fetched),
+                max((record).n_tup_ins),max((record).n_tup_upd),
+                max((record).n_tup_del),max((record).n_tup_hot_upd),
+                max((record).n_liv_tup),max((record).n_dead_tup),
+                max((record).n_mod_since_analyze),max((record).blks_read),
+                max((record).blks_hit),max((record).last_vacuum),
+                max((record).vacuum_count),max((record).last_autovacuum),
+                max((record).autovacuum_count),max((record).last_analyze),
+                max((record).analyze_count),max((record).last_autoanalyze),
+                max((record).autoanalyze_count))::powa_all_relations_history_record
         FROM powa_all_relations_history_current
         GROUP BY dbid, relid;
 
@@ -919,9 +973,15 @@ BEGIN
     -- aggregate metrics table
     LOCK TABLE powa_kcache_metrics_current IN SHARE MODE; -- prevent any other update
 
-    INSERT INTO powa_kcache_metrics (coalesce_range, queryid, dbid, userid, metrics)
+    INSERT INTO powa_kcache_metrics (coalesce_range, queryid, dbid, userid, metrics, mins_in_range, maxs_in_range)
         SELECT tstzrange(min((metrics).ts), max((metrics).ts),'[]'),
-        queryid, dbid, userid, array_agg(metrics)
+        queryid, dbid, userid, array_agg(metrics),
+        ROW(min((metrics).ts),
+            min((metrics).reads),min((metrics).writes),min((metrics).user_time),
+            min((metrics).system_time))::kcache_type,
+        ROW(max((metrics).ts),
+            max((metrics).reads),max((metrics).writes),max((metrics).user_time),
+            max((metrics).system_time))::kcache_type
         FROM powa_kcache_metrics_current
         GROUP BY queryid, dbid, userid;
 
@@ -930,9 +990,15 @@ BEGIN
     -- aggregate metrics_db table
     LOCK TABLE powa_kcache_metrics_current_db IN SHARE MODE; -- prevent any other update
 
-    INSERT INTO powa_kcache_metrics_db (coalesce_range, dbid, metrics)
+    INSERT INTO powa_kcache_metrics_db (coalesce_range, dbid, metrics, mins_in_range, maxs_in_range)
         SELECT tstzrange(min((metrics).ts), max((metrics).ts),'[]'),
-        dbid, array_agg(metrics)
+        dbid, array_agg(metrics),
+        ROW(min((metrics).ts),
+            min((metrics).reads),min((metrics).writes),min((metrics).user_time),
+            min((metrics).system_time))::kcache_type,
+        ROW(max((metrics).ts),
+            max((metrics).reads),max((metrics).writes),max((metrics).user_time),
+            max((metrics).system_time))::kcache_type
         FROM powa_kcache_metrics_current_db
         GROUP BY dbid;
 
@@ -1122,8 +1188,10 @@ BEGIN
   INSERT INTO powa_qualstats_constvalues_history (
     qualid, queryid, dbid, userid, coalesce_range, most_used, most_filtering, least_filtering, most_executed)
     SELECT * FROM powa_qualstats_aggregate_constvalues_current;
-  INSERT INTO powa_qualstats_quals_history (qualid, queryid, dbid, userid, coalesce_range, records)
-    SELECT qualid, queryid, dbid, userid, tstzrange(min(ts), max(ts),'[]'), array_agg((ts, occurences, execution_count, nbfiltered)::powa_qualstats_history_item)
+  INSERT INTO powa_qualstats_quals_history (qualid, queryid, dbid, userid, coalesce_range, records, mins_in_range, maxs_in_range)
+    SELECT qualid, queryid, dbid, userid, tstzrange(min(ts), max(ts),'[]'), array_agg((ts, occurences, execution_count, nbfiltered)::powa_qualstats_history_item),
+    ROW(min(ts), min(occurences), min(execution_count), min(nbfiltered))::powa_qualstats_history_item,
+    ROW(max(ts), max(occurences), max(execution_count), max(nbfiltered))::powa_qualstats_history_item
     FROM powa_qualstats_quals_history_current
     GROUP BY qualid, queryid, dbid, userid;
   TRUNCATE powa_qualstats_constvalues_history_current;
