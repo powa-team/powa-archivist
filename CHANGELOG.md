@@ -1,5 +1,8 @@
 ## 3.0.0 (upcoming)
 
+Please not that there is not upgrade to switch to this version. You need to
+remove the old one and install the new 3.0.0 version.
+
   - Handle pg_qualtats 0.0.7
   - Sample cluster wide statistics, for relations and functions
   - Fix the powa reset function, and rename it to powa_reset()
