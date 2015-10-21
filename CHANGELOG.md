@@ -1,7 +1,17 @@
-## 2.0.1 (upcoming)
+## 3.0.0 (upcoming)
+
+  - Handle pg_qualtats 0.0.7
+  - Sample cluster wide statistics, for relations and functions
+  - Fix the powa reset function, and rename it to powa_reset()
+  - Add min/max records to improve performance when analyzing big time interval
+  - Allow disabling some statistics sampling
+  - Handle pg_track_settings extension
+  - Add a GUC to ignore some users activity in sampled data
+
+## 2.0.1 (2015-07-27)
 
   - Handle creation/suppression of supported extensions.
-  - Change install_all.sh script to use .tar.gz instead of zips
+  - Remove then install_all script
 
 ## 2.0 (2015-02-06)
 
