@@ -1,4 +1,4 @@
-## 3.0.0 (upcoming)
+## 3.0.0 (2015-11-06)
 
 Please not that there is not upgrade to switch to this version. You need to
 remove the old one and install the new 3.0.0 version.
