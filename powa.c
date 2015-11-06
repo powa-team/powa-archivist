@@ -89,6 +89,13 @@ void _PG_init(void)
 
     BackgroundWorker worker;
 
+	if (!process_shared_preload_libraries_in_progress)
+	{
+		elog(ERROR, "This module can only be loaded via shared_preload_libraries");
+		return;
+	}
+
+
     DefineCustomIntVariable("powa.frequency",
                             "Defines the frequency in seconds of the snapshots",
                             NULL,
