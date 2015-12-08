@@ -1,3 +1,8 @@
+## 3.0.1 (WIP)
+
+  - Don't track 2PC related statements, as they're not normalized by
+    pg_stat_statements.
+
 ## 3.0.0 (2015-11-06)
 
 Please not that there is not upgrade to switch to this version. You need to
