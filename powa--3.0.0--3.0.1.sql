@@ -65,3 +65,21 @@ BEGIN
     SELECT true::boolean INTO result; -- For now we don't care. What could we do on error except crash anyway?
 END;
 $PROC$ language plpgsql;
+
+-- remove entries that should not have been stored
+DELETE FROM powa_statements_history_current pshc
+USING powa_statements ps
+WHERE pshc.queryid = ps.queryid
+    AND pshc.dbid = ps.dbid
+    AND pshc.userid = ps.userid
+    AND ps.query ~* '^[[:space:]]*(DEALLOCATE|BEGIN|PREPARE TRANSACTION|COMMIT PREPARED|ROLLBACK PREPARED)';
+
+DELETE FROM powa_statements_history psh
+USING powa_statements ps
+WHERE psh.queryid = ps.queryid
+    AND psh.dbid = ps.dbid
+    AND psh.userid = ps.userid
+    AND ps.query ~* '^[[:space:]]*(DEALLOCATE|BEGIN|PREPARE TRANSACTION|COMMIT PREPARED|ROLLBACK PREPARED)';
+
+DELETE FROM powa_statemetns
+WHERE query ~* '^[[:space:]]*(DEALLOCATE|BEGIN|PREPARE TRANSACTION|COMMIT PREPARED|ROLLBACK PREPARED)';
