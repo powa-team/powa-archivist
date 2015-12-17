@@ -19,7 +19,7 @@ remove the old one and install the new 3.0.0 version.
 ## 2.0.1 (2015-07-27)
 
   - Handle creation/suppression of supported extensions.
-  - Remove then install_all script
+  - Remove the install_all script
 
 ## 2.0 (2015-02-06)
 
