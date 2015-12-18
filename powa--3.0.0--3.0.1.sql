@@ -81,5 +81,5 @@ WHERE psh.queryid = ps.queryid
     AND psh.userid = ps.userid
     AND ps.query ~* '^[[:space:]]*(DEALLOCATE|BEGIN|PREPARE TRANSACTION|COMMIT PREPARED|ROLLBACK PREPARED)';
 
-DELETE FROM powa_statemetns
+DELETE FROM powa_statements
 WHERE query ~* '^[[:space:]]*(DEALLOCATE|BEGIN|PREPARE TRANSACTION|COMMIT PREPARED|ROLLBACK PREPARED)';
