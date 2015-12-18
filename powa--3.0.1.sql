@@ -8,6 +8,12 @@ SET client_min_messages = warning;
 SET escape_string_warning = off;
 SET search_path = public, pg_catalog;
 
+CREATE TABLE powa_databases(
+    oid     oid PRIMARY KEY,
+    datname name,
+    dropped timestamp with time zone
+);
+
 CREATE FUNCTION powa_stat_user_functions(IN dbid oid, OUT funcid oid,
     OUT calls bigint,
     OUT total_time double precision,
@@ -458,6 +464,40 @@ DECLARE
   v_context text;
 
 BEGIN
+    -- Keep track of existing databases
+    WITH missing AS (
+        SELECT d.oid, d.datname
+        FROM pg_database d
+        LEFT JOIN powa_databases p ON d.oid = p.oid
+        WHERE p.oid IS NULL
+    )
+    INSERT INTO powa_databases
+    SELECT * FROM missing;
+
+    -- Keep track of renamed databases
+    WITH renamed AS (
+        SELECT d.oid, d.datname
+        FROM pg_database AS d
+        JOIN powa_databases AS p ON d.oid = p.oid
+        WHERE d.datname != p.datname
+    )
+    UPDATE powa_databases AS p
+    SET datname = r.datname
+    FROM renamed AS r
+    WHERE p.oid = r.oid;
+
+    -- Keep track of when databases are dropped
+    WITH dropped AS (
+        SELECT p.oid
+        FROM powa_databases p
+        LEFT JOIN pg_database d ON p.oid = d.oid
+        WHERE d.oid IS NULL
+        AND p.dropped IS NULL)
+    UPDATE powa_databases p
+    SET dropped = now()
+    FROM dropped d
+    WHERE p.oid = d.oid;
+
     -- For all enabled snapshot functions in the powa_functions table, execute
     FOR funcname IN SELECT function_name
                  FROM powa_functions
