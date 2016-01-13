@@ -1,7 +1,7 @@
 powa-archivist (3.0.0-2) unstable; urgency=medium
 
   * Upload to unstable with 9.5 support.
-  * Add debian/tests/create_extension.
+  * Add debian/tests/create-extension.
 
  -- Christoph Berg <myon@debian.org>  Wed, 13 Jan 2016 18:14:25 +0100
 
