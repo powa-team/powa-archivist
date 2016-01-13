@@ -1,0 +1,10 @@
+#!/bin/sh
+
+for v in $(pg_buildext supported-versions); do
+	pg_virtualenv -v $v -o "shared_preload_libraries=powa,pg_stat_statements" \
+		psql <<-EOF
+		CREATE EXTENSION pg_stat_statements;
+		CREATE EXTENSION btree_gist;
+		CREATE EXTENSION powa;
+	EOF
+done

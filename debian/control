@@ -10,10 +10,10 @@ Homepage: http://dalibo.github.io/powa/
 Vcs-Browser: https://github.com/credativ/powa-archivist.git
 Vcs-Git: https://github.com/credativ/powa-archivist.git -b debian
 
-Package: postgresql-9.4-powa
+Package: postgresql-9.5-powa
 Architecture: any
-Depends: ${misc:Depends}, ${shlibs:Depends}, postgresql-9.4
-Description: PostgreSQL Workload Analyzer -- PostgreSQL 9.4 extension
+Depends: ${misc:Depends}, ${shlibs:Depends}, postgresql-9.5
+Description: PostgreSQL Workload Analyzer -- PostgreSQL 9.5 extension
  This package contains the core extension of the PoWA project, a PostgreSQL
  Workload Analyzer that gathers performance stats and provides real-time charts
  and graphs to help monitor and tune your PostgreSQL servers.

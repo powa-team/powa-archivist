@@ -1,0 +1,3 @@
+Depends: @, postgresql-contrib-PGVERSION, postgresql-PGVERSION-powa
+Tests: create_extension
+Restrictions: allow-stderr
