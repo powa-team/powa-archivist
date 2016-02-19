@@ -1,26 +1,32 @@
 PostgreSQL Workload Analyzer detailled installation guide
 =========================================================
 
-Read [README.md](https://github.com/dalibo/powa/blob/master/README.md) for further details about PoWA.
+Read [README.md](https://github.com/dalibo/powa/blob/master/README.md) and
+[the official documentation](http://powa.readthedocs.org/) for further details
+about PoWA.
 
-PoWA requires PostgreSQL 9.4 or more.
+PoWA requires PostgreSQL 9.4 or more. This documentation assumes you're using
+the 9.4 version of PostgreSQL.
 
-The following documentation describes the detailed installation steps to install PoWA.
+The following documentation describes the detailed installation steps to install
+PoWA.
 
 
-Download PoWA from the website
-------------------------------
+Download powa-archivist from the website
+----------------------------------------
 
-```
-wget https://github.com/dalibo/powa/archive/REL_2_0.zip
-```
+The latest stable version should be used. It can be downloaded from
+[github](https://github.com/dalibo/powa-archivist/releases/latest).
+
+This documentation assumes that the latest version is 3.0.0, and you downloaded
+the .zip file.
 
 Unpack the downloaded file
 --------------------------
 
 ```
 cd /usr/src
-unzip powa-REL_2_0.zip
+unzip powa-REL_3_0_0.zip
 ```
 
 Compile and install the software
@@ -28,28 +34,29 @@ Compile and install the software
 
 Before proceeding, be sure to have a compiler installed and the appropriate PostgreSQL development packages. Something like
 ```
-apt-get install postgresql-server-dev-9.0
+apt-get install postgresql-server-dev-9.4
 ```
 or
 ```
-yum install postgresql93-devel
+yum install postgresql94-devel
 ```
 
 Then:
 ```
-cd /usr/src/powa-REL_2_0
+cd /usr/src/powa-REL_3_0_0
 make
 ```
 
 If everything goes fine, you will have this kind of output :
 ```
-gcc -Wall -Wmissing-prototypes -Wpointer-arith -Wdeclaration-after-statement -Wendif-labels -Wmissing-format-attribute -Wformat-security -fno-strict-aliasing -fwrapv -fexcess-precision=standard -g -fpic -I. -I. -I/home/thomas/postgresql/postgresql-9.3.4/include/server -I/home/thomas/postgresql/postgresql-9.3.4/include/internal -D_GNU_SOURCE -I/usr/include/libxml2   -c -o powa.o powa.c
-gcc -Wall -Wmissing-prototypes -Wpointer-arith -Wdeclaration-after-statement -Wendif-labels -Wmissing-format-attribute -Wformat-security -fno-strict-aliasing -fwrapv -fexcess-precision=standard -g -fpic -L/home/thomas/postgresql/postgresql-9.3.4/lib -Wl,--as-needed -Wl,-rpath,'/home/thomas/postgresql/postgresql-9.3.4/lib',--enable-new-dtags  -shared -o powa.so powa.o
+gcc -Wall -Wmissing-prototypes -Wpointer-arith -Wdeclaration-after-statement -Wendif-labels -Wmissing-format-attribute -Wformat-security -fno-strict-aliasing -fwrapv -fexcess-precision=standard -g -fpic -I. -I. -I/home/thomas/postgresql/postgresql-9.3.4/include/server -I/home/thomas/postgresql/postgresql-9.4.4/include/internal -D_GNU_SOURCE -I/usr/include/libxml2   -c -o powa.o powa.c
+gcc -Wall -Wmissing-prototypes -Wpointer-arith -Wdeclaration-after-statement -Wendif-labels -Wmissing-format-attribute -Wformat-security -fno-strict-aliasing -fwrapv -fexcess-precision=standard -g -fpic -L/home/thomas/postgresql/postgresql-9.3.4/lib -Wl,--as-needed -Wl,-rpath,'/home/thomas/postgresql/postgresql-9.4.4/lib',--enable-new-dtags  -shared -o powa.so powa.o
 ```
 
 Install the software :
 
-- This step has to be made with the user that has installed PostgreSQL. If you have used a package, it will be certainly be root. If so:
+- This step has to be made with the user that has installed PostgreSQL. If you
+  have used a package, it will be certainly be root. If so:
 ```
 sudo make install
 ```
@@ -60,14 +67,14 @@ make install
 
 It should output something like the following :
 ```
-/bin/mkdir -p '/usr/pgsql-9.3/share/extension'
-/bin/mkdir -p '/usr/pgsql-9.3/share/extension'
-/bin/mkdir -p '/usr/pgsql-9.3/lib'
-/bin/mkdir -p '/usr/pgsql-9.3/share/doc/extension'
-/usr/bin/install -c -m 644 ./powa.control '/usr/pgsql-9.3/share/extension/'
-/usr/bin/install -c -m 644 ./powa--1.0.sql ./powa--1.1.sql ./powa--1.2.sql ./powa--1.1--1.2.sql  '/usr/pgsql-9.3/share/extension/'
-/usr/bin/install -c -m 755  powa.so '/usr/pgsql-9.3/postgresql-9.3.4/lib/'
-/usr/bin/install -c -m 644 ./README.md '/usr/pgsql-9.3/share/doc/extension/'
+/bin/mkdir -p '/usr/pgsql-9.4/share/extension'
+/bin/mkdir -p '/usr/pgsql-9.4/share/extension'
+/bin/mkdir -p '/usr/pgsql-9.4/lib'
+/bin/mkdir -p '/usr/pgsql-9.4/share/doc/extension'
+/usr/bin/install -c -m 644 ./powa.control '/usr/pgsql-9.4/share/extension/'
+/usr/bin/install -c -m 644 ./powa--2.0.1.sql ./powa--2.0-2.0.1.sql ./powa--3.0.0.sql '/usr/pgsql-9.4/share/extension/'
+/usr/bin/install -c -m 755  powa.so '/usr/pgsql-9.4/postgresql-9.4.4/lib/'
+/usr/bin/install -c -m 644 ./README.md '/usr/pgsql-9.4/share/doc/extension/'
 ```
 
 
@@ -103,7 +110,7 @@ powa=# \dt
  public | powa_statements                 | table | postgres
  public | powa_statements_history         | table | postgres
  public | powa_statements_history_current | table | postgres
-(6 rows)
+ [...]
 ```
 
 
@@ -160,6 +167,9 @@ Type "help" for help.
 powa=# ALTER EXTENSION powa UPDATE ;
 ALTER EXTENSION
 ```
+
+However, due to a lot of changes in the data storage, it's not possible to
+update to PoWA 3.0.0. In this case, you need to drop and create the extension.
 
 Next, you will need to restart PostgreSQL in order to take account of the
 updated background worker. As root, run the following command :

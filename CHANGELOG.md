@@ -1,3 +1,8 @@
+## 3.0.1 (WIP)
+
+  - Don't track 2PC related statements, as they're not normalized by
+    pg_stat_statements.
+
 ## 3.0.0 (2015-11-06)
 
 Please not that there is not upgrade to switch to this version. You need to
@@ -14,7 +19,7 @@ remove the old one and install the new 3.0.0 version.
 ## 2.0.1 (2015-07-27)
 
   - Handle creation/suppression of supported extensions.
-  - Remove then install_all script
+  - Remove the install_all script
 
 ## 2.0 (2015-02-06)
 
