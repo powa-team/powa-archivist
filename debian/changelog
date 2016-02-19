@@ -1,3 +1,9 @@
+powa-archivist (3.0.1-1) unstable; urgency=medium
+
+  * New upstream version.
+
+ -- Christoph Berg <myon@debian.org>  Fri, 19 Feb 2016 10:04:25 +0100
+
 powa-archivist (3.0.0-2) unstable; urgency=medium
 
   * Upload to unstable with 9.5 support.
