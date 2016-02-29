@@ -61,10 +61,7 @@ static Datum	powa_stat_common(PG_FUNCTION_ARGS, PowaStatKind kind);
 PG_FUNCTION_INFO_V1(powa_stat_user_functions);
 PG_FUNCTION_INFO_V1(powa_stat_all_rel);
 
-static bool got_sigterm = false;
-
 static void powa_main(Datum main_arg);
-static void powa_sigterm(SIGNAL_ARGS);
 static void powa_sighup(SIGNAL_ARGS);
 
 static int  powa_frequency;
@@ -158,10 +155,9 @@ static void powa_main(Datum main_arg)
 
     die_on_too_small_frequency();
     /*
-       Set up signal handlers, then unblock signalsl
+       Set up signal handler, then unblock signals
      */
     pqsignal(SIGHUP, powa_sighup);
-    pqsignal(SIGTERM, powa_sigterm);
 
     BackgroundWorkerUnblockSignals();
 
@@ -174,7 +170,7 @@ static void powa_main(Datum main_arg)
              powa_frequency);
         exit(1);
     }
-    // We got here: it means powa_frequency > 0. Let's connect
+    /* We got here: it means powa_frequency > 0. Let's connect */
 
 
     /*
@@ -193,11 +189,13 @@ static void powa_main(Datum main_arg)
     PopActiveSnapshot();
     CommitTransactionCommand();
 
-    /*
-       let's store the current time. It will be used to
-       calculate a quite stable interval between each measure
-     */
-    while (!got_sigterm)
+    /*------------------
+	 * Main loop of POWA
+	 * We exit from here if:
+	 *   - we got a SIGINT/SIGTERM (default bgworker sig handlers)
+	 *   - powa.frequency becomes < 0 (change config and SIGHUP)
+	 */
+	while (true)
     {
         /*
            We can get here with a new value of powa_frequency
@@ -209,6 +207,11 @@ static void powa_main(Datum main_arg)
             elog(LOG, "POWA exits to disconnect from the database now");
             exit(1);
         }
+
+        /*
+           let's store the current time. It will be used to
+           calculate a quite stable interval between each measure
+         */
         INSTR_TIME_SET_CURRENT(begin);
         ResetLatch(&MyProc->procLatch);
         SetCurrentStatementStartTimestamp();
@@ -238,19 +241,8 @@ static void powa_main(Datum main_arg)
                       time_to_wait);
         }
     }
-    proc_exit(0);
 }
 
-
-static void powa_sigterm(SIGNAL_ARGS)
-{
-    int         save_errno = errno;
-
-    got_sigterm = true;
-    if (MyProc)
-        SetLatch(&MyProc->procLatch);
-    errno = save_errno;
-}
 
 static void powa_sighup(SIGNAL_ARGS)
 {
