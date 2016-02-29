@@ -182,7 +182,7 @@ static void powa_main(Datum main_arg)
      */
     BackgroundWorkerInitializeConnection(powa_database, NULL);
 
-    elog(LOG, "POWA connected to %s", powa_database);
+    elog(LOG, "POWA connected to database %s", quote_identifier(powa_database));
 
     StartTransactionCommand();
     SetCurrentStatementStartTimestamp();
