@@ -265,7 +265,7 @@ powa_stat_all_rel(PG_FUNCTION_ARGS)
 static Datum	powa_stat_common(PG_FUNCTION_ARGS, PowaStatKind kind)
 {
 	Oid			dbid = PG_GETARG_OID(0);
-	Oid			currentdbid = MyDatabaseId;
+	Oid			backend_dbid;
 	ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
 	MemoryContext per_query_ctx;
 	MemoryContext oldcontext;
@@ -299,20 +299,44 @@ static Datum	powa_stat_common(PG_FUNCTION_ARGS, PowaStatKind kind)
 
 	MemoryContextSwitchTo(oldcontext);
 
-	/*
-	 * Lookup the requested database, then retrieve all functions stats. This
-	 * function will read the statistic collector stats file if not already
-	 * done in the transaction. As we may (and probably) have to access
-	 * statistics on multiple databases, force a cluster wide and deep stats
-	 * retrieval, by setting MyDatabaseId to InvalidOid. However, by doing so we
-	 * won't force a fresh statsfile read. Having slighty outdated stat is not
-	 * an issue, but after a cluster restart, it may take some time before
-	 * having any data returned.
+	/* -----------------------------------------------------
+	 * Force deep statistics retrieval of specified database.
+	 *
+	 * Deep means to also include tables and functions HTAB, which is what we
+	 * want here.
+	 *
+	 * The stat collector isn't suppose to act this way, since a backend can't
+	 * access data outside the database it's connected to.  It's not a problem
+	 * here since we only need the identifier that are stored in the pgstats,
+	 * the UI will connect to the database to do the lookup.
+	 *
+	 * So, to ensure we'll have fresh statitics of the wanted database, we have
+	 * to do following (ugly) tricks:
+	 *
+	 * - clear the current statistics cache. If a previous function already
+	 *   asked for statistics in the same transaction, calling
+	 *   pgstat_fetch_stat_dbentry would() just return the cache, which would
+	 *   probably belong to another database. As the powa snapshot works inside
+	 *   a function, we have the guarantee that this function will be called for
+	 *   all the databases in a single transaction anyway.
+	 *
+	 * - change the global var MyDatabaseId to the wanted databaseid. pgstat
+	 *   is designed to only retrieve statistics for current database, so we
+	 *   need to fool it.
+	 *
+	 * - call pgstat_fetch_stat_dbentry().
+	 *
+	 * - and finally don't forget to restore MyDatabaseId
 	 */
-	MyDatabaseId = InvalidOid;
+
+	pgstat_clear_snapshot();
+
+	backend_dbid = MyDatabaseId;
+	MyDatabaseId = dbid;
+
 	dbentry = pgstat_fetch_stat_dbentry(dbid);
-	/* And restore it */
-	MyDatabaseId = currentdbid;
+
+	MyDatabaseId = backend_dbid;
 
 	if (dbentry != NULL && dbentry->functions != NULL)
 	{
