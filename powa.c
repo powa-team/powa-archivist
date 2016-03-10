@@ -326,7 +326,11 @@ static Datum	powa_stat_common(PG_FUNCTION_ARGS, PowaStatKind kind)
 	 *
 	 * - call pgstat_fetch_stat_dbentry().
 	 *
-	 * - and finally don't forget to restore MyDatabaseId
+	 * - restore MyDatabaseId.
+	 *
+	 * - and finally clear again the statistics cache, to make sure any further
+	 *   statement in the transaction will see the data related to the right
+	 *   database.
 	 */
 
 	pgstat_clear_snapshot();
@@ -436,6 +440,13 @@ static Datum	powa_stat_common(PG_FUNCTION_ARGS, PowaStatKind kind)
 			}
 		}
 	}
+
+	/*
+	 * Make sure any subsequent statistic retrieving will not see the one we
+	 * just fetched
+	 */
+	pgstat_clear_snapshot();
+
 
 	/* clean up and return the tuplestore */
 	tuplestore_donestoring(tupstore);
