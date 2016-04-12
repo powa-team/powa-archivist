@@ -184,10 +184,12 @@ static void powa_main(Datum main_arg)
     SetCurrentStatementStartTimestamp();
     SPI_connect();
     PushActiveSnapshot(GetTransactionSnapshot());
+	pgstat_report_activity(STATE_RUNNING, q2);
     SPI_execute(q2, false, 0);
     SPI_finish();
     PopActiveSnapshot();
     CommitTransactionCommand();
+	pgstat_report_activity(STATE_IDLE, NULL);
 
     /*------------------
 	 * Main loop of POWA
@@ -218,10 +220,12 @@ static void powa_main(Datum main_arg)
         StartTransactionCommand();
         SPI_connect();
         PushActiveSnapshot(GetTransactionSnapshot());
+		pgstat_report_activity(STATE_RUNNING, q1);
         SPI_execute(q1, false, 0);
         SPI_finish();
         PopActiveSnapshot();
         CommitTransactionCommand();
+		pgstat_report_activity(STATE_IDLE, NULL);
         INSTR_TIME_SET_CURRENT(end);
         INSTR_TIME_SUBTRACT(end, begin);
         /*
@@ -235,6 +239,16 @@ static void powa_main(Datum main_arg)
         elog(DEBUG1, "Waiting for %li milliseconds", time_to_wait);
         if (time_to_wait > 0)
         {
+			StringInfoData buf;
+
+			initStringInfo(&buf);
+
+			appendStringInfo(&buf, "-- sleeping for %li seconds",
+					time_to_wait / 1000);
+
+			pgstat_report_activity(STATE_IDLE, buf.data);
+
+			pfree(buf.data);
 
             WaitLatch(&MyProc->procLatch,
                       WL_LATCH_SET | WL_TIMEOUT | WL_POSTMASTER_DEATH,
