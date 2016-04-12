@@ -147,11 +147,11 @@ void _PG_init(void)
 
 static void powa_main(Datum main_arg)
 {
-    char       *q1 = "SELECT powa_take_snapshot()";
-    static char *q2 = "SET application_name = 'POWA collector'";
-    instr_time  begin;
-    instr_time  end;
-    long        time_to_wait;
+    char		   *query_snapshot = "SELECT powa_take_snapshot()";
+    static char	   *query_appname = "SET application_name = 'POWA collector'";
+    instr_time		begin;
+    instr_time		end;
+    long			time_to_wait;
 
     die_on_too_small_frequency();
     /*
@@ -184,8 +184,8 @@ static void powa_main(Datum main_arg)
     SetCurrentStatementStartTimestamp();
     SPI_connect();
     PushActiveSnapshot(GetTransactionSnapshot());
-	pgstat_report_activity(STATE_RUNNING, q2);
-    SPI_execute(q2, false, 0);
+	pgstat_report_activity(STATE_RUNNING, query_appname);
+    SPI_execute(query_appname, false, 0);
     SPI_finish();
     PopActiveSnapshot();
     CommitTransactionCommand();
@@ -220,8 +220,8 @@ static void powa_main(Datum main_arg)
         StartTransactionCommand();
         SPI_connect();
         PushActiveSnapshot(GetTransactionSnapshot());
-		pgstat_report_activity(STATE_RUNNING, q1);
-        SPI_execute(q1, false, 0);
+		pgstat_report_activity(STATE_RUNNING, query_snapshot);
+        SPI_execute(query_snapshot, false, 0);
         SPI_finish();
         PopActiveSnapshot();
         CommitTransactionCommand();
