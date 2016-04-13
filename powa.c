@@ -40,6 +40,9 @@
 /* pgsats access */
 #include "pgstat.h"
 
+/* rename process */
+#include "utils/ps_status.h"
+
 PG_MODULE_MAGIC;
 
 #define POWA_STAT_FUNC_COLS 4	/* # of cols for functions stat SRF */
@@ -186,6 +189,7 @@ powa_main(Datum main_arg)
 
 	elog(LOG, "POWA connected to database %s", quote_identifier(powa_database));
 
+	set_ps_display("init", false);
 	StartTransactionCommand();
 	SetCurrentStatementStartTimestamp();
 	SPI_connect();
@@ -196,6 +200,7 @@ powa_main(Datum main_arg)
 	PopActiveSnapshot();
 	CommitTransactionCommand();
 	pgstat_report_activity(STATE_IDLE, NULL);
+	set_ps_display("idle", false);
 
 	/*------------------
 	 * Main loop of POWA
@@ -219,6 +224,7 @@ powa_main(Datum main_arg)
 		 * let's store the current time. It will be used to calculate a quite
 		 * stable interval between each measure
 		 */
+		set_ps_display("snapshot", false);
 		INSTR_TIME_SET_CURRENT(begin);
 		ResetLatch(&MyProc->procLatch);
 		SetCurrentStatementStartTimestamp();
@@ -231,6 +237,7 @@ powa_main(Datum main_arg)
 		PopActiveSnapshot();
 		CommitTransactionCommand();
 		pgstat_report_activity(STATE_IDLE, NULL);
+		set_ps_display("idle", false);
 		INSTR_TIME_SET_CURRENT(end);
 		INSTR_TIME_SUBTRACT(end, begin);
 
