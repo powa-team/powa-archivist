@@ -462,8 +462,13 @@ DECLARE
   v_detail  text;
   v_hint    text;
   v_context text;
+  v_title   text = 'PoWA - ';
 
 BEGIN
+    PERFORM set_config('application_name',
+        v_title || ' snapshot database list',
+        false);
+
     -- Keep track of existing databases
     WITH missing AS (
         SELECT d.oid, d.datname
@@ -505,6 +510,9 @@ BEGIN
       -- Call all of them, with no parameter
       RAISE debug 'fonction: %',funcname;
       BEGIN
+        PERFORM set_config('application_name',
+            v_title || quote_ident(funcname) || '()',
+            false);
         EXECUTE 'SELECT ' || quote_ident(funcname)||'()';
       EXCEPTION
         WHEN OTHERS THEN
@@ -535,6 +543,9 @@ BEGIN
                    WHERE operation='aggregate' AND enabled LOOP
         -- Call all of them, with no parameter
         BEGIN
+          PERFORM set_config('application_name',
+              v_title || quote_ident(funcname) || '()',
+              false);
           EXECUTE 'SELECT ' || quote_ident(funcname)||'()';
         EXCEPTION
           WHEN OTHERS THEN
@@ -564,6 +575,9 @@ BEGIN
                    WHERE operation='purge' AND enabled LOOP
         -- Call all of them, with no parameter
         BEGIN
+          PERFORM set_config('application_name',
+              v_title || quote_ident(funcname) || '()',
+              false);
           EXECUTE 'SELECT ' || quote_ident(funcname)||'()';
         EXCEPTION
           WHEN OTHERS THEN
@@ -582,8 +596,14 @@ BEGIN
 
         END;
       END LOOP;
+      PERFORM set_config('application_name',
+          v_title || 'UPDATE powa_last_purge',
+          false);
       UPDATE powa_last_purge SET purgets = now();
     END IF;
+    PERFORM set_config('application_name',
+        v_title || 'snapshot finished',
+        false);
 END;
 $PROC$ LANGUAGE plpgsql;
 
