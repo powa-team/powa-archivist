@@ -1,3 +1,10 @@
+## 3.0.2 (WIP)
+
+  - Fix issue leading to impossibility to stop the worker without shutting down
+    the database
+  - Fix cluster wide statistics to get fresh values
+  - Report PoWA collector activity in pg_stat_activity and process title
+
 ## 3.0.1 (2016-02-09)
 
   - Don't track 2PC related statements, as they're not normalized by
