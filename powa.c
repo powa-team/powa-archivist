@@ -73,6 +73,7 @@ static int	powa_retention;
 static int	powa_coalesce;
 static char *powa_database = NULL;
 static char *powa_ignored_users = NULL;
+static bool powa_debug = NULL;
 
 void
 die_on_too_small_frequency(void)
@@ -132,6 +133,12 @@ _PG_init(void)
 							   NULL,
 							   &powa_ignored_users,
 							   NULL, PGC_SIGHUP, 0, NULL, NULL, NULL);
+
+	DefineCustomBoolVariable("powa.debug",
+							   "Provide logs to help troubleshooting issues",
+							   NULL,
+							   &powa_debug,
+							   false, PGC_USERSET, 0, NULL, NULL, NULL);
 
 	/*
 	 * Register the worker processes

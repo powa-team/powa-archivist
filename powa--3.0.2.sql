@@ -220,6 +220,18 @@ INSERT INTO powa_functions (module, operation, function_name, added_manually, en
     ('powa_stat_user_functions', 'reset', 'powa_user_functions_reset', false, true),
     ('powa_stat_all_relations', 'reset', 'powa_all_relations_reset', false, true);
 
+CREATE FUNCTION powa_log (msg text) RETURNS void
+LANGUAGE plpgsql
+AS $_$
+BEGIN
+    IF current_setting('powa.debug')::bool THEN
+        RAISE WARNING '%', msg;
+    ELSE
+        RAISE DEBUG '%', msg;
+    END IF;
+END;
+$_$;
+
 /* pg_stat_kcache integration - part 1 */
 
 CREATE TYPE public.kcache_type AS (
@@ -426,7 +438,7 @@ BEGIN
 
     IF ( funcname IS NOT NULL ) THEN
         BEGIN
-            RAISE DEBUG 'running %', funcname;
+            PERFORM powa_log(format('running %I', funcname));
             EXECUTE 'SELECT ' || quote_ident(funcname) || '()';
         EXCEPTION
           WHEN OTHERS THEN
@@ -445,7 +457,7 @@ BEGIN
         END;
     END IF;
 END;
-$_$;
+$_$; /* end of powa_check_dropped_extensions */
 
 CREATE EVENT TRIGGER powa_check_dropped_extensions
     ON sql_drop
@@ -455,21 +467,25 @@ CREATE EVENT TRIGGER powa_check_dropped_extensions
 CREATE OR REPLACE FUNCTION powa_take_snapshot() RETURNS void AS $PROC$
 DECLARE
   purgets timestamp with time zone;
-  purge_seq bigint;
-  funcname text;
-  v_state   text;
-  v_msg     text;
-  v_detail  text;
-  v_hint    text;
-  v_context text;
-  v_title   text = 'PoWA - ';
+  purge_seq  bigint;
+  funcname   text;
+  v_state    text;
+  v_msg      text;
+  v_detail   text;
+  v_hint     text;
+  v_context  text;
+  v_title    text = 'PoWA - ';
+  v_rowcount bigint;
 
 BEGIN
     PERFORM set_config('application_name',
         v_title || ' snapshot database list',
         false);
+    PERFORM powa_log('start of powa_take_snapshot');
 
     -- Keep track of existing databases
+    PERFORM powa_log('Maintaining database list...');
+
     WITH missing AS (
         SELECT d.oid, d.datname
         FROM pg_database d
@@ -478,6 +494,9 @@ BEGIN
     )
     INSERT INTO powa_databases
     SELECT * FROM missing;
+
+    GET DIAGNOSTICS v_rowcount = ROW_COUNT;
+    perform powa_log(format('missing db: %s', v_rowcount));
 
     -- Keep track of renamed databases
     WITH renamed AS (
@@ -491,6 +510,9 @@ BEGIN
     FROM renamed AS r
     WHERE p.oid = r.oid;
 
+    GET DIAGNOSTICS v_rowcount = ROW_COUNT;
+    perform powa_log(format('renamed db: %s', v_rowcount));
+
     -- Keep track of when databases are dropped
     WITH dropped AS (
         SELECT p.oid
@@ -503,16 +525,20 @@ BEGIN
     FROM dropped d
     WHERE p.oid = d.oid;
 
+    GET DIAGNOSTICS v_rowcount = ROW_COUNT;
+    perform powa_log(format('dropped db: %s', v_rowcount));
+
     -- For all enabled snapshot functions in the powa_functions table, execute
     FOR funcname IN SELECT function_name
                  FROM powa_functions
                  WHERE operation='snapshot' AND enabled LOOP
       -- Call all of them, with no parameter
-      RAISE debug 'fonction: %',funcname;
       BEGIN
+        PERFORM powa_log(format('calling snapshot function: %I', funcname));
         PERFORM set_config('application_name',
             v_title || quote_ident(funcname) || '()',
             false);
+
         EXECUTE 'SELECT ' || quote_ident(funcname)||'()';
       EXCEPTION
         WHEN OTHERS THEN
@@ -534,15 +560,21 @@ BEGIN
 
     -- Coalesce datas if needed
     SELECT nextval('powa_coalesce_sequence'::regclass) INTO purge_seq;
+    PERFORM powa_log(format('powa_coalesce_sequence: %s', purge_seq));
 
     IF (  purge_seq
             % current_setting('powa.coalesce')::bigint ) = 0
     THEN
+      PERFORM powa_log(format('coalesce needed, seq: %s coalesce seq: %s',
+            purge_seq, current_setting('powa.coalesce')::bigint ));
+
       FOR funcname IN SELECT function_name
                    FROM powa_functions
                    WHERE operation='aggregate' AND enabled LOOP
         -- Call all of them, with no parameter
         BEGIN
+          PERFORM powa_log(format('calling aggregate function: %I', funcname));
+
           PERFORM set_config('application_name',
               v_title || quote_ident(funcname) || '()',
               false);
@@ -570,14 +602,19 @@ BEGIN
     IF (  purge_seq
             % (current_setting('powa.coalesce')::bigint *10) ) = 0
     THEN
+      PERFORM powa_log(format('purge needed, seq: %s coalesce seq: %s',
+        purge_seq, current_setting('powa.coalesce')));
+
       FOR funcname IN SELECT function_name
                    FROM powa_functions
                    WHERE operation='purge' AND enabled LOOP
         -- Call all of them, with no parameter
         BEGIN
+          PERFORM powa_log(format('calling purge function: %I', funcname));
           PERFORM set_config('application_name',
               v_title || quote_ident(funcname) || '()',
               false);
+
           EXECUTE 'SELECT ' || quote_ident(funcname)||'()';
         EXCEPTION
           WHEN OTHERS THEN
@@ -601,21 +638,25 @@ BEGIN
           false);
       UPDATE powa_last_purge SET purgets = now();
     END IF;
+    PERFORM powa_log('end of powa_take_snapshot');
     PERFORM set_config('application_name',
         v_title || 'snapshot finished',
         false);
 END;
-$PROC$ LANGUAGE plpgsql;
+$PROC$ LANGUAGE plpgsql; /* end of powa_take_snapshot */
 
 CREATE OR REPLACE FUNCTION powa_statements_snapshot() RETURNS void AS $PROC$
 DECLARE
     result boolean;
-    ignore_regexp text:='^[[:space:]]*(DEALLOCATE|BEGIN|PREPARE TRANSACTION|COMMIT PREPARED|ROLLBACK PREPARED)';
+    ignore_regexp text :='^[[:space:]]*(DEALLOCATE|BEGIN|PREPARE TRANSACTION|COMMIT PREPARED|ROLLBACK PREPARED)';
+    v_funcname    text := 'powa_statements_snapshot';
+    v_rowcount    bigint;
 BEGIN
     -- In this function, we capture statements, and also aggregate counters by database
     -- so that the first screens of powa stay reactive even though there may be thousands
     -- of different statements
-    RAISE DEBUG 'running powa_statements_snapshot';
+    PERFORM powa_log(format('running %I', v_funcname));
+
     WITH capture AS(
         SELECT pgss.*
         FROM pg_stat_statements pgss
@@ -661,15 +702,24 @@ BEGIN
             GROUP BY dbid
     )
 
-    SELECT true::boolean INTO result; -- For now we don't care. What could we do on error except crash anyway?
+    SELECT count(*) INTO v_rowcount
+    FROM capture;
+
+    perform powa_log(format('%I - rowcount: %s',
+            v_funcname, v_rowcount));
+
+    result := true; -- For now we don't care. What could we do on error except crash anyway?
 END;
-$PROC$ language plpgsql;
+$PROC$ language plpgsql; /* end of powa_statements_snapshot */
 
 CREATE OR REPLACE FUNCTION powa_user_functions_snapshot() RETURNS void AS $PROC$
 DECLARE
     result boolean;
+    v_funcname    text := 'powa_user_functions_snapshot';
+    v_rowcount    bigint;
 BEGIN
-    RAISE DEBUG 'running powa_user_functions_snapshot';
+    PERFORM powa_log(format('running %I', v_funcname));
+
     -- Insert cluster-wide user function statistics
     WITH func(dbid,funcid, r) AS (
         SELECT oid,
@@ -684,15 +734,23 @@ BEGIN
             (r).self_time)::powa_user_functions_history_record AS record
         FROM func;
 
+    GET DIAGNOSTICS v_rowcount = ROW_COUNT;
+
+    perform powa_log(format('%I - rowcount: %s',
+            v_funcname, v_rowcount));
+
     result := true;
 END;
-$PROC$ language plpgsql;
+$PROC$ language plpgsql; /* end of powa_user_functions_snapshot */
 
 CREATE OR REPLACE FUNCTION powa_all_relations_snapshot() RETURNS void AS $PROC$
 DECLARE
     result boolean;
+    v_funcname    text := 'powa_all_relations_snapshot';
+    v_rowcount    bigint;
 BEGIN
-    RAISE DEBUG 'running powa_all_relations_snapshot';
+    PERFORM powa_log(format('running %I', v_funcname));
+
     -- Insert cluster-wide relation statistics
     WITH rel(dbid, relid, r) AS (
         SELECT oid,
@@ -711,41 +769,81 @@ BEGIN
             (r).autoanalyze_count)::powa_all_relations_history_record AS record
         FROM rel;
 
+    GET DIAGNOSTICS v_rowcount = ROW_COUNT;
+
+    perform powa_log(format('%I - rowcount: %s',
+            v_funcname, v_rowcount));
+
     result := true;
 END;
-$PROC$ language plpgsql;
+$PROC$ language plpgsql; /* end of powa_all_relations_snapshot */
 
 CREATE OR REPLACE FUNCTION powa_statements_purge() RETURNS void AS $PROC$
+DECLARE
+    v_funcname    text := 'powa_statements_purge';
+    v_rowcount    bigint;
 BEGIN
-    RAISE DEBUG 'running powa_statements_purge';
+    PERFORM powa_log(format('running %I', v_funcname));
+
     -- Delete obsolete datas. We only bother with already coalesced data
     DELETE FROM powa_statements_history WHERE upper(coalesce_range)< (now() - current_setting('powa.retention')::interval);
+
+    GET DIAGNOSTICS v_rowcount = ROW_COUNT;
+    perform powa_log(format('%I (powa_statements_hitory) - rowcount: %s',
+            v_funcname, v_rowcount));
+
     DELETE FROM powa_statements_history_db WHERE upper(coalesce_range)< (now() - current_setting('powa.retention')::interval);
+
+    GET DIAGNOSTICS v_rowcount = ROW_COUNT;
+    perform powa_log(format('%I (powa_statements_history_db) - rowcount: %s',
+            v_funcname, v_rowcount));
+
     -- FIXME maybe we should cleanup the powa_*_history tables ? But it will take a while: unnest all records...
 END;
-$PROC$ LANGUAGE plpgsql;
+$PROC$ LANGUAGE plpgsql; /* end of powa_statements_purge */
 
 CREATE OR REPLACE FUNCTION powa_user_functions_purge() RETURNS void AS $PROC$
+DECLARE
+    v_funcname    text := 'powa_user_functions_purge';
+    v_rowcount    bigint;
 BEGIN
-    RAISE DEBUG 'running powa_user_functions_purge';
+    PERFORM powa_log(format('running %I', v_funcname));
+
     -- Delete obsolete datas. We only bother with already coalesced data
     DELETE FROM powa_user_functions_history WHERE upper(coalesce_range)< (now() - current_setting('powa.retention')::interval);
+
+    GET DIAGNOSTICS v_rowcount = ROW_COUNT;
+    perform powa_log(format('%I - rowcount: %s',
+            v_funcname, v_rowcount));
+
     -- FIXME maybe we should cleanup the powa_*_history tables ? But it will take a while: unnest all records...
 END;
-$PROC$ LANGUAGE plpgsql;
+$PROC$ LANGUAGE plpgsql; /* end of powa_user_functions_purge */
 
 CREATE OR REPLACE FUNCTION powa_all_relations_purge() RETURNS void AS $PROC$
+DECLARE
+    v_funcname    text := 'powa_all_relations_purge';
+    v_rowcount    bigint;
 BEGIN
-    RAISE DEBUG 'running powa_all_relations_purge';
+    PERFORM powa_log(format('running %I', v_funcname));
+
     -- Delete obsolete datas. We only bother with already coalesced data
     DELETE FROM powa_all_relations_history WHERE upper(coalesce_range)< (now() - current_setting('powa.retention')::interval);
+
+    GET DIAGNOSTICS v_rowcount = ROW_COUNT;
+    perform powa_log(format('%I - rowcount: %s',
+            v_funcname, v_rowcount));
+
     -- FIXME maybe we should cleanup the powa_*_history tables ? But it will take a while: unnest all records...
 END;
-$PROC$ LANGUAGE plpgsql;
+$PROC$ LANGUAGE plpgsql; /* end of powa_all_relations_purge */
 
 CREATE OR REPLACE FUNCTION powa_statements_aggregate() RETURNS void AS $PROC$
+DECLARE
+    v_funcname    text := 'powa_statements_aggregate';
+    v_rowcount    bigint;
 BEGIN
-    RAISE DEBUG 'running powa_statements_aggregate';
+    PERFORM powa_log(format('running %I', v_funcname));
 
     -- aggregate statements table
     LOCK TABLE powa_statements_history_current IN SHARE MODE; -- prevent any other update
@@ -772,6 +870,10 @@ BEGIN
                 max((record).blk_read_time),max((record).blk_write_time))::powa_statements_history_record
         FROM powa_statements_history_current
         GROUP BY queryid, dbid, userid;
+
+    GET DIAGNOSTICS v_rowcount = ROW_COUNT;
+    perform powa_log(format('%I (powa_statements_history) - rowcount: %s',
+            v_funcname, v_rowcount));
 
     TRUNCATE powa_statements_history_current;
 
@@ -801,13 +903,17 @@ BEGIN
         FROM powa_statements_history_current_db
         GROUP BY dbid;
 
+    GET DIAGNOSTICS v_rowcount = ROW_COUNT;
+    perform powa_log(format('%I (powa_statements_history_db) - rowcount: %s',
+            v_funcname, v_rowcount));
+
     TRUNCATE powa_statements_history_current_db;
  END;
-$PROC$ LANGUAGE plpgsql;
+$PROC$ LANGUAGE plpgsql; /* end of powa_statements_aggregate */
 
 CREATE OR REPLACE FUNCTION powa_user_functions_aggregate() RETURNS void AS $PROC$
 BEGIN
-    RAISE DEBUG 'running powa_user_functions_aggregate';
+    PERFORM powa_log('running powa_user_functions_aggregate');
 
     -- aggregate user_functions table
     LOCK TABLE powa_user_functions_history_current IN SHARE MODE; -- prevent any other update
@@ -825,11 +931,14 @@ BEGIN
 
     TRUNCATE powa_user_functions_history_current;
  END;
-$PROC$ LANGUAGE plpgsql;
+$PROC$ LANGUAGE plpgsql; /* end of powa_user_functions_aggregate */
 
 CREATE OR REPLACE FUNCTION powa_all_relations_aggregate() RETURNS void AS $PROC$
+DECLARE
+    v_funcname    text := 'powa_all_relations_aggregate';
+    v_rowcount    bigint;
 BEGIN
-    RAISE DEBUG 'running powa_all_relations_aggregate';
+    PERFORM powa_log(format('running %I', v_funcname));
 
     -- aggregate all_relations table
     LOCK TABLE powa_all_relations_history_current IN SHARE MODE; -- prevent any other update
@@ -863,9 +972,13 @@ BEGIN
         FROM powa_all_relations_history_current
         GROUP BY dbid, relid;
 
+    GET DIAGNOSTICS v_rowcount = ROW_COUNT;
+    perform powa_log(format('%I - rowcount: %s',
+            v_funcname, v_rowcount));
+
     TRUNCATE powa_all_relations_history_current;
  END;
-$PROC$ LANGUAGE plpgsql;
+$PROC$ LANGUAGE plpgsql; /* end of powa_all_relations_aggregate */
 
 CREATE OR REPLACE FUNCTION public.powa_reset()
  RETURNS boolean
@@ -906,44 +1019,59 @@ BEGIN
     END LOOP;
     RETURN true;
 END;
-$function$;
+$function$; /* end of powa_reset */
 
 CREATE OR REPLACE FUNCTION public.powa_statements_reset()
  RETURNS boolean
  LANGUAGE plpgsql
 AS $function$
 BEGIN
+    PERFORM powa_log('truncating powa_statements_history');
     TRUNCATE TABLE powa_statements_history;
+
+    PERFORM powa_log('truncating powa_statements_history_current');
     TRUNCATE TABLE powa_statements_history_current;
+
+    PERFORM powa_log('truncating powa_statements_history_db');
     TRUNCATE TABLE powa_statements_history_db;
+
+    PERFORM powa_log('truncating powa_statements_history_current_db');
     TRUNCATE TABLE powa_statements_history_current_db;
+
+    PERFORM powa_log('truncating powa_statements');
     -- if 3rd part datasource has FK on it, throw everything away
     TRUNCATE TABLE powa_statements CASCADE;
     RETURN true;
 END;
-$function$;
+$function$; /* end of powa_statements_reset */
 
 CREATE OR REPLACE FUNCTION public.powa_user_functions_reset()
  RETURNS boolean
  LANGUAGE plpgsql
 AS $function$
 BEGIN
+    PERFORM powa_log('truncating powa_user_functions_history');
     TRUNCATE TABLE powa_user_functions_history;
+
+    PERFORM powa_log('truncating powa_user_functions_history_current');
     TRUNCATE TABLE powa_user_functions_history_current;
     RETURN true;
 END;
-$function$;
+$function$; /* end of powa_user_functions_reset */
 
 CREATE OR REPLACE FUNCTION public.powa_all_relations_reset()
  RETURNS boolean
  LANGUAGE plpgsql
 AS $function$
 BEGIN
+    PERFORM powa_log('truncating powa_all_relations_history');
     TRUNCATE TABLE powa_all_relations_history;
+
+    PERFORM powa_log('truncating powa_all_relations_history_current');
     TRUNCATE TABLE powa_all_relations_history_current;
     RETURN true;
 END;
-$function$;
+$function$; /* end of powa_all_relations_reset */
 
 /* pg_stat_kcache integration - part 2 */
 
@@ -961,6 +1089,8 @@ BEGIN
     IF ( v_ext_present ) THEN
         SELECT COUNT(*) > 0 INTO v_func_present FROM public.powa_functions WHERE module = 'pg_stat_kcache';
         IF ( NOT v_func_present) THEN
+            PERFORM powa_log('registering pg_stat_kcache');
+
             INSERT INTO powa_functions (module, operation, function_name, added_manually, enabled)
             VALUES ('pg_stat_kcache', 'snapshot',   'powa_kcache_snapshot',   false, true),
                    ('pg_stat_kcache', 'aggregate',  'powa_kcache_aggregate',  false, true),
@@ -973,7 +1103,7 @@ BEGIN
     RETURN true;
 END;
 $_$
-language plpgsql;
+language plpgsql; /* end of powa_kcache_register */
 
 /*
  * unregister pg_stat_kcache extension
@@ -981,6 +1111,7 @@ language plpgsql;
 CREATE OR REPLACE function public.powa_kcache_unregister() RETURNS bool AS
 $_$
 BEGIN
+    PERFORM powa_log('unregistering pg_stat_kcache');
     DELETE FROM public.powa_functions WHERE module = 'pg_stat_kcache';
     RETURN true;
 END;
@@ -993,8 +1124,10 @@ language plpgsql;
 CREATE OR REPLACE FUNCTION powa_kcache_snapshot() RETURNS void as $PROC$
 DECLARE
   result bool;
+    v_funcname    text := 'powa_kcache_snapshot';
+    v_rowcount    bigint;
 BEGIN
-    RAISE DEBUG 'running powa_kcache_snapshot';
+    PERFORM powa_log(format('running %I', v_funcname));
 
     WITH capture AS (
         SELECT *
@@ -1016,18 +1149,26 @@ BEGIN
             GROUP BY dbid
     )
 
-    SELECT true into result;
+    SELECT COUNT(*) into v_rowcount
+    FROM capture;
+
+    perform powa_log(format('%I - rowcount: %s',
+            v_funcname, v_rowcount));
+
+    result := true;
 END
-$PROC$ language plpgsql;
+$PROC$ language plpgsql; /* end of powa_kcache_unregister */
 
 /*
  * powa_kcache aggregation
  */
 CREATE OR REPLACE FUNCTION powa_kcache_aggregate() RETURNS void AS $PROC$
 DECLARE
-  result bool;
+    result     bool;
+    v_funcname text := 'powa_kcache_aggregate';
+    v_rowcount bigint;
 BEGIN
-    RAISE DEBUG 'running powa_kcache_aggregate';
+    PERFORM powa_log(format('running %I', v_funcname));
 
     -- aggregate metrics table
     LOCK TABLE powa_kcache_metrics_current IN SHARE MODE; -- prevent any other update
@@ -1043,6 +1184,10 @@ BEGIN
             max((metrics).system_time))::kcache_type
         FROM powa_kcache_metrics_current
         GROUP BY queryid, dbid, userid;
+
+    GET DIAGNOSTICS v_rowcount = ROW_COUNT;
+    perform powa_log(format('%I (powa_kcache_metrics) - rowcount: %s',
+            v_funcname, v_rowcount));
 
     TRUNCATE powa_kcache_metrics_current;
 
@@ -1061,35 +1206,59 @@ BEGIN
         FROM powa_kcache_metrics_current_db
         GROUP BY dbid;
 
+    GET DIAGNOSTICS v_rowcount = ROW_COUNT;
+    perform powa_log(format('%I (powa_kcache_metrics_db) - rowcount: %s',
+            v_funcname, v_rowcount));
+
     TRUNCATE powa_kcache_metrics_current_db;
 END
-$PROC$ language plpgsql;
+$PROC$ language plpgsql; /* end of powa_kcache_aggregate */
 
 /*
  * powa_kcache purge
  */
 CREATE OR REPLACE FUNCTION powa_kcache_purge() RETURNS void as $PROC$
+DECLARE
+    v_funcname    text := 'powa_kcache_purge';
+    v_rowcount    bigint;
 BEGIN
-    RAISE DEBUG 'running powa_kcache_purge';
+    PERFORM powa_log(format('running %I', v_funcname));
 
     DELETE FROM powa_kcache_metrics WHERE upper(coalesce_range) < (now() - current_setting('powa.retention')::interval);
+    GET DIAGNOSTICS v_rowcount = ROW_COUNT;
+    perform powa_log(format('%I (powa_kcache_metrics) - rowcount: %s',
+            v_funcname, v_rowcount));
+
     DELETE FROM powa_kcache_metrics_db WHERE upper(coalesce_range) < (now() - current_setting('powa.retention')::interval);
+    GET DIAGNOSTICS v_rowcount = ROW_COUNT;
+    perform powa_log(format('%I (powa_kcache_metrics_db) - rowcount: %s',
+            v_funcname, v_rowcount));
 END;
-$PROC$ language plpgsql;
+$PROC$ language plpgsql; /* end of powa_kcache_purge */
 
 /*
  * powa_kcache reset
  */
 CREATE OR REPLACE FUNCTION powa_kcache_reset() RETURNS void as $PROC$
+DECLARE
+    v_funcname    text := 'powa_kcache_reset';
+    v_rowcount    bigint;
 BEGIN
-    RAISE DEBUG 'running powa_kcache_reset';
+    PERFORM powa_log('running powa_kcache_reset');
 
+    PERFORM powa_log('truncating powa_kcache_metrics');
     TRUNCATE TABLE powa_kcache_metrics;
+
+    PERFORM powa_log('truncating powa_kcache_metrics_db');
     TRUNCATE TABLE powa_kcache_metrics_db;
+
+    PERFORM powa_log('truncating powa_kcache_metrics_current');
     TRUNCATE TABLE powa_kcache_metrics_current;
+
+    PERFORM powa_log('truncating powa_kcache_metrics_current_db');
     TRUNCATE TABLE powa_kcache_metrics_current_db;
 END;
-$PROC$ language plpgsql;
+$PROC$ language plpgsql; /* end of powa_kcache_reset */
 
 -- By default, try to register pg_stat_kcache, in case it's alreay here
 SELECT * FROM public.powa_kcache_register();
@@ -1112,6 +1281,8 @@ BEGIN
     IF ( v_ext_present) THEN
         SELECT COUNT(*) > 0 INTO v_func_present FROM public.powa_functions WHERE function_name IN ('powa_qualstats_snapshot', 'powa_qualstats_aggregate', 'powa_qualstats_purge');
         IF ( NOT v_func_present) THEN
+            PERFORM powa_log('registering pg_qualstats');
+
             INSERT INTO powa_functions (module, operation, function_name, added_manually, enabled)
             VALUES ('pg_qualstats', 'snapshot',   'powa_qualstats_snapshot',   false, true),
                    ('pg_qualstats', 'aggregate',  'powa_qualstats_aggregate',  false, true),
@@ -1124,7 +1295,7 @@ BEGIN
     RETURN true;
 END;
 $_$
-language plpgsql;
+language plpgsql; /* end of powa_qualstats_register */
 
 /*
  * powa_qualstats utility view for aggregating constvalues
@@ -1193,9 +1364,12 @@ LATERAL (
 
 CREATE OR REPLACE FUNCTION powa_qualstats_snapshot() RETURNS void as $PROC$
 DECLARE
-  result bool;
+    result     bool;
+    v_funcname text := 'powa_qualstats_snapshot';
+    v_rowcount bigint;
 BEGIN
-  RAISE DEBUG 'running powa_qualstats_snaphot';
+  PERFORM powa_log(format('running %I', v_funcname));
+
   WITH capture AS (
     SELECT pgqs.*, s.query
     FROM pg_qualstats_by_query pgqs
@@ -1229,10 +1403,16 @@ BEGIN
       SELECT qualnodeid, qs.queryid, qs.dbid, qs.userid, now(), occurences, execution_count, nbfiltered, constvalues
       FROM capture as qs
   )
-  SELECT true into result;
+  SELECT COUNT(*) into v_rowcount
+  FROM capture;
+
+  perform powa_log(format('%I - rowcount: %s',
+        v_funcname, v_rowcount));
+
+  result := true;
   PERFORM pg_qualstats_reset();
 END
-$PROC$ language plpgsql;
+$PROC$ language plpgsql; /* end of powa_qualstats_snapshot */
 
 /*
  * powa_qualstats aggregate
@@ -1241,7 +1421,8 @@ CREATE OR REPLACE FUNCTION powa_qualstats_aggregate() RETURNS void AS $PROC$
 DECLARE
   result bool;
 BEGIN
-  RAISE DEBUG 'running powa_qualstats_aggregate';
+  PERFORM powa_log('running powa_qualstats_aggregate');
+
   LOCK TABLE powa_qualstats_constvalues_history_current IN SHARE MODE;
   LOCK TABLE powa_qualstats_quals_history_current IN SHARE MODE;
   INSERT INTO powa_qualstats_constvalues_history (
@@ -1256,25 +1437,27 @@ BEGIN
   TRUNCATE powa_qualstats_constvalues_history_current;
   TRUNCATE powa_qualstats_quals_history_current;
 END
-$PROC$ language plpgsql;
+$PROC$ language plpgsql; /* end of powa_qualstats_aggregate */
 
 /*
  * powa_qualstats_purge
  */
 CREATE OR REPLACE FUNCTION powa_qualstats_purge() RETURNS void as $PROC$
 BEGIN
-  RAISE DEBUG 'running powa_qualstats_purge';
+  PERFORM powa_log('running powa_qualstats_purge');
   DELETE FROM powa_qualstats_constvalues_history WHERE upper(coalesce_range) < (now() - current_setting('powa.retention')::interval);
   DELETE FROM powa_qualstats_quals_history WHERE upper(coalesce_range) < (now() - current_setting('powa.retention')::interval);
 END;
-$PROC$ language plpgsql;
+$PROC$ language plpgsql; /* end of powa_qualstats_purge */
 
 /*
  * powa_qualstats_reset
  */
 CREATE OR REPLACE FUNCTION powa_qualstats_reset() RETURNS void as $PROC$
 BEGIN
-  RAISE DEBUG 'running powa_qualstats_reset';
+  PERFORM powa_log('running powa_qualstats_reset');
+
+  PERFORM powa_log('truncating powa_qualstats_quals');
   TRUNCATE TABLE powa_qualstats_quals CASCADE;
   -- cascaded :
   -- powa_qualstats_quals_history
@@ -1282,7 +1465,7 @@ BEGIN
   -- powa_qualstats_constvalues_history
   -- powa_qualstats_constvalues_history_current
 END;
-$PROC$ language plpgsql;
+$PROC$ language plpgsql; /* end of powa_qualstats_reset */
 
 /*
  * powa_qualstats_unregister
@@ -1290,6 +1473,7 @@ $PROC$ language plpgsql;
 CREATE OR REPLACE function public.powa_qualstats_unregister() RETURNS bool AS
 $_$
 BEGIN
+    PERFORM powa_log('unregistering pg_qualstats');
     DELETE FROM public.powa_functions WHERE module = 'pg_qualstats';
     RETURN true;
 END;
@@ -1312,6 +1496,8 @@ BEGIN
     IF ( v_ext_present ) THEN
         SELECT COUNT(*) > 0 INTO v_func_present FROM public.powa_functions WHERE module = 'pg_track_settings';
         IF ( NOT v_func_present) THEN
+            PERFORM powa_log('registering pg_track_settings');
+
             -- This extension handles its own storage, just its snapshot
             -- function and an unregister function.
             INSERT INTO powa_functions (module, operation, function_name, added_manually, enabled)
@@ -1322,16 +1508,17 @@ BEGIN
 
     RETURN true;
 END;
-$_$ language plpgsql;
+$_$ language plpgsql; /* end of powa_qualstats_unregister */
 
 CREATE OR REPLACE function public.powa_track_settings_unregister() RETURNS bool AS
 $_$
 BEGIN
+    PERFORM powa_log('unregistering pg_track_settings');
     DELETE FROM public.powa_functions WHERE module = 'pg_track_settings';
     RETURN true;
 END;
 $_$
-language plpgsql;
+language plpgsql; /* end of powa_track_settings_unregister */
 
 -- By default, try to register pg_track_settings, in case it's alreay here
 SELECT * FROM public.powa_track_settings_register();
