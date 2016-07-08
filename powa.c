@@ -245,6 +245,7 @@ powa_main(Datum main_arg)
 		SPI_finish();
 		PopActiveSnapshot();
 		CommitTransactionCommand();
+		pgstat_report_stat(false);
 		pgstat_report_activity(STATE_IDLE, NULL);
 		set_ps_display("idle", false);
 		INSTR_TIME_SET_CURRENT(end);

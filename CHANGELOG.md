@@ -6,6 +6,7 @@
   - Report PoWA collector activity in pg_stat_activity and process title
   - add a new powa.debug parameter
   - Purge at the same frequency as we coalesce. We just don't do both at the same iteration
+  - Fix bloat issue
 
 ## 3.0.1 (2016-02-09)
 
