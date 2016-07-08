@@ -73,7 +73,7 @@ static int	powa_retention;
 static int	powa_coalesce;
 static char *powa_database = NULL;
 static char *powa_ignored_users = NULL;
-static bool powa_debug = NULL;
+static bool powa_debug = false;
 
 void
 die_on_too_small_frequency(void)
