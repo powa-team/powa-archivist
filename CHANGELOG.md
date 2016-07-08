@@ -4,6 +4,7 @@
     the database
   - Fix cluster wide statistics to get fresh values
   - Report PoWA collector activity in pg_stat_activity and process title
+  - Purge at the same frequency as we coalesce. We just don't do both at the same iteration
 
 ## 3.0.1 (2016-02-09)
 

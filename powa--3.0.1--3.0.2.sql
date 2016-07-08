@@ -203,9 +203,9 @@ BEGIN
       END LOOP;
       UPDATE powa_last_aggregation SET aggts = now();
     END IF;
-    -- Once every 10 packs, we also purge
+    -- We also purge, at next pass
     IF (  purge_seq
-            % (current_setting('powa.coalesce')::bigint *10) ) = 0
+            % (current_setting('powa.coalesce')::bigint ) ) = 1
     THEN
       PERFORM powa_log(format('purge needed, seq: %s coalesce seq: %s',
         purge_seq, current_setting('powa.coalesce')));
