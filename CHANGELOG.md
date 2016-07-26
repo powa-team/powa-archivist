@@ -1,4 +1,4 @@
-## 3.0.2 (WIP)
+## 3.1.0 (WIP)
 
   - Fix issue leading to impossibility to stop the worker without shutting down
     the database
