@@ -1076,3 +1076,460 @@ END;
 $_$
 language plpgsql; /* end of powa_track_settings_unregister */
 
+/* pg_stat_statements operator support */
+CREATE TYPE powa_statements_history_diff AS (
+    intvl interval,
+    calls bigint,
+    total_time double precision,
+    rows bigint,
+    shared_blks_hit bigint,
+    shared_blks_read bigint,
+    shared_blks_dirtied bigint,
+    shared_blks_written bigint,
+    local_blks_hit bigint,
+    local_blks_read bigint,
+    local_blks_dirtied bigint,
+    local_blks_written bigint,
+    temp_blks_read bigint,
+    temp_blks_written bigint,
+    blk_read_time double precision,
+    blk_write_time double precision
+);
+
+CREATE OR REPLACE FUNCTION powa_statements_history_mi(
+    a powa_statements_history_record,
+    b powa_statements_history_record)
+RETURNS powa_statements_history_diff AS
+$_$
+DECLARE
+    res powa_statements_history_diff;
+BEGIN
+    res.intvl = a.ts - b.ts;
+    res.calls = a.calls - b.calls;
+    res.total_time = a.total_time - b.total_time;
+    res.rows = a.rows - b.rows;
+    res.shared_blks_hit = a.shared_blks_hit - b.shared_blks_hit;
+    res.shared_blks_read = a.shared_blks_read - b.shared_blks_read;
+    res.shared_blks_dirtied = a.shared_blks_dirtied - b.shared_blks_dirtied;
+    res.shared_blks_written = a.shared_blks_written - b.shared_blks_written;
+    res.local_blks_hit = a.local_blks_hit - b.local_blks_hit;
+    res.local_blks_read = a.local_blks_read - b.local_blks_read;
+    res.local_blks_dirtied = a.local_blks_dirtied - b.local_blks_dirtied;
+    res.local_blks_written = a.local_blks_written - b.local_blks_written;
+    res.temp_blks_read = a.temp_blks_read - b.temp_blks_read;
+    res.temp_blks_written = a.temp_blks_written - b.temp_blks_written;
+    res.blk_read_time = a.blk_read_time - b.blk_read_time;
+    res.blk_write_time = a.blk_write_time - b.blk_write_time;
+
+    return res;
+END;
+$_$
+LANGUAGE plpgsql IMMUTABLE STRICT;
+
+CREATE OPERATOR - (
+    PROCEDURE = powa_statements_history_mi,
+    LEFTARG = powa_statements_history_record,
+    RIGHTARG = powa_statements_history_record
+);
+
+CREATE TYPE powa_statements_history_rate AS (
+    sec integer,
+    calls_per_sec double precision,
+    runtime_per_sec double precision,
+    rows_per_sec double precision,
+    shared_blks_hit_per_sec double precision,
+    shared_blks_read_per_sec double precision,
+    shared_blks_dirtied_per_sec double precision,
+    shared_blks_written_per_sec double precision,
+    local_blks_hit_per_sec double precision,
+    local_blks_read_per_sec double precision,
+    local_blks_dirtied_per_sec double precision,
+    local_blks_written_per_sec double precision,
+    temp_blks_read_per_sec double precision,
+    temp_blks_written_per_sec double precision,
+    blk_read_time_per_sec double precision,
+    blk_write_time_per_sec double precision
+);
+
+CREATE OR REPLACE FUNCTION powa_statements_history_div(
+    a powa_statements_history_record,
+    b powa_statements_history_record)
+RETURNS powa_statements_history_rate AS
+$_$
+DECLARE
+    res powa_statements_history_rate;
+    sec integer;
+BEGIN
+    res.sec = extract(EPOCH FROM (a.ts - b.ts));
+    IF res.sec = 0 THEN
+        sec = 1;
+    ELSE
+        sec = res.sec;
+    END IF;
+    res.calls_per_sec = (a.calls - b.calls)::double precision / sec;
+    res.runtime_per_sec = (a.total_time - b.total_time)::double precision / sec;
+    res.rows_per_sec = (a.rows - b.rows)::double precision / sec;
+    res.shared_blks_hit_per_sec = (a.shared_blks_hit - b.shared_blks_hit)::double precision / sec;
+    res.shared_blks_read_per_sec = (a.shared_blks_read - b.shared_blks_read)::double precision / sec;
+    res.shared_blks_dirtied_per_sec = (a.shared_blks_dirtied - b.shared_blks_dirtied)::double precision / sec;
+    res.shared_blks_written_per_sec = (a.shared_blks_written - b.shared_blks_written)::double precision / sec;
+    res.local_blks_hit_per_sec = (a.local_blks_hit - b.local_blks_hit)::double precision / sec;
+    res.local_blks_read_per_sec = (a.local_blks_read - b.local_blks_read)::double precision / sec;
+    res.local_blks_dirtied_per_sec = (a.local_blks_dirtied - b.local_blks_dirtied)::double precision / sec;
+    res.local_blks_written_per_sec = (a.local_blks_written - b.local_blks_written)::double precision / sec;
+    res.temp_blks_read_per_sec = (a.temp_blks_read - b.temp_blks_read)::double precision / sec;
+    res.temp_blks_written_per_sec = (a.temp_blks_written - b.temp_blks_written)::double precision / sec;
+    res.blk_read_time_per_sec = (a.blk_read_time - b.blk_read_time)::double precision / sec;
+    res.blk_write_time_per_sec = (a.blk_write_time - b.blk_write_time)::double precision / sec;
+
+    return res;
+END;
+$_$
+LANGUAGE plpgsql IMMUTABLE STRICT;
+
+CREATE OPERATOR / (
+    PROCEDURE = powa_statements_history_div,
+    LEFTARG = powa_statements_history_record,
+    RIGHTARG = powa_statements_history_record
+);
+/* end of pg_stat_statements operator support */
+
+/* pg_stat_all_relations operator support */
+CREATE TYPE powa_all_relations_history_diff AS (
+    intvl interval,
+    numscan bigint,
+    tup_returned bigint,
+    tup_fetched bigint,
+    n_tup_ins bigint,
+    n_tup_upd bigint,
+    n_tup_del bigint,
+    n_tup_hot_upd bigint,
+    n_liv_tup bigint,
+    n_dead_tup bigint,
+    n_mod_since_analyze bigint,
+    blks_read bigint,
+    blks_hit bigint,
+    vacuum_count bigint,
+    autovacuum_count bigint,
+    analyze_count bigint,
+    autoanalyze_count bigint
+
+);
+
+CREATE OR REPLACE FUNCTION powa_all_relations_history_mi(
+    a powa_all_relations_history_record,
+    b powa_all_relations_history_record)
+RETURNS powa_all_relations_history_diff AS
+$_$
+DECLARE
+    res powa_all_relations_history_diff;
+BEGIN
+    res.intvl = a.ts - b.ts;
+    res.numscan = a.numscan - b.numscan;
+    res.tup_returned = a.tup_returned - b.tup_returned;
+    res.tup_fetched = a.tup_fetched - b.tup_fetched;
+    res.n_tup_ins = a.n_tup_ins - b.n_tup_ins;
+    res.n_tup_upd = a.n_tup_upd - b.n_tup_upd;
+    res.n_tup_del = a.n_tup_del - b.n_tup_del;
+    res.n_tup_hot_upd = a.n_tup_hot_upd - b.n_tup_hot_upd;
+    res.n_liv_tup = a.n_liv_tup - b.n_liv_tup;
+    res.n_dead_tup = a.n_dead_tup - b.n_dead_tup;
+    res.n_mod_since_analyze = a.n_mod_since_analyze - b.n_mod_since_analyze;
+    res.blks_read = a.blks_read - b.blks_read;
+    res.blks_hit = a.blks_hit - b.blks_hit;
+    res.vacuum_count = a.vacuum_count - b.vacuum_count;
+    res.autovacuum_count = a.autovacuum_count - b.autovacuum_count;
+    res.analyze_count = a.analyze_count - b.analyze_count;
+    res.autoanalyze_count = a.autoanalyze_count - b.autoanalyze_count;
+
+    return res;
+END;
+$_$
+LANGUAGE plpgsql IMMUTABLE STRICT;
+
+CREATE OPERATOR - (
+    PROCEDURE = powa_all_relations_history_mi,
+    LEFTARG = powa_all_relations_history_record,
+    RIGHTARG = powa_all_relations_history_record
+);
+
+CREATE TYPE powa_all_relations_history_rate AS (
+    sec integer,
+    numscan_per_sec double precision,
+    tup_returned_per_sec double precision,
+    tup_fetched_per_sec double precision,
+    n_tup_ins_per_sec double precision,
+    n_tup_upd_per_sec double precision,
+    n_tup_del_per_sec double precision,
+    n_tup_hot_upd_per_sec double precision,
+    n_liv_tup_per_sec double precision,
+    n_dead_tup_per_sec double precision,
+    n_mod_since_analyze_per_sec double precision,
+    blks_read_per_sec double precision,
+    blks_hit_per_sec double precision,
+    vacuum_count_per_sec double precision,
+    autovacuum_count_per_sec double precision,
+    analyze_count_per_sec double precision,
+    autoanalyze_count_per_sec double precision
+);
+
+CREATE OR REPLACE FUNCTION powa_all_relations_history_div(
+    a powa_all_relations_history_record,
+    b powa_all_relations_history_record)
+RETURNS powa_all_relations_history_rate AS
+$_$
+DECLARE
+    res powa_all_relations_history_rate;
+    sec integer;
+BEGIN
+    res.sec = extract(EPOCH FROM (a.ts - b.ts));
+    IF res.sec = 0 THEN
+        sec = 1;
+    ELSE
+        sec = res.sec;
+    END IF;
+    res.numscan_per_sec = (a.numscan - b.numscan)::double precision / sec;
+    res.tup_returned_per_sec = (a.tup_returned - b.tup_returned)::double precision / sec;
+    res.tup_fetched_per_sec = (a.tup_fetched - b.tup_fetched)::double precision / sec;
+    res.n_tup_ins_per_sec = (a.n_tup_ins - b.n_tup_ins)::double precision / sec;
+    res.n_tup_upd_per_sec = (a.n_tup_upd - b.n_tup_upd)::double precision / sec;
+    res.n_tup_del_per_sec = (a.n_tup_del - b.n_tup_del)::double precision / sec;
+    res.n_tup_hot_upd_per_sec = (a.n_tup_hot_upd - b.n_tup_hot_upd)::double precision / sec;
+    res.n_liv_tup_per_sec = (a.n_liv_tup - b.n_liv_tup)::double precision / sec;
+    res.n_dead_tup_per_sec = (a.n_dead_tup - b.n_dead_tup)::double precision / sec;
+    res.n_mod_since_analyze_per_sec = (a.n_mod_since_analyze - b.n_mod_since_analyze)::double precision / sec;
+    res.blks_read_per_sec = (a.blks_read - b.blks_read)::double precision / sec;
+    res.blks_hit_per_sec = (a.blks_hit - b.blks_hit)::double precision / sec;
+    res.vacuum_count_per_sec = (a.vacuum_count - b.vacuum_count)::double precision / sec;
+    res.autovacuum_count_per_sec = (a.autovacuum_count - b.autovacuum_count)::double precision / sec;
+    res.analyze_count_per_sec = (a.analyze_count - b.analyze_count)::double precision / sec;
+    res.autoanalyze_count_per_sec = (a.autoanalyze_count - b.autoanalyze_count)::double precision / sec;
+
+    return res;
+END;
+$_$
+LANGUAGE plpgsql IMMUTABLE STRICT;
+
+CREATE OPERATOR / (
+    PROCEDURE = powa_all_relations_history_div,
+    LEFTARG = powa_all_relations_history_record,
+    RIGHTARG = powa_all_relations_history_record
+);
+/* end of pg_stat_all_relations operator support */
+
+/* pg_stat_all_relations operator support */
+CREATE TYPE powa_user_functions_history_diff AS (
+    intvl interval,
+    calls bigint,
+    total_time double precision,
+    self_time double precision
+
+);
+
+CREATE OR REPLACE FUNCTION powa_user_functions_history_mi(
+    a powa_user_functions_history_record,
+    b powa_user_functions_history_record)
+RETURNS powa_user_functions_history_diff AS
+$_$
+DECLARE
+    res powa_user_functions_history_diff;
+BEGIN
+    res.intvl = a.ts - b.ts;
+    res.calls = a.calls - b.calls;
+    res.total_time = a.total_time - b.total_time;
+    res.self_time = a.self_time - b.self_time;
+
+    return res;
+END;
+$_$
+LANGUAGE plpgsql IMMUTABLE STRICT;
+
+CREATE OPERATOR - (
+    PROCEDURE = powa_user_functions_history_mi,
+    LEFTARG = powa_user_functions_history_record,
+    RIGHTARG = powa_user_functions_history_record
+);
+
+CREATE TYPE powa_user_functions_history_rate AS (
+    sec integer,
+    calls_per_sec double precision,
+    total_time_per_sec double precision,
+    self_time_per_sec double precision
+);
+
+CREATE OR REPLACE FUNCTION powa_user_functions_history_div(
+    a powa_user_functions_history_record,
+    b powa_user_functions_history_record)
+RETURNS powa_user_functions_history_rate AS
+$_$
+DECLARE
+    res powa_user_functions_history_rate;
+    sec integer;
+BEGIN
+    res.sec = extract(EPOCH FROM (a.ts - b.ts));
+    IF res.sec = 0 THEN
+        sec = 1;
+    ELSE
+        sec = res.sec;
+    END IF;
+    res.calls_per_sec = (a.calls - b.calls)::double precision / sec;
+    res.total_time_per_sec = (a.total_time - b.total_time)::double precision / sec;
+    res.self_time_per_sec = (a.self_time - b.self_time)::double precision / sec;
+
+    return res;
+END;
+$_$
+LANGUAGE plpgsql IMMUTABLE STRICT;
+
+CREATE OPERATOR / (
+    PROCEDURE = powa_user_functions_history_div,
+    LEFTARG = powa_user_functions_history_record,
+    RIGHTARG = powa_user_functions_history_record
+);
+/* end of pg_stat_user_functions operator support */
+
+/* pg_stat_kcache operator support */
+
+CREATE TYPE powa_kcache_diff AS (
+    intvl interval,
+    reads bigint,
+    writes bigint,
+    user_time double precision,
+    system_time double precision
+);
+
+CREATE OR REPLACE FUNCTION powa_kcache_mi(
+    a kcache_type,
+    b kcache_type)
+RETURNS powa_kcache_diff AS
+$_$
+DECLARE
+    res powa_kcache_diff;
+BEGIN
+    res.intvl = a.ts - b.ts;
+    res.reads = a.reads - b.reads;
+    res.writes = a.writes - b.writes;
+    res.user_time = a.user_time - b.user_time;
+    res.system_time = a.system_time - b.system_time;
+
+    return res;
+END;
+$_$
+LANGUAGE plpgsql IMMUTABLE STRICT;
+
+CREATE OPERATOR - (
+    PROCEDURE = powa_kcache_mi,
+    LEFTARG = kcache_type,
+    RIGHTARG = kcache_type
+);
+
+CREATE TYPE powa_kcache_rate AS (
+    sec integer,
+    reads_per_sec double precision,
+    writes_per_sec double precision,
+    user_time_per_sec double precision,
+    system_time_per_sec double precision
+);
+
+CREATE OR REPLACE FUNCTION powa_kcache_div(
+    a kcache_type,
+    b kcache_type)
+RETURNS powa_kcache_rate AS
+$_$
+DECLARE
+    res powa_kcache_rate;
+    sec integer;
+BEGIN
+    res.sec = extract(EPOCH FROM (a.ts - b.ts));
+    IF res.sec = 0 THEN
+        sec = 1;
+    ELSE
+        sec = res.sec;
+    END IF;
+    res.reads_per_sec = (a.reads - b.reads)::double precision / sec;
+    res.writes_per_sec = (a.writes - b.writes)::double precision / sec;
+    res.user_time_per_sec = (a.user_time - b.user_time)::double precision / sec;
+    res.system_time_per_sec = (a.system_time - b.system_time)::double precision / sec;
+
+    return res;
+END;
+$_$
+LANGUAGE plpgsql IMMUTABLE STRICT;
+
+CREATE OPERATOR / (
+    PROCEDURE = powa_kcache_div,
+    LEFTARG = kcache_type,
+    RIGHTARG = kcache_type
+);
+
+/* end of pg_stat_kcache operator support */
+
+/* pg_stat_qualstats operator support */
+CREATE TYPE powa_qualstats_history_diff AS (
+    intvl interval,
+    occurences bigint,
+    execution_count bigint,
+    nbfiltered bigint
+);
+
+CREATE OR REPLACE FUNCTION powa_qualstats_history_mi(
+    a powa_qualstats_history_item,
+    b powa_qualstats_history_item)
+RETURNS powa_qualstats_history_diff AS
+$_$
+DECLARE
+    res powa_qualstats_history_diff;
+BEGIN
+    res.intvl = a.ts - b.ts;
+    res.occurences = a.occurences - b.occurences;
+    res.execution_count = a.execution_count - b.execution_count;
+    res.nbfiltered = a.nbfiltered - b.nbfiltered;
+
+    return res;
+END;
+$_$
+LANGUAGE plpgsql IMMUTABLE STRICT;
+
+CREATE OPERATOR - (
+    PROCEDURE = powa_qualstats_history_mi,
+    LEFTARG = powa_qualstats_history_item,
+    RIGHTARG = powa_qualstats_history_item
+);
+
+CREATE TYPE powa_qualstats_history_rate AS (
+    sec integer,
+    occurences_per_sec double precision,
+    execution_count_per_sec double precision,
+    nbfiltered_per_sec double precision
+);
+
+CREATE OR REPLACE FUNCTION powa_qualstats_history_div(
+    a powa_qualstats_history_item,
+    b powa_qualstats_history_item)
+RETURNS powa_qualstats_history_rate AS
+$_$
+DECLARE
+    res powa_qualstats_history_rate;
+    sec integer;
+BEGIN
+    res.sec = extract(EPOCH FROM (a.ts - b.ts));
+    IF res.sec = 0 THEN
+        sec = 1;
+    ELSE
+        sec = res.sec;
+    END IF;
+    res.occurences_per_sec = (a.occurences - b.occurences)::double precision / sec;
+    res.execution_count_per_sec = (a.execution_count - b.execution_count)::double precision / sec;
+    res.nbfiltered_per_sec = (a.nbfiltered - b.nbfiltered)::double precision / sec;
+
+    return res;
+END;
+$_$
+LANGUAGE plpgsql IMMUTABLE STRICT;
+
+CREATE OPERATOR / (
+    PROCEDURE = powa_qualstats_history_div,
+    LEFTARG = powa_qualstats_history_item,
+    RIGHTARG = powa_qualstats_history_item
+);
+/* end of pg_stat_qualstats operator support */

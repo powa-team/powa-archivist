@@ -7,6 +7,8 @@
   - add a new powa.debug parameter
   - Purge at the same frequency as we coalesce. We just don't do both at the same iteration
   - Fix bloat issue
+  - Add + and / operators on powa types to get delta and counters per second
+    given two records
 
 ## 3.0.1 (2016-02-09)
 
