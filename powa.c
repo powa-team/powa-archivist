@@ -45,8 +45,9 @@
 
 PG_MODULE_MAGIC;
 
-#define POWA_STAT_FUNC_COLS 4	/* # of cols for functions stat SRF */
-#define POWA_STAT_TAB_COLS 21	/* # of cols for relations stat SRF */
+#define POWA_STAT_FUNC_COLS	4	/* # of cols for functions stat SRF */
+#define POWA_STAT_TAB_COLS	21	/* # of cols for relations stat SRF */
+#define MIN_POWA_FREQUENCY	5000 /* minimum ms between two snapshots */
 
 typedef enum
 {
@@ -55,7 +56,10 @@ typedef enum
 }	PowaStatKind;
 
 void		_PG_init(void);
+bool		powa_check_frequency_hook(int *newval, void **extra, GucSource source);
+void		compute_powa_frequency(void);
 void		die_on_too_small_frequency(void);
+int64		compute_next_wakeup(void);
 
 Datum		powa_stat_user_functions(PG_FUNCTION_ARGS);
 Datum		powa_stat_all_rel(PG_FUNCTION_ARGS);
@@ -67,23 +71,64 @@ PG_FUNCTION_INFO_V1(powa_stat_all_rel);
 static void powa_main(Datum main_arg);
 static void powa_sighup(SIGNAL_ARGS);
 
-static int	powa_frequency;
-static int	min_powa_frequency = 5000;
-static int	powa_retention;
-static int	powa_coalesce;
-static char *powa_database = NULL;
-static char *powa_ignored_users = NULL;
-static bool powa_debug = false;
+static instr_time	last_start;					/* last snapshot start */
 
+static int			powa_frequency;				/* powa.frequency GUC */
+static instr_time	time_powa_frequency;		/* same in instr_time format */
+static int			powa_retention;				/* powa.retention GUC */
+static int			powa_coalesce;			 	/* powa.coalesce GUC */
+static char		   *powa_database = NULL;	 	/* powa.database GUC */
+static char 	   *powa_ignored_users = NULL;	/* powa.ignored_users GUC */
+static bool			powa_debug = false;			/* powa.debug GUC */
+
+bool
+powa_check_frequency_hook(int *newval, void **extra, GucSource source)
+{
+	if (*newval >=0 && *newval < MIN_POWA_FREQUENCY)
+		return false;
+
+	return true;
+}
+
+void
+compute_powa_frequency(void)
+{
+	/* Initialize time_powa_frequency to do maths with it */
+	time_powa_frequency.tv_sec = powa_frequency / 1000; /* Seconds */
+	time_powa_frequency.tv_usec = 0;
+}
+
+/* Test if powa is disabled and validity of powa_frequency */
 void
 die_on_too_small_frequency(void)
 {
-	if (powa_frequency > 0 && powa_frequency < min_powa_frequency)
+	if (powa_frequency < 0)
 	{
-		elog(LOG, "POWA frequency cannot be smaller than %i milliseconds",
-			 min_powa_frequency);
+		elog(LOG, "POWA is deactivated (powa.frequency = %i), exiting",
+			 powa_frequency);
 		exit(1);
 	}
+
+	/* should not happen */
+	if (powa_frequency < MIN_POWA_FREQUENCY)
+	{
+		elog(LOG, "POWA frequency cannot be smaller than %d seconds",
+			 MIN_POWA_FREQUENCY / 1000);
+		exit(1);
+	}
+}
+
+int64
+compute_next_wakeup(void)
+{
+	instr_time time_to_wait, now;
+
+	memcpy(&time_to_wait, &last_start, sizeof(last_start));
+	INSTR_TIME_ADD(time_to_wait, time_powa_frequency);
+	INSTR_TIME_SET_CURRENT(now);
+	INSTR_TIME_SUBTRACT(time_to_wait, now);
+
+	return INSTR_TIME_GET_MICROSEC(time_to_wait);
 }
 
 void
@@ -105,7 +150,10 @@ _PG_init(void)
 							300000,
 							-1,
 							INT_MAX / 1000,
-							PGC_SUSET, GUC_UNIT_MS, NULL, NULL, NULL);
+							PGC_SUSET, GUC_UNIT_MS,
+							powa_check_frequency_hook,
+							NULL,
+							NULL);
 
 	DefineCustomIntVariable("powa.coalesce",
 							"Defines the amount of records to group together in the table (more compact)",
@@ -163,11 +211,12 @@ powa_main(Datum main_arg)
 {
 	char	   *query_snapshot = "SELECT powa_take_snapshot()";
 	static char *query_appname = "SET application_name = 'PoWA collector'";
-	instr_time	begin;
-	instr_time	end;
-	long		time_to_wait;
+	int64		us_to_wait; /* Should be uint64 per postgresql's spec, but we
+							   may have negative result, in our tests */
 
+	/* check powa_frequency validity, and if powa is enabled */
 	die_on_too_small_frequency();
+	compute_powa_frequency();
 
 	/*
 	 * Set up signal handler, then unblock signals
@@ -176,22 +225,10 @@ powa_main(Datum main_arg)
 
 	BackgroundWorkerUnblockSignals();
 
-	/*
-	 * We only connect when powa_frequency >0. If not, powa has been
-	 * deactivated
-	 */
-	if (powa_frequency < 0)
-	{
-		elog(LOG, "POWA is deactivated (powa.frequency = %i), exiting",
-			 powa_frequency);
-		exit(1);
-	}
-	/* We got here: it means powa_frequency > 0. Let's connect */
+	/* Define the snapshot reference time when the bgworker start */
+	INSTR_TIME_SET_CURRENT(last_start);
 
-
-	/*
-	 * Connect to POWA database
-	 */
+	/* Connect to POWA database */
 	BackgroundWorkerInitializeConnection(powa_database, NULL);
 
 	elog(LOG, "POWA connected to database %s", quote_identifier(powa_database));
@@ -212,28 +249,18 @@ powa_main(Datum main_arg)
 	/*------------------
 	 * Main loop of POWA
 	 * We exit from here if:
-	 *	 - we got a SIGINT/SIGTERM (default bgworker sig handlers)
+	 *	 - we got a SIGINT (default bgworker sig handlers)
 	 *	 - powa.frequency becomes < 0 (change config and SIGHUP)
 	 */
-	while (true)
+	for (;;)
 	{
 		/*
 		 * We can get here with a new value of powa_frequency because of a
-		 * reload. Let's suicide to disconnect if this value is <0
+		 * reload. Let's suicide to disconnect if needed
 		 */
-		if (powa_frequency < 0)
-		{
-			elog(LOG, "POWA exits to disconnect from the database now");
-			exit(1);
-		}
+		die_on_too_small_frequency();
 
-		/*
-		 * let's store the current time. It will be used to calculate a quite
-		 * stable interval between each measure
-		 */
 		set_ps_display("snapshot", false);
-		INSTR_TIME_SET_CURRENT(begin);
-		ResetLatch(&MyProc->procLatch);
 		SetCurrentStatementStartTimestamp();
 		StartTransactionCommand();
 		SPI_connect();
@@ -248,37 +275,41 @@ powa_main(Datum main_arg)
 		pgstat_report_stat(false);
 		pgstat_report_activity(STATE_IDLE, NULL);
 		set_ps_display("idle", false);
-		INSTR_TIME_SET_CURRENT(end);
-		INSTR_TIME_SUBTRACT(end, begin);
 
-		/*
-		 * Wait powa.frequency, compensate for work time of last snapshot
-		 */
-
-		/*
-		 * If we got off schedule (because of a compact or delete, just do
-		 * another operation right now
-		 */
-		time_to_wait = powa_frequency - INSTR_TIME_GET_MILLISEC(end);
-		elog(DEBUG1, "Waiting for %li milliseconds", time_to_wait);
-		if (time_to_wait > 0)
+		/* sleep loop */
+		for (;;)
 		{
 			StringInfoData buf;
 
+			/*
+			 * Compute if there is still some time to wait (we could have been
+			 * woken up by a latch, or snapshot took more than frequency)
+			 */
+			us_to_wait = compute_next_wakeup();
+			if (us_to_wait <= 0)
+				break;
+
+			/* Tell the world we are waiting */
+			elog(DEBUG1, "Waiting for %li milliseconds", us_to_wait/1000);
 			initStringInfo(&buf);
-
 			appendStringInfo(&buf, "-- sleeping for %li seconds",
-							 time_to_wait / 1000);
-
+							 us_to_wait / 1000000);
 			pgstat_report_activity(STATE_IDLE, buf.data);
-
 			pfree(buf.data);
 
+			/* sleep */
 			WaitLatch(&MyProc->procLatch,
 					  WL_LATCH_SET | WL_TIMEOUT | WL_POSTMASTER_DEATH,
-					  time_to_wait);
-		}
-	}
+					  us_to_wait/1000);
+			ResetLatch(&MyProc->procLatch);
+		} /* end of sleep loop */
+
+		/*
+		 * We've stop waiting. Let's increment the snapshot reference time to
+		 * it's ideal target, not to now, so errors don't add up
+		 */
+		INSTR_TIME_ADD(last_start, time_powa_frequency);
+	} /* end of snapshot loop */
 }
 
 
@@ -287,6 +318,8 @@ powa_sighup(SIGNAL_ARGS)
 {
 	ProcessConfigFile(PGC_SIGHUP);
 	die_on_too_small_frequency();
+	compute_powa_frequency();
+	SetLatch(&MyProc->procLatch);
 }
 
 Datum
