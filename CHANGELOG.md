@@ -1,7 +1,23 @@
-## 3.0.1 (WIP)
+## 3.1.0 (2016-07-29)
+
+  - Fix issue leading to impossibility to stop the worker without shutting down
+    the database
+  - Fix cluster wide statistics to get fresh values
+  - Report PoWA collector activity in pg_stat_activity and process title
+  - add a new powa.debug parameter
+  - Purge at the same frequency as we coalesce. We just don't do both at the same iteration
+  - Fix bloat issue
+  - Add + and / operators on powa types to get delta and counters per second
+    given two records
+
+## 3.0.1 (2016-02-09)
 
   - Don't track 2PC related statements, as they're not normalized by
-    pg_stat_statements.
+    pg_stat_statements. Upgrade script will do all the needed cleanup.
+  - Restore the install_all.sql file to easily setup PoWA.
+  - Maintain a cache of pg_database to allow seeing dropped database in the UI.
+    See issue https://github.com/dalibo/powa/issues/63
+  - Don't try to load PoWA if it's not in shared_preload_libraries
 
 ## 3.0.0 (2015-11-06)
 

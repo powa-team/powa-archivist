@@ -2,7 +2,7 @@ PostgreSQL Workload Analyzer detailled installation guide
 =========================================================
 
 Read [README.md](https://github.com/dalibo/powa/blob/master/README.md) and
-[the official documentation](http://powa.readthedocs.org/) for further details
+[the official documentation](http://powa.readthedocs.io/) for further details
 about PoWA.
 
 PoWA requires PostgreSQL 9.4 or more. This documentation assumes you're using
