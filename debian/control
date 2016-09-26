@@ -3,17 +3,17 @@ Section: database
 Priority: optional
 Maintainer: Debian PostgreSQL Maintainers <pkg-postgresql-public@lists.alioth.debian.org>
 Uploaders: Christoph Berg <myon@debian.org>
-Standards-Version: 3.9.6
+Standards-Version: 3.9.8
 Build-Depends: debhelper (>= 9~),
  postgresql-server-dev-all (>= 141~)
 Homepage: http://dalibo.github.io/powa/
 Vcs-Browser: https://github.com/credativ/powa-archivist.git
 Vcs-Git: https://github.com/credativ/powa-archivist.git -b debian
 
-Package: postgresql-9.5-powa
+Package: postgresql-9.6-powa
 Architecture: any
-Depends: ${misc:Depends}, ${shlibs:Depends}, postgresql-9.5
-Description: PostgreSQL Workload Analyzer -- PostgreSQL 9.5 extension
+Depends: ${misc:Depends}, ${shlibs:Depends}, postgresql-9.6
+Description: PostgreSQL Workload Analyzer -- PostgreSQL 9.6 extension
  This package contains the core extension of the PoWA project, a PostgreSQL
  Workload Analyzer that gathers performance stats and provides real-time charts
  and graphs to help monitor and tune your PostgreSQL servers.
