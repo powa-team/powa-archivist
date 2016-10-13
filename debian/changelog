@@ -1,0 +1,24 @@
+powa-archivist (3.1.0-1) unstable; urgency=medium
+
+  * New upstream version.
+
+ -- Christoph Berg <myon@debian.org>  Mon, 26 Sep 2016 22:50:34 +0200
+
+powa-archivist (3.0.1-1) unstable; urgency=medium
+
+  * New upstream version.
+
+ -- Christoph Berg <myon@debian.org>  Fri, 19 Feb 2016 10:04:25 +0100
+
+powa-archivist (3.0.0-2) unstable; urgency=medium
+
+  * Upload to unstable with 9.5 support.
+  * Add debian/tests/create-extension.
+
+ -- Christoph Berg <myon@debian.org>  Wed, 13 Jan 2016 18:14:25 +0100
+
+powa-archivist (3.0.0-1) unstable; urgency=medium
+
+  * Initial release.
+
+ -- Christoph Berg <christoph.berg@credativ.de>  Wed, 11 Nov 2015 15:11:42 +0100
