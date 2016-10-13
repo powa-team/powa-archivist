@@ -1,3 +1,11 @@
+powa-archivist (3.1.1-1) UNRELEASED; urgency=medium
+
+  * New upstream version.
+  * Packaging has been merged into upstream git.
+  * Use source format 1.0 to ease building snapshots.
+
+ -- Christoph Berg <christoph.berg@credativ.de>  Thu, 13 Oct 2016 10:53:22 +0200
+
 powa-archivist (3.1.0-1) unstable; urgency=medium
 
   * New upstream version.

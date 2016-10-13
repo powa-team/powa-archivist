@@ -7,8 +7,8 @@ Standards-Version: 3.9.8
 Build-Depends: debhelper (>= 9~),
  postgresql-server-dev-all (>= 141~)
 Homepage: http://dalibo.github.io/powa/
-Vcs-Browser: https://github.com/credativ/powa-archivist.git
-Vcs-Git: https://github.com/credativ/powa-archivist.git -b debian
+Vcs-Browser: https://github.com/dalibo/powa-archivist
+Vcs-Git: https://github.com/dalibo/powa-archivist.git
 
 Package: postgresql-PGVERSION-powa
 Architecture: any
