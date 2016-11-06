@@ -94,8 +94,12 @@ void
 compute_powa_frequency(void)
 {
 	/* Initialize time_powa_frequency to do maths with it */
+#ifndef WIN32
 	time_powa_frequency.tv_sec = powa_frequency / 1000; /* Seconds */
 	time_powa_frequency.tv_usec = 0;
+#else
+	time_powa_frequency.QuadPart = powa_frequency / 1000 * GetTimerFrequency();
+#endif   /* WIN32 */
 }
 
 /* Test if powa is disabled and validity of powa_frequency */
