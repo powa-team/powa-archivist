@@ -1177,14 +1177,13 @@ BEGIN
     PERFORM powa_log(format('running %I', v_funcname));
 
     -- Insert cluster-wide user function statistics
-    WITH func(dbid,funcid, r) AS (
+    WITH func(dbid, r) AS (
         SELECT oid,
-            (powa_stat_user_functions(oid)).funcid,
             powa_stat_user_functions(oid)
         FROM pg_database
     )
     INSERT INTO powa_user_functions_history_current
-        SELECT dbid, funcid,
+        SELECT dbid, (r).funcid,
         ROW(now(), (r).calls,
             (r).total_time,
             (r).self_time)::powa_user_functions_history_record AS record
@@ -1208,14 +1207,13 @@ BEGIN
     PERFORM powa_log(format('running %I', v_funcname));
 
     -- Insert cluster-wide relation statistics
-    WITH rel(dbid, relid, r) AS (
+    WITH rel(dbid, r) AS (
         SELECT oid,
-            (powa_stat_all_rel(oid)).relid,
             powa_stat_all_rel(oid)
         FROM pg_database
     )
     INSERT INTO powa_all_relations_history_current
-        SELECT dbid, relid,
+        SELECT dbid, (r).relid,
         ROW(now(),(r).numscan, (r).tup_returned, (r).tup_fetched,
             (r).n_tup_ins, (r).n_tup_upd, (r).n_tup_del, (r).n_tup_hot_upd,
             (r).n_liv_tup, (r).n_dead_tup, (r).n_mod_since_analyze,
