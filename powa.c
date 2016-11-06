@@ -304,7 +304,11 @@ powa_main(Datum main_arg)
 			/* sleep */
 			WaitLatch(&MyProc->procLatch,
 					  WL_LATCH_SET | WL_TIMEOUT | WL_POSTMASTER_DEATH,
-					  us_to_wait/1000);
+					  us_to_wait/1000
+#if PG_VERSION_NUM >= 100000
+					  ,PG_WAIT_EXTENSION
+#endif
+					  );
 			ResetLatch(&MyProc->procLatch);
 		} /* end of sleep loop */
 
