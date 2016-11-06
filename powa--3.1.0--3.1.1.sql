@@ -33,6 +33,7 @@ BEGIN
 
     result := true;
 END;
+$PROC$ language plpgsql; /* end of powa_all_relations_snapshot */
 
 CREATE OR REPLACE FUNCTION powa_user_functions_snapshot() RETURNS void AS $PROC$
 DECLARE
