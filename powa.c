@@ -419,7 +419,8 @@ powa_stat_common(PG_FUNCTION_ARGS, PowaStatKind kind)
 
 	MyDatabaseId = backend_dbid;
 
-	if (dbentry != NULL && dbentry->functions != NULL)
+	if (dbentry != NULL && dbentry->functions != NULL &&
+		dbentry->tables != NULL)
 	{
 		switch (kind)
 		{
