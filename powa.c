@@ -68,7 +68,7 @@ static Datum powa_stat_common(PG_FUNCTION_ARGS, PowaStatKind kind);
 PG_FUNCTION_INFO_V1(powa_stat_user_functions);
 PG_FUNCTION_INFO_V1(powa_stat_all_rel);
 
-void powa_main(Datum main_arg);
+void powa_main(Datum main_arg) pg_attribute_noreturn();
 static void powa_sighup(SIGNAL_ARGS);
 
 static instr_time	last_start;					/* last snapshot start */
