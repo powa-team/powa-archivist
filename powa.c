@@ -68,7 +68,7 @@ static Datum powa_stat_common(PG_FUNCTION_ARGS, PowaStatKind kind);
 PG_FUNCTION_INFO_V1(powa_stat_user_functions);
 PG_FUNCTION_INFO_V1(powa_stat_all_rel);
 
-static void powa_main(Datum main_arg);
+void powa_main(Datum main_arg);
 static void powa_sighup(SIGNAL_ARGS);
 
 static instr_time	last_start;					/* last snapshot start */
@@ -205,7 +205,12 @@ _PG_init(void)
 		BGWORKER_SHMEM_ACCESS | BGWORKER_BACKEND_DATABASE_CONNECTION;
 	worker.bgw_start_time = BgWorkerStart_RecoveryFinished;		/* Must write to the
 																 * database */
+#if (PG_VERSION_NUM >= 100000)
+	snprintf(worker.bgw_library_name, BGW_MAXLEN, "powa");
+	snprintf(worker.bgw_function_name, BGW_MAXLEN, "powa_main");
+#else
 	worker.bgw_main = powa_main;
+#endif
 	snprintf(worker.bgw_name, BGW_MAXLEN, "powa");
 	worker.bgw_restart_time = 10;
 	worker.bgw_main_arg = (Datum) 0;
@@ -216,7 +221,7 @@ _PG_init(void)
 }
 
 
-static void
+void
 powa_main(Datum main_arg)
 {
 	char	   *query_snapshot = "SELECT powa_take_snapshot()";
