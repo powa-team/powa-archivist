@@ -15,3 +15,7 @@ Contributors to PoWA :
   * Arthur Lutz
   * Luis Pinto Da Costa
   * Ronan Dunklau
+  * Christoph Berg
+  * Palle Girgensohn
+  * Maxence Ahlouche
+  * Stéphane Tachoires
