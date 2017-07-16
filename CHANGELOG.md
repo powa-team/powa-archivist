@@ -1,3 +1,16 @@
+## 3.1.1 (WIP)
+
+  Bugfix:
+    - Make sure we wait at least powa.frequency between two snapshot (Marc Cousin
+      and Julien Rouhaud)
+    - Fix win32 portability of compute_powa_frequeny() (Julien Rouhaud)
+    - Don't try to read dbentry->tables if it's NULL (Julien Rouhaud)
+    - Fix compilation for platform with HAVE_CLOCK_GETTIME (Julien Rouhaud,
+      reported by Maxence Ahlouche)
+  Miscellaneous:
+    - Add pg10 Compatibility (Julien Rouhaud)
+    - Only execute once the powa_stat functions (Julien Rouhaud)
+
 ## 3.1.0 (2016-07-29)
 
   - Fix issue leading to impossibility to stop the worker without shutting down
