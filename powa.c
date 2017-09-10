@@ -73,7 +73,9 @@ void powa_main(Datum main_arg) pg_attribute_noreturn();
 #else
 void powa_main(Datum main_arg) __attribute__((noreturn));
 #endif
+
 static void powa_sighup(SIGNAL_ARGS);
+static void powa_process_sighup(void);
 
 static instr_time	last_start;					/* last snapshot start */
 
@@ -84,6 +86,9 @@ static int			powa_coalesce;			 	/* powa.coalesce GUC */
 static char		   *powa_database = NULL;	 	/* powa.database GUC */
 static char 	   *powa_ignored_users = NULL;	/* powa.ignored_users GUC */
 static bool			powa_debug = false;			/* powa.debug GUC */
+
+/* flags set by signal handlers */
+static volatile sig_atomic_t got_sighup = false;
 
 bool
 powa_check_frequency_hook(int *newval, void **extra, GucSource source)
@@ -273,11 +278,8 @@ powa_main(Datum main_arg)
 	 */
 	for (;;)
 	{
-		/*
-		 * We can get here with a new value of powa_frequency because of a
-		 * reload. Let's suicide to disconnect if needed
-		 */
-		die_on_too_small_frequency();
+		/* Check if a SIGHUP has been received */
+		powa_process_sighup();
 
 		set_ps_display("snapshot", false);
 		SetCurrentStatementStartTimestamp();
@@ -299,6 +301,9 @@ powa_main(Datum main_arg)
 		for (;;)
 		{
 			StringInfoData buf;
+
+			/* Check if a SIGHUP has been received */
+			powa_process_sighup();
 
 			/*
 			 * Compute if there is still some time to wait (we could have been
@@ -336,13 +341,41 @@ powa_main(Datum main_arg)
 }
 
 
+/*
+ * Signal handler for SIGHUP
+ *		Set a flag to tell the main loop to reread the config file, do sanity
+ *		check, recompute the frequency and set our latch to wake it up.
+ */
 static void
 powa_sighup(SIGNAL_ARGS)
 {
-	ProcessConfigFile(PGC_SIGHUP);
-	die_on_too_small_frequency();
-	compute_powa_frequency();
-	SetLatch(&MyProc->procLatch);
+	int			save_errno = errno;
+
+	got_sighup = true;
+
+	if (MyProc)
+		SetLatch(&MyProc->procLatch);
+
+	errno = save_errno;
+}
+
+/*
+ * Do all the needed work if a SIGHUP has been received
+ *		- reread the config file
+ *		- exit the bgworker if the frequency is invalid
+ *		- compute the time_powa_frequency var
+ */
+static void
+powa_process_sighup(void)
+{
+	if (got_sighup)
+	{
+		got_sighup = false;
+
+		ProcessConfigFile(PGC_SIGHUP);
+		die_on_too_small_frequency();
+		compute_powa_frequency();
+	}
 }
 
 Datum
