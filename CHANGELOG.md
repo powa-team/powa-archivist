@@ -1,6 +1,8 @@
-## 3.1.1 (WIP)
+## 3.1.1 (2017-09-19)
 
   - Bugfix:
+    - Fix unsafe coding with sighup handler (Andreas Seltenreich, Julien
+      Rouhaud)
     - Make sure we wait at least powa.frequency between two snapshot (Marc Cousin
       and Julien Rouhaud)
     - Fix win32 portability of compute_powa_frequeny() (Julien Rouhaud)
