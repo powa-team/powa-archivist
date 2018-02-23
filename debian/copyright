@@ -1,6 +1,7 @@
 powa-archivist was debianized by Christoph Berg <myon@debian.org>.
 
-Copyright (c) 2014-2015, DALIBO
+Copyright (c) 2014-2017, DALIBO
+Copyright (c) 2018, The PoWA-team
 
 Permission to use, copy, modify, and distribute this software and its
 documentation for any purpose, without fee, and without a written agreement is
@@ -35,3 +36,10 @@ Contributors to PoWA :
   * Arthur Lutz
   * Luis Pinto Da Costa
   * Ronan Dunklau
+  * Christoph Berg
+  * Palle Girgensohn
+  * Maxence Ahlouche
+  * Stéphane Tachoires
+  * fluancefg
+  * indreek
+  * Andreas Seltenreich
