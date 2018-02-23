@@ -2,7 +2,7 @@
    "name": "powa",
    "abstract": "An extension gathering pg_stat_statements and other plugins statistics",
    "version": "__VERSION__",
-   "maintainer": "Julien Rouhaud <julien.rouhaud@dalibo.com>",
+   "maintainer": "Julien Rouhaud <rjuju123@gmail.com>",
    "license": "postgresql",
    "release_status": "stable",
    "provides": {
@@ -15,11 +15,11 @@
    },
    "resources": {
       "bugtracker": {
-         "web": "http://github.com/dalibo/powa/issues/"
+         "web": "http://github.com/powa-team/powa/issues/"
       },
       "repository": {
-        "url":  "git://github.com/dalibo/powa-archivist.git",
-        "web":  "http://github.com/dalibo/powa-archivist/",
+        "url":  "git://github.com/powa-team/powa-archivist.git",
+        "web":  "http://github.com/powa-team/powa-archivist/",
         "type": "git"
       }
    },

@@ -1,7 +1,7 @@
 PostgreSQL Workload Analyzer detailled installation guide
 =========================================================
 
-Read [README.md](https://github.com/dalibo/powa/blob/master/README.md) and
+Read [README.md](https://github.com/powa-team/powa/blob/master/README.md) and
 [the official documentation](http://powa.readthedocs.io/) for further details
 about PoWA.
 
@@ -16,7 +16,7 @@ Download powa-archivist from the website
 ----------------------------------------
 
 The latest stable version should be used. It can be downloaded from
-[github](https://github.com/dalibo/powa-archivist/releases/latest).
+[github](https://github.com/powa-team/powa-archivist/releases/latest).
 
 This documentation assumes that the latest version is 3.0.0, and you downloaded
 the .zip file.
@@ -130,7 +130,7 @@ If possible (check with pg_test_timing), activate track_io_timing on your instan
 track_io_timing = on
 ```
 
-Other GUC variables are available. Read [README.md](https://github.com/dalibo/powa/blob/master/README.md) for further details.
+Other GUC variables are available. Read [README.md](https://github.com/powa-team/powa/blob/master/README.md) for further details.
 
 In `pg_hba.conf`:
 

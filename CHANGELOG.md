@@ -31,7 +31,7 @@
     pg_stat_statements. Upgrade script will do all the needed cleanup.
   - Restore the install_all.sql file to easily setup PoWA.
   - Maintain a cache of pg_database to allow seeing dropped database in the UI.
-    See issue https://github.com/dalibo/powa/issues/63
+    See issue https://github.com/powa-team/powa/issues/63
   - Don't try to load PoWA if it's not in shared_preload_libraries
 
 ## 3.0.0 (2015-11-06)
@@ -56,11 +56,11 @@ remove the old one and install the new 3.0.0 version.
 
 Major rework of the extension. PoWA 2 is now only compatible with PostgreSQL
 version 9.4 and above. PoWA 2 is also now compatible with external extensions,
-such as [pg_qualstats](https://github.com/dalibo/pg_qualstats) or
-[pg_stat_kcache](https://github.com/dalibo/pg_stat_kcache). Third-part
+such as [pg_qualstats](https://github.com/powa-team/pg_qualstats) or
+[pg_stat_kcache](https://github.com/powa-team/pg_stat_kcache). Third-part
 extensions can also now be implemented easily.
 
-The UI is also now in a [new repository](https://github.com/dalibo/powa-web),
+The UI is also now in a [new repository](https://github.com/powa-team/powa-web),
 with more frequent release cycle.
 
 ## 1.2.1 (2015-01-16)
