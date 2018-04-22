@@ -253,7 +253,11 @@ powa_main(Datum main_arg)
 	INSTR_TIME_SET_CURRENT(last_start);
 
 	/* Connect to POWA database */
+#if PG_VERSION_NUM >= 110000
+	BackgroundWorkerInitializeConnection(powa_database, NULL, 0);
+#else
 	BackgroundWorkerInitializeConnection(powa_database, NULL);
+#endif
 
 	elog(LOG, "POWA connected to database %s", quote_identifier(powa_database));
 
