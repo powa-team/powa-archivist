@@ -1,3 +1,9 @@
+powa-archivist (3.1.2-1) unstable; urgency=medium
+
+  * New upstream version with PG11 support.
+
+ -- Christoph Berg <christoph.berg@credativ.de>  Wed, 30 May 2018 08:55:39 +0200
+
 powa-archivist (3.1.1-2) unstable; urgency=medium
 
   * Catch errors in autopkgtest script, thanks to Niels Thykier for spotting!
