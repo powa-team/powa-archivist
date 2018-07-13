@@ -1700,7 +1700,7 @@ BEGIN
     PERFORM powa_log(format('running %I', v_funcname));
 
     WITH capture AS (
-        SELECT *
+        SELECT k.*
         FROM pg_stat_kcache() k
         JOIN pg_roles r ON r.oid = k.userid
         WHERE NOT (r.rolname = ANY (string_to_array(current_setting('powa.ignored_users'),',')))
