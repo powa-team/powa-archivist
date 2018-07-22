@@ -8,5 +8,9 @@ for v in $(pg_buildext supported-versions); do
 		CREATE EXTENSION pg_stat_statements;
 		CREATE EXTENSION btree_gist;
 		CREATE EXTENSION powa;
+		SELECT powa_statements_snapshot();
+		SELECT powa_user_functions_snapshot();
+		SELECT powa_all_relations_snapshot();
+		SELECT powa_take_snapshot();
 	EOF
 done

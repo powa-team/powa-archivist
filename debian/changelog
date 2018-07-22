@@ -1,6 +1,7 @@
 powa-archivist (3.2.0-1) UNRELEASED; urgency=medium
 
   * debian/tests: Depend on postgresql-server-dev-all for pg_buildext.
+  * debian/tests: Invoke snapshot functions.
 
  -- Christoph Berg <myon@debian.org>  Sun, 22 Jul 2018 20:04:13 +0200
 
