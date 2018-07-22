@@ -1,7 +1,7 @@
 Source: powa-archivist
 Section: database
 Priority: optional
-Maintainer: Debian PostgreSQL Maintainers <pkg-postgresql-public@lists.alioth.debian.org>
+Maintainer: Debian PostgreSQL Maintainers <team+postgresql@tracker.debian.org>
 Uploaders: Christoph Berg <myon@debian.org>
 Standards-Version: 4.1.4
 Build-Depends: debhelper (>= 9~),
