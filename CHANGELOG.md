@@ -1,3 +1,15 @@
+## 3.2.0 (WIP)
+
+  - New features:
+    - Add support for pg_wait_sampling extension (Julien Rouhaud)
+
+## 3.1.2 (2018-05-30)
+
+  - Miscellaneous:
+    - Add pg11 compatibility (Julien Rouhaud)
+    - Catch errors in Debian packaging test script (Christoph Berg, spotted by
+      Niels Thykier)
+
 ## 3.1.1 (2017-09-19)
 
   - Bugfix:
