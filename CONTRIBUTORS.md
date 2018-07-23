@@ -19,6 +19,6 @@ Contributors to PoWA :
   * Palle Girgensohn
   * Maxence Ahlouche
   * Stéphane Tachoires
-  * fluancefg
+  * trourance
   * indreek
   * Andreas Seltenreich
