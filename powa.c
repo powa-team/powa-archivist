@@ -10,6 +10,10 @@
 
 #include "postgres.h"
 
+#if PG_VERSION_NUM < 90400
+#error "PoWA requires PostgreSQL 9.4 or later"
+#endif
+
 /* For a bgworker */
 #include "miscadmin.h"
 #include "postmaster/bgworker.h"
