@@ -32,7 +32,7 @@ WHERE datname = current_database();
  t
 (1 row)
 
-SELECT COUNT(*) > 100
+SELECT COUNT(*) > 10
 FROM pg_database,
 LATERAL powa_stat_all_rel(oid)
 WHERE datname = current_database();

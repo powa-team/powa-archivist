@@ -14,7 +14,7 @@ FROM pg_database,
 LATERAL powa_stat_user_functions(oid) f
 WHERE datname = current_database();
 
-SELECT COUNT(*) > 100
+SELECT COUNT(*) > 10
 FROM pg_database,
 LATERAL powa_stat_all_rel(oid)
 WHERE datname = current_database();
