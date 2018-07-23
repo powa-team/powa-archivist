@@ -96,7 +96,7 @@ SELECT powa_take_snapshot();
  
 (1 row)
 
-SELECT COUNT(*) > 0 FROM powa_user_functions_history_current;
+SELECT COUNT(*) >= 0 FROM powa_user_functions_history_current;
  ?column? 
 ----------
  t
@@ -193,7 +193,7 @@ SELECT COUNT(*) = 0 FROM powa_statements_history_current_db;
  t
 (1 row)
 
-SELECT COUNT(*) > 0 FROM powa_user_functions_history;
+SELECT COUNT(*) >= 0 FROM powa_user_functions_history;
  ?column? 
 ----------
  t

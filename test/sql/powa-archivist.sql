@@ -31,7 +31,7 @@ SELECT COUNT(*) = 0 FROM powa_statements_history;
 
 SELECT powa_take_snapshot();
 
-SELECT COUNT(*) > 0 FROM powa_user_functions_history_current;
+SELECT COUNT(*) >= 0 FROM powa_user_functions_history_current;
 SELECT COUNT(*) > 0 FROM powa_all_relations_history_current;
 SELECT COUNT(*) > 0 FROM powa_statements_history_current;
 SELECT COUNT(*) > 0 FROM powa_statements_history_current_db;
@@ -50,7 +50,7 @@ SELECT COUNT(*) = 0 FROM powa_user_functions_history_current;
 SELECT COUNT(*) = 0 FROM powa_all_relations_history_current;
 SELECT COUNT(*) = 0 FROM powa_statements_history_current;
 SELECT COUNT(*) = 0 FROM powa_statements_history_current_db;
-SELECT COUNT(*) > 0 FROM powa_user_functions_history;
+SELECT COUNT(*) >= 0 FROM powa_user_functions_history;
 SELECT COUNT(*) > 0 FROM powa_all_relations_history;
 SELECT COUNT(*) > 0 FROM powa_statements_history;
 SELECT COUNT(*) > 0 FROM powa_statements_history;
