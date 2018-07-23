@@ -1,16 +1,3 @@
 #!/bin/sh
 
-set -eu
-
-for v in $(pg_buildext supported-versions); do
-	pg_virtualenv -v $v -o "shared_preload_libraries=powa,pg_stat_statements" \
-		psql -v ON_ERROR_STOP=1 <<-EOF
-		CREATE EXTENSION pg_stat_statements;
-		CREATE EXTENSION btree_gist;
-		CREATE EXTENSION powa;
-		SELECT powa_statements_snapshot();
-		SELECT powa_user_functions_snapshot();
-		SELECT powa_all_relations_snapshot();
-		SELECT powa_take_snapshot();
-	EOF
-done
+pg_buildext -o "shared_preload_libraries=powa,pg_stat_statements" installcheck
