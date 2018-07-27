@@ -22,3 +22,4 @@ Contributors to PoWA :
   * trourance
   * indreek
   * Andreas Seltenreich
+  * edechaux
