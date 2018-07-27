@@ -211,6 +211,8 @@ _PG_init(void)
 							   &powa_debug,
 							   false, PGC_USERSET, 0, NULL, NULL, NULL);
 
+	EmitWarningsOnPlaceholders("powa");
+
 	/*
 	 * Register the worker processes
 	 */
