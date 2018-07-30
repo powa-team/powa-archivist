@@ -59,11 +59,10 @@ typedef enum
 	POWA_STAT_TABLE
 }	PowaStatKind;
 
-void		_PG_init(void);
-bool		powa_check_frequency_hook(int *newval, void **extra, GucSource source);
-void		compute_powa_frequency(void);
-void		die_on_too_small_frequency(void);
-int64		compute_next_wakeup(void);
+void			_PG_init(void);
+static bool		powa_check_frequency_hook(int *newval, void **extra, GucSource source);
+static void		compute_powa_frequency(void);
+static int64	compute_next_wakeup(void);
 
 Datum		powa_stat_user_functions(PG_FUNCTION_ARGS);
 Datum		powa_stat_all_rel(PG_FUNCTION_ARGS);
@@ -85,6 +84,7 @@ static instr_time	last_start;					/* last snapshot start */
 
 static int			powa_frequency;				/* powa.frequency GUC */
 static instr_time	time_powa_frequency;		/* same in instr_time format */
+static bool			force_snapshot = false;		/* used to force snapshot after enabling powa */
 static int			powa_retention;				/* powa.retention GUC */
 static int			powa_coalesce;			 	/* powa.coalesce GUC */
 static char		   *powa_database = NULL;	 	/* powa.database GUC */
@@ -94,57 +94,62 @@ static bool			powa_debug = false;			/* powa.debug GUC */
 /* flags set by signal handlers */
 static volatile sig_atomic_t got_sighup = false;
 
-bool
+static bool
 powa_check_frequency_hook(int *newval, void **extra, GucSource source)
 {
-	if (*newval >=0 && *newval < MIN_POWA_FREQUENCY)
-		return false;
+	if (*newval >= MIN_POWA_FREQUENCY || *newval == -1)
+		return true;
 
-	return true;
+	return false;
 }
 
-void
+static void
 compute_powa_frequency(void)
 {
+	int local_frequency = powa_frequency;
+
+	/*
+	 * If PoWA is deactivated, artitrarily set a sleep time of one hour to save
+	 * resources.  The actual sleep time is not problematic since the
+	 * reactivation can only be done with a sighup, which will set the latch
+	 * used for the sleep.
+	 */
+	if (powa_frequency == -1)
+		local_frequency = 3600000;
+
 	/* Initialize time_powa_frequency to do maths with it */
 #ifndef WIN32
 #ifdef HAVE_CLOCK_GETTIME
-	time_powa_frequency.tv_sec = powa_frequency / 1000; /* Seconds */
+	time_powa_frequency.tv_sec = local_frequency / 1000; /* Seconds */
 	time_powa_frequency.tv_nsec = 0;
 #else		/* !HAVE_CLOCK_GETTIME */
-	time_powa_frequency.tv_sec = powa_frequency / 1000; /* Seconds */
+	time_powa_frequency.tv_sec = local_frequency / 1000; /* Seconds */
 	time_powa_frequency.tv_usec = 0;
 #endif		/* HAVE_CLOCK_GETTIME */
 
 #else		/* WIN32 */
-	time_powa_frequency.QuadPart = powa_frequency / 1000 * GetTimerFrequency();
+	time_powa_frequency.QuadPart = local_frequency / 1000 * GetTimerFrequency();
 #endif		/* WIN32 */
 }
 
-/* Test if powa is disabled and validity of powa_frequency */
-void
-die_on_too_small_frequency(void)
-{
-	if (powa_frequency < 0)
-	{
-		elog(LOG, "POWA is deactivated (powa.frequency = %i), exiting",
-			 powa_frequency);
-		exit(1);
-	}
-
-	/* should not happen */
-	if (powa_frequency < MIN_POWA_FREQUENCY)
-	{
-		elog(LOG, "POWA frequency cannot be smaller than %d seconds",
-			 MIN_POWA_FREQUENCY / 1000);
-		exit(1);
-	}
-}
-
-int64
+static int64
 compute_next_wakeup(void)
 {
 	instr_time time_to_wait, now;
+
+	/*
+	 * If powa was deactivated and is now reactivated, we force an immediate
+	 * snapshot, and start usual interval sleep.  In order to do that, we have
+	 * to setup a new last_start reference to now minus powa_frequency so that
+	 * the next calls to this function will return expected sleep time.
+	 */
+	if (force_snapshot)
+	{
+		force_snapshot = false;
+		INSTR_TIME_SET_CURRENT(last_start);
+		INSTR_TIME_SUBTRACT(last_start, time_powa_frequency);
+		return 0;
+	}
 
 	memcpy(&time_to_wait, &last_start, sizeof(last_start));
 	INSTR_TIME_ADD(time_to_wait, time_powa_frequency);
@@ -245,7 +250,6 @@ powa_main(Datum main_arg)
 							   may have negative result, in our tests */
 
 	/* check powa_frequency validity, and if powa is enabled */
-	die_on_too_small_frequency();
 	compute_powa_frequency();
 
 	/*
@@ -291,21 +295,24 @@ powa_main(Datum main_arg)
 		/* Check if a SIGHUP has been received */
 		powa_process_sighup();
 
-		set_ps_display("snapshot", false);
-		SetCurrentStatementStartTimestamp();
-		StartTransactionCommand();
-		SPI_connect();
-		PushActiveSnapshot(GetTransactionSnapshot());
-		pgstat_report_activity(STATE_RUNNING, query_snapshot);
-		SPI_execute(query_snapshot, false, 0);
-		pgstat_report_activity(STATE_RUNNING, query_appname);
-		SPI_execute(query_appname, false, 0);
-		SPI_finish();
-		PopActiveSnapshot();
-		CommitTransactionCommand();
-		pgstat_report_stat(false);
-		pgstat_report_activity(STATE_IDLE, NULL);
-		set_ps_display("idle", false);
+		if (powa_frequency != -1)
+		{
+			set_ps_display("snapshot", false);
+			SetCurrentStatementStartTimestamp();
+			StartTransactionCommand();
+			SPI_connect();
+			PushActiveSnapshot(GetTransactionSnapshot());
+			pgstat_report_activity(STATE_RUNNING, query_snapshot);
+			SPI_execute(query_snapshot, false, 0);
+			pgstat_report_activity(STATE_RUNNING, query_appname);
+			SPI_execute(query_appname, false, 0);
+			SPI_finish();
+			PopActiveSnapshot();
+			CommitTransactionCommand();
+			pgstat_report_stat(false);
+			pgstat_report_activity(STATE_IDLE, NULL);
+			set_ps_display("idle", false);
+		}
 
 		/* sleep loop */
 		for (;;)
@@ -380,10 +387,20 @@ powa_process_sighup(void)
 {
 	if (got_sighup)
 	{
+		int old_powa_frequency = powa_frequency;
+
 		got_sighup = false;
 
 		ProcessConfigFile(PGC_SIGHUP);
-		die_on_too_small_frequency();
+		/* setup force_snapshot if powa is reactivated */
+		if (old_powa_frequency == -1 && powa_frequency != -1)
+		{
+			elog(LOG, "PoWA is activated");
+			force_snapshot = (old_powa_frequency == -1 && powa_frequency != -1);
+		}
+		else if (old_powa_frequency != -1 && powa_frequency == -1)
+			elog(LOG, "PoWA is deactivated");
+
 		compute_powa_frequency();
 	}
 }
