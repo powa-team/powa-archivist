@@ -3,7 +3,10 @@
   - New features:
     - Add support for pg_wait_sampling extension (Julien Rouhaud)
   - Miscellaneous:
-    - Reduce logs when PoWA is deactivated
+    - Reduce logs when PoWA is deactivated (Julien Rouhaud)
+  - Bugfix:
+    - Fix possible bug if an error happens during the stats retrieval (Julien
+      Rouhaud)
 
 ## 3.1.2 (2018-05-30)
 

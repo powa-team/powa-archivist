@@ -487,6 +487,10 @@ powa_stat_common(PG_FUNCTION_ARGS, PowaStatKind kind)
 	 * - and finally clear again the statistics cache, to make sure any further
 	 *	 statement in the transaction will see the data related to the right
 	 *	 database.
+	 *
+	 *	 The pgstat_fetch_stat_dbentry() has to be done inside a PG_TRY bloc so
+	 *	 we make sure that MyDatabaseId is restored and the statistics cache is
+	 *	 cleared if an error happens during the call.
 	 */
 
 	pgstat_clear_snapshot();
@@ -494,7 +498,18 @@ powa_stat_common(PG_FUNCTION_ARGS, PowaStatKind kind)
 	backend_dbid = MyDatabaseId;
 	MyDatabaseId = dbid;
 
-	dbentry = pgstat_fetch_stat_dbentry(dbid);
+	PG_TRY();
+	{
+		dbentry = pgstat_fetch_stat_dbentry(dbid);
+	}
+	PG_CATCH();
+	{
+		MyDatabaseId = backend_dbid;
+		pgstat_clear_snapshot();
+
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
 
 	MyDatabaseId = backend_dbid;
 
