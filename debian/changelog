@@ -1,10 +1,12 @@
-powa-archivist (3.2.0-1) UNRELEASED; urgency=medium
+powa-archivist (3.2.0-1) unstable; urgency=medium
 
+  * New upstream version
+  [ Christoph Berg ]
   * debian/tests: Depend on postgresql-server-dev-all for pg_buildext.
   * debian/tests: Use "pg_buildext installcheck".
   * Move maintainer address to team+postgresql@tracker.debian.org.
 
- -- Christoph Berg <myon@debian.org>  Sun, 22 Jul 2018 20:04:13 +0200
+ -- Julien Rouhaud <rjuju123@gmail.com>  Sun, 14 Oct 2018 22:52:51 +0200
 
 powa-archivist (3.1.2-1) unstable; urgency=medium
 

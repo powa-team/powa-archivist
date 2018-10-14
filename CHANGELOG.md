@@ -1,4 +1,4 @@
-## 3.2.0 (WIP)
+## 3.2.0 (2018-10-14)
 
   - New features:
     - Add support for pg_wait_sampling extension (Julien Rouhaud)
