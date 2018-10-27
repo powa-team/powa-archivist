@@ -1,3 +1,8 @@
+## 3.2.1 (WIP)
+
+  - Miscellaneous:
+    - Add support for makefile option NO_PGXS (Julien Rouhaud)
+
 ## 3.2.0 (2018-10-14)
 
   - New features:
