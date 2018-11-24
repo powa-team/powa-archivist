@@ -1371,6 +1371,7 @@ BEGIN
     perform powa_log(format('%I (powa_databases) - rowcount: %s)',
            v_funcname,array_length(v_dropped_dbid,1)));
 
+    -- This will cascade automatically to qualstat
     DELETE FROM powa_statements WHERE dbid = ANY (v_dropped_dbid);
     GET DIAGNOSTICS v_rowcount = ROW_COUNT;
     perform powa_log(format('%I (powa_statements) - rowcount: %s)',
@@ -1383,7 +1384,6 @@ CREATE OR REPLACE FUNCTION powa_statements_purge() RETURNS void AS $PROC$
 DECLARE
     v_funcname    text := 'powa_statements_purge';
     v_rowcount    bigint;
-    v_dropped_dbid oid[];
 BEGIN
     PERFORM powa_log(format('running %I', v_funcname));
 
