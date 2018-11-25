@@ -2,6 +2,8 @@
 
   - Miscellaneous:
     - Add support for makefile option NO_PGXS (Julien Rouhaud)
+    - Cleanup old databases after the expiration period, and stop gathering
+      data belonging to dropped database when doing the snapshots (Marc Cousin)
 
 ## 3.2.0 (2018-10-14)
 
