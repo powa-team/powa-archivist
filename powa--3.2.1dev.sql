@@ -525,6 +525,7 @@ INSERT INTO powa_functions (module, operation, function_name, added_manually, en
     ('powa_stat_user_functions', 'aggregate','powa_user_functions_aggregate', false, true),
     ('powa_stat_all_relations', 'aggregate','powa_all_relations_aggregate', false, true),
     ('pg_stat_statements', 'purge', 'powa_statements_purge', false, true),
+    ('pg_stat_statements', 'purge', 'powa_databases_purge', false, true),
     ('powa_stat_user_functions', 'purge', 'powa_user_functions_purge', false, true),
     ('powa_stat_all_relations', 'purge', 'powa_all_relations_purge', false, true),
     ('pg_stat_statements', 'reset', 'powa_statements_reset', false, true),
@@ -1227,6 +1228,7 @@ BEGIN
     -- In this function, we capture statements, and also aggregate counters by database
     -- so that the first screens of powa stay reactive even though there may be thousands
     -- of different statements
+    -- We only capture databases that are still there
     PERFORM powa_log(format('running %I', v_funcname));
 
     WITH capture AS(
@@ -1235,6 +1237,7 @@ BEGIN
         JOIN pg_roles r ON pgss.userid = r.oid
         WHERE pgss.query !~* ignore_regexp
         AND NOT (r.rolname = ANY (string_to_array(current_setting('powa.ignored_users'),',')))
+        AND dbid IN (SELECT oid FROM powa_databases WHERE dropped IS NULL)
     ),
 
     missing_statements AS(
@@ -1348,6 +1351,35 @@ BEGIN
 END;
 $PROC$ language plpgsql; /* end of powa_all_relations_snapshot */
 
+
+CREATE OR REPLACE FUNCTION powa_databases_purge() RETURNS void AS $PROC$
+DECLARE
+    v_funcname    text := 'powa_databases_purge';
+    v_rowcount    bigint;
+    v_dropped_dbid oid[];
+BEGIN
+    PERFORM powa_log(format('running %I', v_funcname));
+
+    -- Cleanup old dropped databases, over retention
+    WITH dropped_databases AS
+      ( DELETE FROM powa_databases
+        WHERE dropped < (now() - current_setting('powa.retention')::interval*1.2)
+        RETURNING oid
+        )
+    SELECT array_agg(oid) INTO v_dropped_dbid FROM dropped_databases;
+
+    perform powa_log(format('%I (powa_databases) - rowcount: %s)',
+           v_funcname,array_length(v_dropped_dbid,1)));
+
+    -- This will cascade automatically to qualstat
+    DELETE FROM powa_statements WHERE dbid = ANY (v_dropped_dbid);
+    GET DIAGNOSTICS v_rowcount = ROW_COUNT;
+    perform powa_log(format('%I (powa_statements) - rowcount: %s)',
+           v_funcname, v_rowcount));
+END;
+$PROC$ LANGUAGE plpgsql; /* end of powa_databases_purge */
+
+
 CREATE OR REPLACE FUNCTION powa_statements_purge() RETURNS void AS $PROC$
 DECLARE
     v_funcname    text := 'powa_statements_purge';
@@ -1368,7 +1400,6 @@ BEGIN
     perform powa_log(format('%I (powa_statements_history_db) - rowcount: %s',
             v_funcname, v_rowcount));
 
-    -- FIXME maybe we should cleanup the powa_*_history tables ? But it will take a while: unnest all records...
 END;
 $PROC$ LANGUAGE plpgsql; /* end of powa_statements_purge */
 
@@ -1386,7 +1417,6 @@ BEGIN
     perform powa_log(format('%I - rowcount: %s',
             v_funcname, v_rowcount));
 
-    -- FIXME maybe we should cleanup the powa_*_history tables ? But it will take a while: unnest all records...
 END;
 $PROC$ LANGUAGE plpgsql; /* end of powa_user_functions_purge */
 
@@ -1404,7 +1434,6 @@ BEGIN
     perform powa_log(format('%I - rowcount: %s',
             v_funcname, v_rowcount));
 
-    -- FIXME maybe we should cleanup the powa_*_history tables ? But it will take a while: unnest all records...
 END;
 $PROC$ LANGUAGE plpgsql; /* end of powa_all_relations_purge */
 
@@ -1704,6 +1733,7 @@ BEGIN
         FROM pg_stat_kcache() k
         JOIN pg_roles r ON r.oid = k.userid
         WHERE NOT (r.rolname = ANY (string_to_array(current_setting('powa.ignored_users'),',')))
+        AND dbid IN (SELECT oid FROM powa_databases WHERE dropped IS NULL)
     ),
 
     by_query AS (
@@ -1946,6 +1976,7 @@ BEGIN
     JOIN powa_statements s USING(queryid, dbid, userid)
     JOIN pg_roles r ON s.userid = r.oid
     AND NOT (r.rolname = ANY (string_to_array(current_setting('powa.ignored_users'),',')))
+    WHERE dbid IN (SELECT oid FROM powa_databases WHERE dropped IS NULL)
   ),
   missing_quals AS (
       INSERT INTO powa_qualstats_quals (qualid, queryid, dbid, userid, quals)
@@ -2163,6 +2194,7 @@ BEGIN
         -- unique across differet databases, so we retrieve the dbid this way.
         LEFT JOIN pg_stat_statements(false) pgss ON pgss.queryid = s.queryid
         WHERE event_type IS NOT NULL AND event IS NOT NULL
+        AND COALESCE(pgss.dbid, 0) IN (SELECT oid FROM powa_databases WHERE dropped IS NULL UNION ALL SELECT 0)
         GROUP BY pgss.dbid, s.event_type, s.event, s.queryid
     ),
 
