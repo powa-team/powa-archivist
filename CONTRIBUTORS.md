@@ -23,3 +23,4 @@ Contributors to PoWA :
   * indreek
   * Andreas Seltenreich
   * edechaux
+  * ppetrov91

@@ -221,7 +221,7 @@ _PG_init(void)
 	/*
 	 * Register the worker processes
 	 */
-	memset(&worker, 0, sizeof(worker)); 
+	memset(&worker, 0, sizeof(worker));
 	worker.bgw_flags =
 		BGWORKER_SHMEM_ACCESS | BGWORKER_BACKEND_DATABASE_CONNECTION;
 	worker.bgw_start_time = BgWorkerStart_RecoveryFinished;		/* Must write to the
