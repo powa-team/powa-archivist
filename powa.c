@@ -159,17 +159,39 @@ compute_next_wakeup(void)
 	return INSTR_TIME_GET_MICROSEC(time_to_wait);
 }
 
+/*
+ * As of powa 4, this extension can be with a remote snapshot daemon instead of
+ * the dedicated background worker.  In order to allow this daemon to use the
+ * statistic functions powa provide, we now allow to load the extension from
+ * outside shared_preload_libraries.
+ */
 void
 _PG_init(void)
 {
 	BackgroundWorker worker;
 
-	if (!process_shared_preload_libraries_in_progress)
-	{
-		elog(ERROR, "This module can only be loaded via shared_preload_libraries");
-		return;
-	}
+	/*
+	 * This setting can be used for datasource function, so we always define
+	 * this GUC
+	 */
+	DefineCustomStringVariable("powa.ignored_users",
+							   "Defines a coma-separated list of users to ignore when taking activity snapshot",
+							   NULL,
+							   &powa_ignored_users,
+							   NULL, PGC_SIGHUP, 0, NULL, NULL, NULL);
 
+	DefineCustomBoolVariable("powa.debug",
+							   "Provide logs to help troubleshooting issues",
+							   NULL,
+							   &powa_debug,
+							   false, PGC_USERSET, 0, NULL, NULL, NULL);
+
+	/*
+	 * Following code is only needed for the bgworker, so only used when powa
+	 * is loaded in shared_preload_libraries.
+	 */
+	if (!process_shared_preload_libraries_in_progress)
+		return;
 
 	DefineCustomIntVariable("powa.frequency",
 						 "Defines the frequency in seconds of the snapshots",
@@ -204,18 +226,6 @@ _PG_init(void)
 							   &powa_database,
 							   "powa", PGC_POSTMASTER, 0, NULL, NULL, NULL);
 
-	DefineCustomStringVariable("powa.ignored_users",
-							   "Defines a coma-separated list of users to ignore when taking activity snapshot",
-							   NULL,
-							   &powa_ignored_users,
-							   NULL, PGC_SIGHUP, 0, NULL, NULL, NULL);
-
-	DefineCustomBoolVariable("powa.debug",
-							   "Provide logs to help troubleshooting issues",
-							   NULL,
-							   &powa_debug,
-							   false, PGC_USERSET, 0, NULL, NULL, NULL);
-
 	EmitWarningsOnPlaceholders("powa");
 
 	/*
@@ -246,7 +256,7 @@ void
 powa_main(Datum main_arg)
 {
 	char	   *query_snapshot = "SELECT public.powa_take_snapshot()";
-	static char *query_appname = "SET application_name = 'PoWA collector'";
+	static char *query_appname = "SET application_name = 'PoWA - collector'";
 	int64		us_to_wait; /* Should be uint64 per postgresql's spec, but we
 							   may have negative result, in our tests */
 

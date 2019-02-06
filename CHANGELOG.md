@@ -1,3 +1,16 @@
+## 4.0.0 (WIP)
+
+This is a major rework of PoWA.  Please not that there is not upgrade to switch
+to this version. You need to remove the old one and install the new 4.0.0
+version.
+
+  - New features:
+    - Add a remote capture mode, allowing to gather data from a remote server
+      and store them on a central repository.  This avoids the overhead of
+      storig and processing performance data on the local instance, and also
+      allows using PoWA on hot-standby server (Julien Rouhaud, Thanks to Adrien
+      Nayrat for extensive testing).
+
 ## 3.2.1 (WIP)
 
   - Miscellaneous:
