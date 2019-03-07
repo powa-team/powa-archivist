@@ -6,6 +6,7 @@
       data belonging to dropped database when doing the snapshots (Marc Cousin)
     - Fix possible bug with background worker type in pg_stat_activity
       (github user ppetrov91)
+    - Add some missing indexes (Julien Rouhaud, thanks to PoWA for noticing)
 
 ## 3.2.0 (2018-10-14)
 

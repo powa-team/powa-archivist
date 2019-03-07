@@ -780,6 +780,8 @@ CREATE TABLE public.powa_qualstats_quals_history (
     FOREIGN KEY (qualid, queryid, dbid, userid) REFERENCES public.powa_qualstats_quals (qualid, queryid, dbid, userid) MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
 );
 
+CREATE INDEX powa_qualstats_quals_history_query_ts ON powa_qualstats_quals_history USING gist (queryid, coalesce_range);
+
 CREATE TABLE public.powa_qualstats_quals_history_current (
     qualid bigint,
     queryid bigint,
@@ -907,7 +909,7 @@ CREATE TABLE public.powa_wait_sampling_history (
     PRIMARY KEY (coalesce_range, queryid, dbid, event_type, event)
 );
 
-CREATE INDEX ON public.powa_wait_sampling_history (queryid);
+CREATE INDEX powa_wait_sampling_history_query_ts ON public.powa_wait_sampling_history USING gist (queryid, coalesce_range);
 
 CREATE TABLE public.powa_wait_sampling_history_db (
     coalesce_range tstzrange NOT NULL,
@@ -919,6 +921,8 @@ CREATE TABLE public.powa_wait_sampling_history_db (
     maxs_in_range public.wait_sampling_type NOT NULL,
     PRIMARY KEY (coalesce_range, dbid, event_type, event)
 );
+
+CREATE INDEX powa_wait_sampling_history_db_ts ON powa_wait_sampling_history_db USING gist (dbid, coalesce_range);
 
 CREATE TABLE public.powa_wait_sampling_history_current (
     queryid bigint NOT NULL,

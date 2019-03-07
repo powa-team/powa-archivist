@@ -206,6 +206,9 @@ END
 $PROC$ language plpgsql; /* end of powa_kcache_snapshot */
 
 
+CREATE INDEX powa_qualstats_quals_history_query_ts ON powa_qualstats_quals_history USING gist (queryid, coalesce_range);
+
+
 CREATE OR REPLACE FUNCTION powa_qualstats_snapshot() RETURNS void as $PROC$
 DECLARE
     result     bool;
@@ -258,6 +261,11 @@ BEGIN
   PERFORM pg_qualstats_reset();
 END
 $PROC$ language plpgsql; /* end of powa_qualstats_snapshot */
+
+
+DROP INDEX IF EXISTS powa_wait_sampling_history_queryid_idx;
+CREATE INDEX powa_wait_sampling_history_query_ts ON public.powa_wait_sampling_history USING gist (queryid, coalesce_range);
+CREATE INDEX powa_wait_sampling_history_db_ts ON powa_wait_sampling_history_db USING gist (dbid, coalesce_range);
 
 
 /*
