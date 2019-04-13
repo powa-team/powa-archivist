@@ -245,7 +245,7 @@ _PG_init(void)
 void
 powa_main(Datum main_arg)
 {
-	char	   *query_snapshot = "SELECT powa_take_snapshot()";
+	char	   *query_snapshot = "SELECT public.powa_take_snapshot()";
 	static char *query_appname = "SET application_name = 'PoWA collector'";
 	int64		us_to_wait; /* Should be uint64 per postgresql's spec, but we
 							   may have negative result, in our tests */

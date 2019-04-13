@@ -7,6 +7,9 @@
     - Fix possible bug with background worker type in pg_stat_activity
       (github user ppetrov91)
     - Add some missing indexes (Julien Rouhaud, thanks to PoWA for noticing)
+  - Bugfix
+    - Schema qualify powa_take_snapshot() call, so powa can work without public
+      being in the superuser search_path (Julien Rouhaud)
 
 ## 3.2.0 (2018-10-14)
 
