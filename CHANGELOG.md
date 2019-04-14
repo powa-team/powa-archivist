@@ -10,6 +10,7 @@ version.
       storig and processing performance data on the local instance, and also
       allows using PoWA on hot-standby server (Julien Rouhaud, Thanks to Adrien
       Nayrat for extensive testing).
+    - Store new metrics added in pg_stat_kcache 2.1.0 (Julien Rouhaud)
 
 ## 3.2.1 (WIP)
 
