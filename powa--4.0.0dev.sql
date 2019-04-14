@@ -841,15 +841,31 @@ CREATE UNLOGGED TABLE public.powa_kcache_src_tmp(
     reads bigint NOT NULL,
     writes bigint NOT NULL,
     user_time double precision NOT NULL,
-    system_time double precision NOT NULL
+    system_time double precision NOT NULL,
+    minflts     bigint NOT NULL,
+    majflts     bigint NOT NULL,
+    nswaps      bigint NOT NULL,
+    msgsnds     bigint NOT NULL,
+    msgrcvs     bigint NOT NULL,
+    nsignals    bigint NOT NULL,
+    nvcsws      bigint NOT NULL,
+    nivcsws     bigint NOT NULL
 );
 
-CREATE TYPE public.kcache_type AS (
+CREATE TYPE public.powa_kcache_type AS (
     ts timestamptz,
-    reads bigint,
-    writes bigint,
-    user_time double precision,
-    system_time double precision
+    reads bigint,                   /* total reads, in bytes */
+    writes bigint,                  /* total writes, in bytes */
+    user_time double precision,     /* total user CPU time used */
+    system_time double precision,   /* total system CPU time used */
+    minflts     bigint,             /* total page reclaims (soft page faults) */
+    majflts     bigint,             /* total page faults (hard page faults) */
+    nswaps      bigint,             /* total swaps */
+    msgsnds     bigint,             /* total IPC messages sent */
+    msgrcvs     bigint,             /* total IPC messages received */
+    nsignals    bigint,             /* total signals received */
+    nvcsws      bigint,             /* total voluntary context switches */
+    nivcsws     bigint              /* total involuntary context switches */
 );
 
 /* pg_stat_kcache operator support */
@@ -858,12 +874,20 @@ CREATE TYPE powa_kcache_diff AS (
     reads bigint,
     writes bigint,
     user_time double precision,
-    system_time double precision
+    system_time double precision,
+    minflts     bigint,
+    majflts     bigint,
+    nswaps      bigint,
+    msgsnds     bigint,
+    msgrcvs     bigint,
+    nsignals    bigint,
+    nvcsws      bigint,
+    nivcsws     bigint
 );
 
 CREATE OR REPLACE FUNCTION powa_kcache_mi(
-    a kcache_type,
-    b kcache_type)
+    a powa_kcache_type,
+    b powa_kcache_type)
 RETURNS powa_kcache_diff AS
 $_$
 DECLARE
@@ -874,6 +898,14 @@ BEGIN
     res.writes = a.writes - b.writes;
     res.user_time = a.user_time - b.user_time;
     res.system_time = a.system_time - b.system_time;
+    res.minflts = a.minflts - b.minflts;
+    res.majflts = a.majflts - b.majflts;
+    res.nswaps = a.nswaps - b.nswaps;
+    res.msgsnds = a.msgsnds - b.msgsnds;
+    res.msgrcvs = a.msgrcvs - b.msgrcvs;
+    res.nsignals = a.nsignals - b.nsignals;
+    res.nvcsws = a.nvcsws - b.nvcsws;
+    res.nivcsws = a.nivcsws - b.nivcsws;
 
     return res;
 END;
@@ -882,8 +914,8 @@ LANGUAGE plpgsql IMMUTABLE STRICT;
 
 CREATE OPERATOR - (
     PROCEDURE = powa_kcache_mi,
-    LEFTARG = kcache_type,
-    RIGHTARG = kcache_type
+    LEFTARG = powa_kcache_type,
+    RIGHTARG = powa_kcache_type
 );
 
 CREATE TYPE powa_kcache_rate AS (
@@ -891,12 +923,20 @@ CREATE TYPE powa_kcache_rate AS (
     reads_per_sec double precision,
     writes_per_sec double precision,
     user_time_per_sec double precision,
-    system_time_per_sec double precision
+    system_time_per_sec double precision,
+    minflts_per_sec     bigint,
+    majflts_per_sec     bigint,
+    nswaps_per_sec      bigint,
+    msgsnds_per_sec     bigint,
+    msgrcvs_per_sec     bigint,
+    nsignals_per_sec    bigint,
+    nvcsws_per_sec      bigint,
+    nivcsws_per_sec     bigint
 );
 
 CREATE OR REPLACE FUNCTION powa_kcache_div(
-    a kcache_type,
-    b kcache_type)
+    a powa_kcache_type,
+    b powa_kcache_type)
 RETURNS powa_kcache_rate AS
 $_$
 DECLARE
@@ -913,6 +953,14 @@ BEGIN
     res.writes_per_sec = (a.writes - b.writes)::double precision / sec;
     res.user_time_per_sec = (a.user_time - b.user_time)::double precision / sec;
     res.system_time_per_sec = (a.system_time - b.system_time)::double precision / sec;
+    res.minflts_per_sec = (a.minflts_per_sec - b.minflts_per_sec)::bigint / sec;
+    res.majflts_per_sec = (a.majflts_per_sec - b.majflts_per_sec)::bigint / sec;
+    res.nswaps_per_sec = (a.nswaps_per_sec - b.nswaps_per_sec)::bigint / sec;
+    res.msgsnds_per_sec = (a.msgsnds_per_sec - b.msgsnds_per_sec)::bigint / sec;
+    res.msgrcvs_per_sec = (a.msgrcvs_per_sec - b.msgrcvs_per_sec)::bigint / sec;
+    res.nsignals_per_sec = (a.nsignals_per_sec - b.nsignals_per_sec)::bigint / sec;
+    res.nvcsws_per_sec = (a.nvcsws_per_sec - b.nvcsws_per_sec)::bigint / sec;
+    res.nivcsws_per_sec = (a.nivcsws_per_sec - b.nivcsws_per_sec)::bigint / sec;
 
     return res;
 END;
@@ -921,8 +969,8 @@ LANGUAGE plpgsql IMMUTABLE STRICT;
 
 CREATE OPERATOR / (
     PROCEDURE = powa_kcache_div,
-    LEFTARG = kcache_type,
-    RIGHTARG = kcache_type
+    LEFTARG = powa_kcache_type,
+    RIGHTARG = powa_kcache_type
 );
 
 /* end of pg_stat_kcache operator support */
@@ -933,9 +981,9 @@ CREATE TABLE public.powa_kcache_metrics (
     queryid bigint NOT NULL,
     dbid oid NOT NULL,
     userid oid NOT NULL,
-    metrics public.kcache_type[] NOT NULL,
-    mins_in_range public.kcache_type NOT NULL,
-    maxs_in_range public.kcache_type NOT NULL,
+    metrics public.powa_kcache_type[] NOT NULL,
+    mins_in_range public.powa_kcache_type NOT NULL,
+    maxs_in_range public.powa_kcache_type NOT NULL,
     PRIMARY KEY (srvid, coalesce_range, queryid, dbid, userid),
     FOREIGN KEY (srvid) REFERENCES powa_servers(id)
       MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
@@ -947,9 +995,9 @@ CREATE TABLE public.powa_kcache_metrics_db (
     srvid integer NOT NULL,
     coalesce_range tstzrange NOT NULL,
     dbid oid NOT NULL,
-    metrics public.kcache_type[] NOT NULL,
-    mins_in_range public.kcache_type NOT NULL,
-    maxs_in_range public.kcache_type NOT NULL,
+    metrics public.powa_kcache_type[] NOT NULL,
+    mins_in_range public.powa_kcache_type NOT NULL,
+    maxs_in_range public.powa_kcache_type NOT NULL,
     PRIMARY KEY (srvid, coalesce_range, dbid),
     FOREIGN KEY (srvid) REFERENCES powa_servers(id)
       MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
@@ -960,7 +1008,7 @@ CREATE TABLE public.powa_kcache_metrics_current (
     queryid bigint NOT NULL,
     dbid oid NOT NULL,
     userid oid NOT NULL,
-    metrics kcache_type NULL NULL,
+    metrics powa_kcache_type NULL NULL,
     FOREIGN KEY (srvid) REFERENCES powa_servers(id)
       MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
 );
@@ -969,7 +1017,7 @@ CREATE INDEX ON powa_kcache_metrics_current(srvid);
 CREATE TABLE public.powa_kcache_metrics_current_db (
     srvid integer NOT NULL,
     dbid oid NOT NULL,
-    metrics kcache_type NULL NULL,
+    metrics powa_kcache_type NULL NULL,
     FOREIGN KEY (srvid) REFERENCES powa_servers(id)
       MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
 );
@@ -2375,13 +2423,19 @@ CREATE OR REPLACE FUNCTION powa_kcache_src(IN _srvid integer,
     OUT ts timestamp with time zone,
     OUT queryid bigint, OUT userid oid, OUT dbid oid,
     OUT reads bigint, OUT writes bigint,
-    OUT user_time double precision, OUT system_time double precision
+    OUT user_time double precision, OUT system_time double precision,
+    OUT minflts bigint, OUT majflts bigint,
+    OUT nswaps bigint,
+    OUT msgsnds bigint, OUT msgrcvs bigint,
+    OUT nsignals bigint,
+    OUT nvcsws bigint, OUT nivcsws bigint
 ) RETURNS SETOF record AS $PROC$
 BEGIN
     IF (_srvid = 0) THEN
         RETURN QUERY SELECT now(),
             k.queryid, k.userid, k.dbid, k.reads, k.writes, k.user_time,
-            k.system_time
+            k.system_time, k.minflts, k.majflts, k.nswaps, k.msgsnds,
+            k.msgrcvs, k.nsignals, k.nvcsws, k.nivcsws
         FROM pg_stat_kcache() k
         JOIN pg_roles r ON r.oid = k.userid
         WHERE NOT (r.rolname = ANY (string_to_array(
@@ -2391,7 +2445,8 @@ BEGIN
     ELSE
         RETURN QUERY SELECT k.ts,
             k.queryid, k.userid, k.dbid, k.reads, k.writes, k.user_time,
-            k.system_time
+            k.system_time, k.minflts, k.majflts, k.nswaps, k.msgsnds,
+            k.msgrcvs, k.nsignals, k.nvcsws, k.nivcsws
         FROM powa_kcache_src_tmp k
         WHERE k.srvid = _srvid;
     END IF;
@@ -2419,14 +2474,17 @@ BEGIN
     by_query AS (
         INSERT INTO powa_kcache_metrics_current (srvid, queryid, dbid, userid, metrics)
             SELECT _srvid, queryid, dbid, userid,
-              (ts, reads, writes, user_time, system_time)::kcache_type
+              (ts, reads, writes, user_time, system_time, minflts, majflts,
+               nswaps, msgsnds, msgrcvs, nsignals, nvcsws, nivcsws)::powa_kcache_type
             FROM capture
     ),
 
     by_database AS (
         INSERT INTO powa_kcache_metrics_current_db (srvid, dbid, metrics)
             SELECT _srvid AS srvid, dbid,
-              (ts, sum(reads), sum(writes), sum(user_time), sum(system_time))::kcache_type
+              (ts, sum(reads), sum(writes), sum(user_time), sum(system_time),
+               sum(minflts), sum(majflts), sum(nswaps), sum(msgsnds),
+               sum(msgrcvs), sum(nsignals), sum(nvcsws), sum(nivcsws))::powa_kcache_type
             FROM capture
             GROUP BY ts, srvid, dbid
     )
@@ -2465,10 +2523,18 @@ BEGIN
         srvid, queryid, dbid, userid, array_agg(metrics),
         ROW(min((metrics).ts),
             min((metrics).reads),min((metrics).writes),min((metrics).user_time),
-            min((metrics).system_time))::kcache_type,
+            min((metrics).system_time), min((metrics).minflts),
+            min((metrics).majflts), min((metrics).nswaps),
+            min((metrics).msgsnds), min((metrics).msgrcvs),
+            min((metrics).nsignals), min((metrics).nvcsws),
+            min((metrics).nivcsws))::powa_kcache_type,
         ROW(max((metrics).ts),
             max((metrics).reads),max((metrics).writes),max((metrics).user_time),
-            max((metrics).system_time))::kcache_type
+            max((metrics).system_time), max((metrics).minflts),
+            max((metrics).majflts), max((metrics).nswaps),
+            max((metrics).msgsnds), max((metrics).msgrcvs),
+            max((metrics).nsignals), max((metrics).nvcsws),
+            max((metrics).nivcsws))::powa_kcache_type
         FROM powa_kcache_metrics_current
         WHERE srvid = _srvid
         GROUP BY srvid, queryid, dbid, userid;
@@ -2485,10 +2551,18 @@ BEGIN
         dbid, array_agg(metrics),
         ROW(min((metrics).ts),
             min((metrics).reads),min((metrics).writes),min((metrics).user_time),
-            min((metrics).system_time))::kcache_type,
+            min((metrics).system_time), min((metrics).minflts),
+            min((metrics).majflts), min((metrics).nswaps),
+            min((metrics).msgsnds), min((metrics).msgrcvs),
+            min((metrics).nsignals), min((metrics).nvcsws),
+            min((metrics).nivcsws))::powa_kcache_type,
         ROW(max((metrics).ts),
             max((metrics).reads),max((metrics).writes),max((metrics).user_time),
-            max((metrics).system_time))::kcache_type
+            max((metrics).system_time), max((metrics).minflts),
+            max((metrics).majflts), max((metrics).nswaps),
+            max((metrics).msgsnds), max((metrics).msgrcvs),
+            max((metrics).nsignals), max((metrics).nvcsws),
+            max((metrics).nivcsws))::powa_kcache_type
         FROM powa_kcache_metrics_current_db
         WHERE srvid = _srvid
         GROUP BY srvid, dbid;
