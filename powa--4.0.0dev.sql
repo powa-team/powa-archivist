@@ -662,6 +662,7 @@ CREATE FUNCTION powa_activate_extension(_srvid integer, _extname text) RETURNS b
 AS $_$
 DECLARE
     v_ext_registered boolean;
+    v_manually boolean;
 BEGIN
     SELECT COUNT(*) > 0 INTO v_ext_registered
     FROM powa_functions
@@ -681,32 +682,36 @@ BEGIN
         return true;
     END IF;
 
+    -- default extensions for non-local server have to be dumped
+    SELECT _srvid != 0 INTO v_manually;
+
     IF (_extname = 'pg_stat_statements') THEN
+
         INSERT INTO powa_functions(srvid, module, operation, function_name,
             query_source, added_manually, enabled, priority)
         VALUES
-        (_srvid, 'pg_stat_statements', 'snapshot',  'powa_databases_snapshot',    'powa_databases_src',  true, true, -1),
-        (_srvid, 'pg_stat_statements', 'snapshot',  'powa_statements_snapshot',  'powa_statements_src', true, true, default),
-        (_srvid, 'pg_stat_statements', 'aggregate', 'powa_statements_aggregate', NULL,                  true, true, default),
-        (_srvid, 'pg_stat_statements', 'purge',     'powa_statements_purge',     NULL,                  true, true, default),
-        (_srvid, 'pg_stat_statements', 'purge',     'powa_databases_purge',      NULL,                  true, true, default),
-        (_srvid, 'pg_stat_statements', 'reset',     'powa_statements_reset',     NULL,                  true, true, default);
+        (_srvid, 'pg_stat_statements', 'snapshot',  'powa_databases_snapshot',   'powa_databases_src',  v_manually, true, -1),
+        (_srvid, 'pg_stat_statements', 'snapshot',  'powa_statements_snapshot',  'powa_statements_src', v_manually, true, default),
+        (_srvid, 'pg_stat_statements', 'aggregate', 'powa_statements_aggregate', NULL,                  v_manually, true, default),
+        (_srvid, 'pg_stat_statements', 'purge',     'powa_statements_purge',     NULL,                  v_manually, true, default),
+        (_srvid, 'pg_stat_statements', 'purge',     'powa_databases_purge',      NULL,                  v_manually, true, default),
+        (_srvid, 'pg_stat_statements', 'reset',     'powa_statements_reset',     NULL,                  v_manually, true, default);
     ELSIF (_extname = 'powa_stat_user_functions') THEN
         INSERT INTO powa_functions(srvid, module, operation, function_name,
             query_source, added_manually, enabled, priority)
         VALUES
-         (_srvid, 'powa_stat_user_functions', 'snapshot',  'powa_user_functions_snapshot',  'powa_user_functions_src', false, true, default),
-         (_srvid, 'powa_stat_user_functions', 'aggregate', 'powa_user_functions_aggregate', NULL,                      false, true, default),
-         (_srvid, 'powa_stat_user_functions', 'purge',     'powa_user_functions_purge',     NULL,                      false, true, default),
-         (_srvid, 'powa_stat_user_functions', 'reset',     'powa_user_functions_reset',     NULL,                      false, true, default);
+         (_srvid, 'powa_stat_user_functions', 'snapshot',  'powa_user_functions_snapshot',  'powa_user_functions_src', v_manually, true, default),
+         (_srvid, 'powa_stat_user_functions', 'aggregate', 'powa_user_functions_aggregate', NULL,                      v_manually, true, default),
+         (_srvid, 'powa_stat_user_functions', 'purge',     'powa_user_functions_purge',     NULL,                      v_manually, true, default),
+         (_srvid, 'powa_stat_user_functions', 'reset',     'powa_user_functions_reset',     NULL,                      v_manually, true, default);
     ELSIF (_extname = 'powa_stat_all_relations') THEN
         INSERT INTO powa_functions(srvid, module, operation, function_name,
             query_source, added_manually, enabled, priority)
         VALUES
-        (_srvid, 'powa_stat_all_relations',  'snapshot',  'powa_all_relations_snapshot',   'powa_all_relations_src',  false, true, default),
-        (_srvid, 'powa_stat_all_relations',  'aggregate', 'powa_all_relations_aggregate',  NULL,                      false, true, default),
-        (_srvid, 'powa_stat_all_relations',  'purge',     'powa_all_relations_purge',      NULL,                      false, true, default),
-        (_srvid, 'powa_stat_all_relations',  'reset',     'powa_all_relations_reset',      NULL,                      false, true, default);
+        (_srvid, 'powa_stat_all_relations',  'snapshot',  'powa_all_relations_snapshot',   'powa_all_relations_src',  v_manually, true, default),
+        (_srvid, 'powa_stat_all_relations',  'aggregate', 'powa_all_relations_aggregate',  NULL,                      v_manually, true, default),
+        (_srvid, 'powa_stat_all_relations',  'purge',     'powa_all_relations_purge',      NULL,                      v_manually, true, default),
+        (_srvid, 'powa_stat_all_relations',  'reset',     'powa_all_relations_reset',      NULL,                      v_manually, true, default);
     ELSIF (_extname = 'pg_stat_kcache') THEN
         RETURN powa_kcache_register(_srvid);
     ELSIF (_extname = 'pg_qualstats') THEN
@@ -723,13 +728,13 @@ BEGIN
 END;
 $_$ LANGUAGE plpgsql; /* end of powa_activate_extension */
 
--- Register the extension if needed, and set the enabled flag to on
 CREATE FUNCTION powa_deactivate_extension(_srvid integer, _extname text) RETURNS boolean
 AS $_$
 BEGIN
     UPDATE powa_functions
     SET enabled = false
-    WHERE module = _extname;
+    WHERE module = _extname
+    AND srvid = _srvid;
 
     return true;
 END;
@@ -1367,6 +1372,8 @@ SELECT pg_catalog.pg_extension_config_dump('powa_wait_sampling_history_db','');
 SELECT pg_catalog.pg_extension_config_dump('powa_wait_sampling_history_current','');
 SELECT pg_catalog.pg_extension_config_dump('powa_wait_sampling_history_current_db','');
 
+-- automatically configure powa for local snapshot if supported extension are
+-- created locally
 CREATE OR REPLACE FUNCTION public.powa_check_created_extensions()
 RETURNS event_trigger
 LANGUAGE plpgsql
@@ -1383,10 +1390,10 @@ BEGIN
      * extension is created. Powa should be in a dedicated database and the
      * register function handle to be called several time, so it's not critical
      */
-    PERFORM public.powa_kcache_register();
-    PERFORM public.powa_qualstats_register();
-    PERFORM public.powa_track_settings_register();
-    PERFORM public.powa_wait_sampling_register();
+    PERFORM public.powa_kcache_register(0);
+    PERFORM public.powa_qualstats_register(0);
+    PERFORM public.powa_track_settings_register(0);
+    PERFORM public.powa_wait_sampling_register(0);
 END;
 $_$; /* end of powa_check_created_extensions */
 
@@ -1395,6 +1402,8 @@ CREATE EVENT TRIGGER powa_check_created_extensions
     WHEN tag IN ('CREATE EXTENSION')
     EXECUTE PROCEDURE public.powa_check_created_extensions() ;
 
+-- automatically remove extensions from local snapshot if supported extension
+-- is removed locally
 CREATE OR REPLACE FUNCTION public.powa_check_dropped_extensions()
 RETURNS event_trigger
 LANGUAGE plpgsql
@@ -1426,7 +1435,7 @@ BEGIN
     IF ( funcname IS NOT NULL ) THEN
         BEGIN
             PERFORM powa_log(format('running %I', funcname));
-            EXECUTE 'SELECT ' || quote_ident(funcname) || '()';
+            EXECUTE 'SELECT ' || quote_ident(funcname) || '(0)';
         EXCEPTION
           WHEN OTHERS THEN
             GET STACKED DIAGNOSTICS
@@ -2395,11 +2404,11 @@ BEGIN
             PERFORM powa_log('registering pg_stat_kcache');
 
             INSERT INTO powa_functions (srvid, module, operation, function_name, query_source, added_manually, enabled, priority)
-            VALUES (_srvid, 'pg_stat_kcache', 'snapshot',   'powa_kcache_snapshot',   'powa_kcache_src', false, true, -1),
-                   (_srvid, 'pg_stat_kcache', 'aggregate',  'powa_kcache_aggregate',  NULL,       false, true, default),
-                   (_srvid, 'pg_stat_kcache', 'unregister', 'powa_kcache_unregister', NULL,       false, true, default),
-                   (_srvid, 'pg_stat_kcache', 'purge',      'powa_kcache_purge',      NULL,       false, true, default),
-                   (_srvid, 'pg_stat_kcache', 'reset',      'powa_kcache_reset',      NULL,       false, true, default);
+            VALUES (_srvid, 'pg_stat_kcache', 'snapshot',   'powa_kcache_snapshot',   'powa_kcache_src', true, true, -1),
+                   (_srvid, 'pg_stat_kcache', 'aggregate',  'powa_kcache_aggregate',  NULL,              true, true, default),
+                   (_srvid, 'pg_stat_kcache', 'unregister', 'powa_kcache_unregister', NULL,              true, true, default),
+                   (_srvid, 'pg_stat_kcache', 'purge',      'powa_kcache_purge',      NULL,              true, true, default),
+                   (_srvid, 'pg_stat_kcache', 'reset',      'powa_kcache_reset',      NULL,              true, true, default);
         END IF;
     END IF;
 
@@ -2411,11 +2420,13 @@ language plpgsql; /* end of powa_kcache_register */
 /*
  * unregister pg_stat_kcache extension
  */
-CREATE OR REPLACE function public.powa_kcache_unregister() RETURNS bool AS
+CREATE OR REPLACE function public.powa_kcache_unregister(_srvid integer = 0) RETURNS bool AS
 $_$
 BEGIN
     PERFORM powa_log('unregistering pg_stat_kcache');
-    DELETE FROM public.powa_functions WHERE module = 'pg_stat_kcache';
+    DELETE FROM public.powa_functions
+    WHERE module = 'pg_stat_kcache'
+    AND srvid = _srvid;
     RETURN true;
 END;
 $_$
@@ -2671,11 +2682,11 @@ BEGIN
             PERFORM powa_log('registering pg_qualstats');
 
             INSERT INTO powa_functions (srvid, module, operation, function_name, query_source, added_manually, enabled)
-            VALUES (_srvid, 'pg_qualstats', 'snapshot',   'powa_qualstats_snapshot',   'powa_qualstats_src', false, true),
-                   (_srvid, 'pg_qualstats', 'aggregate',  'powa_qualstats_aggregate',  NULL,                 false, true),
-                   (_srvid, 'pg_qualstats', 'unregister', 'powa_qualstats_unregister', NULL,                 false, true),
-                   (_srvid, 'pg_qualstats', 'purge',      'powa_qualstats_purge',      NULL,                 false, true),
-                   (_srvid, 'pg_qualstats', 'reset',      'powa_qualstats_reset',      NULL,                 false, true);
+            VALUES (_srvid, 'pg_qualstats', 'snapshot',   'powa_qualstats_snapshot',   'powa_qualstats_src', true, true),
+                   (_srvid, 'pg_qualstats', 'aggregate',  'powa_qualstats_aggregate',  NULL,                 true, true),
+                   (_srvid, 'pg_qualstats', 'unregister', 'powa_qualstats_unregister', NULL,                 true, true),
+                   (_srvid, 'pg_qualstats', 'purge',      'powa_qualstats_purge',      NULL,                 true, true),
+                   (_srvid, 'pg_qualstats', 'reset',      'powa_qualstats_reset',      NULL,                 true, true);
         END IF;
     END IF;
 
@@ -2989,11 +3000,13 @@ $PROC$ language plpgsql; /* end of powa_qualstats_reset */
 /*
  * powa_qualstats_unregister
  */
-CREATE OR REPLACE function public.powa_qualstats_unregister() RETURNS bool AS
+CREATE OR REPLACE function public.powa_qualstats_unregister(_srvid integer = 0) RETURNS bool AS
 $_$
 BEGIN
     PERFORM powa_log('unregistering pg_qualstats');
-    DELETE FROM public.powa_functions WHERE module = 'pg_qualstats';
+    DELETE FROM public.powa_functions
+    WHERE module = 'pg_qualstats'
+    AND srvid = _srvid;
     RETURN true;
 END;
 $_$
@@ -3089,11 +3102,11 @@ BEGIN
             PERFORM powa_log('registering pg_wait_sampling');
 
             INSERT INTO powa_functions (srvid, module, operation, function_name, query_source, added_manually, enabled)
-            VALUES (_srvid, 'pg_wait_sampling', 'snapshot',   'powa_wait_sampling_snapshot',   'powa_wait_sampling_src', false, true),
-                   (_srvid, 'pg_wait_sampling', 'aggregate',  'powa_wait_sampling_aggregate',  NULL,                     false, true),
-                   (_srvid, 'pg_wait_sampling', 'unregister', 'powa_wait_sampling_unregister', NULL,                     false, true),
-                   (_srvid, 'pg_wait_sampling', 'purge',      'powa_wait_sampling_purge',      NULL,                     false, true),
-                   (_srvid, 'pg_wait_sampling', 'reset',      'powa_wait_sampling_reset',      NULL,                     false, true);
+            VALUES (_srvid, 'pg_wait_sampling', 'snapshot',   'powa_wait_sampling_snapshot',   'powa_wait_sampling_src', true, true),
+                   (_srvid, 'pg_wait_sampling', 'aggregate',  'powa_wait_sampling_aggregate',  NULL,                     true, true),
+                   (_srvid, 'pg_wait_sampling', 'unregister', 'powa_wait_sampling_unregister', NULL,                     true, true),
+                   (_srvid, 'pg_wait_sampling', 'purge',      'powa_wait_sampling_purge',      NULL,                     true, true),
+                   (_srvid, 'pg_wait_sampling', 'reset',      'powa_wait_sampling_reset',      NULL,                     true, true);
         END IF;
     END IF;
 
