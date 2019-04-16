@@ -713,6 +713,8 @@ BEGIN
         RETURN powa_qualstats_register(_srvid);
     ELSIF (_extname = 'pg_wait_sampling') THEN
         RETURN powa_wait_sampling_register(_srvid);
+    ELSIF (_extname = 'pg_track_settings') THEN
+        RETURN powa_track_settings_register(_srvid);
     ELSE
         return false;
     END IF;
@@ -3003,25 +3005,36 @@ SELECT * FROM public.powa_qualstats_register();
 
 /* pg_track_settings integration */
 
-CREATE OR REPLACE FUNCTION powa_track_settings_register() RETURNS bool AS $_$
+CREATE OR REPLACE FUNCTION powa_track_settings_register(_srvid integer = 0) RETURNS bool AS $_$
 DECLARE
     v_func_present bool;
     v_ext_present bool;
 BEGIN
-    SELECT COUNT(*) = 1 INTO v_ext_present
-    FROM pg_extension
-    WHERE extname = 'pg_track_settings';
+    IF (_srvid = 0) THEN
+        SELECT COUNT(*) = 1 INTO v_ext_present
+        FROM pg_extension
+        WHERE extname = 'pg_track_settings';
+    ELSE
+        v_ext_present = true;
+    END IF;
 
     IF ( v_ext_present ) THEN
-        SELECT COUNT(*) > 0 INTO v_func_present FROM public.powa_functions WHERE module = 'pg_track_settings';
+        SELECT COUNT(*) > 0 INTO v_func_present
+        FROM public.powa_functions
+        WHERE module = 'pg_track_settings'
+        AND srvid = _srvid;
+
         IF ( NOT v_func_present) THEN
             PERFORM powa_log('registering pg_track_settings');
 
             -- This extension handles its own storage, just its snapshot
             -- function and an unregister function.
             INSERT INTO powa_functions (srvid, module, operation, function_name, query_source, added_manually, enabled)
-            VALUES (0, 'pg_track_settings', 'snapshot',   'pg_track_settings_snapshot',       NULL, false, true),
-                   (0, 'pg_track_settings', 'unregister', 'powa_track_settings_unregister',   NULL, false, true);
+            VALUES (_srvid, 'pg_track_settings', 'snapshot',   'pg_track_settings_snapshot_settings', 'pg_track_settings_settings_src', true, true),
+                   (_srvid, 'pg_track_settings', 'snapshot',   'pg_track_settings_snapshot_rds',      'pg_track_settings_rds_src',      true, true),
+                   (_srvid, 'pg_track_settings', 'snapshot',   'pg_track_settings_snapshot_reboot',   'pg_track_settings_reboot_src',   true, true),
+                   (_srvid, 'pg_track_settings', 'reset',      'pg_track_settings_reset',             NULL,                             true, true),
+                   (_srvid, 'pg_track_settings', 'unregister', 'powa_track_settings_unregister',      NULL,                             true, true);
         END IF;
     END IF;
 
@@ -3029,11 +3042,13 @@ BEGIN
 END;
 $_$ language plpgsql; /* end of pg_track_settings_register */
 
-CREATE OR REPLACE function public.powa_track_settings_unregister() RETURNS bool AS
+CREATE OR REPLACE function public.powa_track_settings_unregister(_srvid integer = 0) RETURNS bool AS
 $_$
 BEGIN
     PERFORM powa_log('unregistering pg_track_settings');
-    DELETE FROM public.powa_functions WHERE module = 'pg_track_settings';
+    DELETE FROM public.powa_functions
+    WHERE module = 'pg_track_settings'
+    AND srvid = _srvid;
     RETURN true;
 END;
 $_$
