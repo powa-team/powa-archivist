@@ -20,7 +20,7 @@ CREATE TABLE powa_servers(
     username text NOT NULL,
     password text,
     dbname text NOT NULL,
-    frequency integer NOT NULL default 60,
+    frequency integer NOT NULL default 60 CHECK (frequency = -1 OR frequency >= 5),
     retention interval NOT NULL default '1 day'::interval,
     UNIQUE (hostname, port),
     UNIQUE(alias)
