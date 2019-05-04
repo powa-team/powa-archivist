@@ -804,6 +804,99 @@ BEGIN
 END;
 $_$ LANGUAGE plpgsql; /* end of powa_register_server */
 
+CREATE FUNCTION powa_configure_server(_srvid integer, data json) RETURNS boolean
+AS $_$
+DECLARE
+    v_rowcount bigint;
+    k text;
+    v text;
+    v_query text = '';
+BEGIN
+    IF (_srvid = 0) THEN
+        RAISE EXCEPTION 'Local server cannot be configured';
+    END IF;
+
+    IF (data IS NULL) THEN
+        RAISE EXCEPTION 'No data provided';
+    END IF;
+
+    FOR k, v IN SELECT * FROM json_each_text(data) LOOP
+        IF (k = 'id') THEN
+            RAISE EXCEPTION 'Updating server id is not allowed';
+        END IF;
+
+        IF (k NOT IN ('hostname', 'alias', 'port', 'username', 'password',
+            'dbname', 'frequency', 'retention')
+        ) THEN
+            RAISE EXCEPTION 'Unknown field: %', k;
+        END IF;
+
+        IF (v_query != '') THEN
+            v_query := v_query || ', ';
+        END IF;
+        v_query := v_query || format('%I = %L', k, v);
+    END LOOP;
+
+    v_query := 'UPDATE public.powa_servers SET '
+        || v_query
+        || format(' WHERE id = %s', _srvid);
+
+    EXECUTE v_query;
+
+    GET DIAGNOSTICS v_rowcount = ROW_COUNT;
+
+    RETURN v_rowcount = 1;
+END;
+$_$ LANGUAGE plpgsql; /* powa_config_server */
+
+CREATE FUNCTION powa_deactivate_server(_srvid integer) RETURNS boolean
+AS $_$
+DECLARE
+    v_rowcount bigint;
+BEGIN
+    IF (_srvid = 0) THEN
+        RAISE EXCEPTION 'Local server cannot be updated';
+    END IF;
+
+    UPDATE public.powa_servers SET frequency = -1 WHERE id = _srvid;
+
+    GET DIAGNOSTICS v_rowcount = ROW_COUNT;
+
+    RETURN v_rowcount = 1;
+END;
+$_$ LANGUAGE plpgsql; /* powa_deactivate_server */
+
+CREATE FUNCTION powa_delete_and_purge_server(_srvid integer) RETURNS boolean
+AS $_$
+DECLARE
+    v_rowcount bigint;
+BEGIN
+    IF (_srvid = 0) THEN
+        RAISE EXCEPTION 'Local server cannot be deleted';
+    END IF;
+
+    DELETE FROM public.powa_servers WHERE id = _srvid;
+
+    GET DIAGNOSTICS v_rowcount = ROW_COUNT;
+
+    -- pg_track_settings is an autonomous extension, so it doesn't have a FK to
+    -- powa_servers.  It therefore needs to be processed manually
+    SELECT COUNT(*)
+        FROM pg_extension
+        WHERE extname = 'pg_track_settings'
+        INTO v_rowcount;
+    IF (v_rowcount = 1) THEN
+        DELETE FROM pg_track_settings_list WHERE srvid = _srvid;
+        DELETE FROM pg_track_settings_history WHERE srvid = _srvid;
+        DELETE FROM pg_track_db_role_settings_list WHERE srvid = _srvid;
+        DELETE FROM pg_track_db_role_settings_history WHERE srvid = _srvid;
+        DELETE FROM pg_reboot WHERE srvid = _srvid;
+    END IF;
+
+    RETURN v_rowcount = 1;
+END;
+$_$ LANGUAGE plpgsql; /* powa_deactivate_server */
+
 CREATE FUNCTION powa_log (msg text) RETURNS void
 LANGUAGE plpgsql
 AS $_$
