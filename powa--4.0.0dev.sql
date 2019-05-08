@@ -21,11 +21,12 @@ CREATE TABLE powa_servers(
     password text,
     dbname text NOT NULL,
     frequency integer NOT NULL default 60 CHECK (frequency = -1 OR frequency >= 5),
+    powa_coalesce integer NOT NULL default 100 CHECK (powa_coalesce >= 5),
     retention interval NOT NULL default '1 day'::interval,
     UNIQUE (hostname, port),
     UNIQUE(alias)
 );
-INSERT INTO powa_servers VALUES (0, '', '<local>', 0, '', NULL, '', -1, '0 second');
+INSERT INTO powa_servers VALUES (0, '', '<local>', 0, '', NULL, '', -1, 100, '0 second');
 
 CREATE TABLE powa_snapshot_metas(
     srvid integer PRIMARY KEY,
@@ -747,6 +748,7 @@ CREATE FUNCTION powa_register_server(hostname text,
     password text DEFAULT NULL,
     dbname text DEFAULT 'powa',
     frequency integer DEFAULT 300,
+    powa_coalesce integer default 100,
     retention interval DEFAULT '1 day'::interval,
     extensions text[] DEFAULT NULL)
 RETURNS boolean AS $_$
@@ -758,13 +760,13 @@ BEGIN
     -- sanity checks
     SELECT coalesce(port, 5432), coalesce(username, 'powa'),
         coalesce(dbname, 'powa'), coalesce(frequency, 300),
-        coalesce(retention, '1 day')::interval
+        coalesce(powa_coalesce, 100), coalesce(retention, '1 day')::interval
     INTO port, username, dbname, frequency, retention;
 
     INSERT INTO powa_servers
-        (alias, hostname, port, username, password, dbname, frequency, retention)
+        (alias, hostname, port, username, password, dbname, frequency, powa_coalesce, retention)
     VALUES
-        (alias, hostname, port, username, password, dbname, frequency, retention)
+        (alias, hostname, port, username, password, dbname, frequency, powa_coalesce, retention)
     RETURNING id INTO v_srvid;
 
     INSERT INTO powa_snapshot_metas(srvid) VALUES (v_srvid);
@@ -1592,6 +1594,7 @@ DECLARE
               hint   : %s
               context: %s';
   v_pattern_simple text = 'powa_take_snapshot(%s): function "%s" failed: %s';
+  v_coalesce bigint;
 BEGIN
     PERFORM set_config('application_name',
         v_title || ' snapshot database list',
@@ -1608,6 +1611,15 @@ BEGIN
     RETURNING coalesce_seq INTO purge_seq;
 
     PERFORM powa_log(format('coalesce_seq(%s): %s', _srvid, purge_seq));
+
+    IF (_srvid = 0) THEN
+        SELECT current_setting('powa.coalesce') INTO v_coalesce;
+    ELSE
+        SELECT powa_coalesce
+        FROM public.powa_servers
+        WHERE id = _srvid
+        INTO v_coalesce;
+    END IF;
 
     -- For all enabled snapshot functions in the powa_functions table, execute
     FOR funcname IN SELECT function_name
@@ -1644,11 +1656,11 @@ BEGIN
     END LOOP;
 
     -- Coalesce datas if needed
-    IF ( (purge_seq % current_setting('powa.coalesce')::bigint ) = 0 )
+    IF ( (purge_seq % v_coalesce ) = 0 )
     THEN
       PERFORM powa_log(
         format('coalesce needed, srvid: %s - seq: %s - coalesce seq: %s',
-        _srvid, purge_seq, current_setting('powa.coalesce')::bigint ));
+        _srvid, purge_seq, v_coalesce ));
 
       FOR funcname IN SELECT function_name
                    FROM powa_functions
@@ -1694,11 +1706,11 @@ BEGIN
     END IF;
 
     -- We also purge, at the pass after the coalesce
-    IF ( (purge_seq % (current_setting('powa.coalesce')::bigint )) = 1 )
+    IF ( (purge_seq % v_coalesce) = 1 )
     THEN
       PERFORM powa_log(
         format('purge needed, srvid: %s - seq: %s coalesce seq: %s',
-        _srvid, purge_seq, current_setting('powa.coalesce')));
+        _srvid, purge_seq, v_coalesce));
 
       FOR funcname IN SELECT function_name
                    FROM powa_functions
