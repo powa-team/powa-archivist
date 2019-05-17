@@ -1,4 +1,4 @@
-## 4.0.0 (WIP)
+## 4.0.0 (Beta)
 
 This is a major rework of PoWA.  Please not that there is not upgrade to switch
 to this version. You need to remove the old one and install the new 4.0.0
@@ -11,9 +11,6 @@ version.
       allows using PoWA on hot-standby server (Julien Rouhaud, Thanks to Adrien
       Nayrat for extensive testing).
     - Store new metrics added in pg_stat_kcache 2.1.0 (Julien Rouhaud)
-
-## 3.2.1 (WIP)
-
   - Miscellaneous:
     - Add support for makefile option NO_PGXS (Julien Rouhaud)
     - Cleanup old databases after the expiration period, and stop gathering
