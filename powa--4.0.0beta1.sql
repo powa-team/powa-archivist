@@ -72,7 +72,7 @@ CREATE FUNCTION powa_stat_user_functions(IN dbid oid, OUT funcid oid,
     OUT calls bigint,
     OUT total_time double precision,
     OUT self_time double precision)
-    RETURNS SETOF record
+    RETURNS SETOF record STABLE
     LANGUAGE c COST 100
 AS '$libdir/powa', 'powa_stat_user_functions';
 
@@ -98,7 +98,7 @@ CREATE FUNCTION powa_stat_all_rel(IN dbid oid,
     OUT analyze_count bigint,
     OUT last_autoanalyze timestamp with time zone,
     OUT autoanalyze_count bigint)
-    RETURNS SETOF record
+    RETURNS SETOF record STABLE
     LANGUAGE c COST 100
 AS '$libdir/powa', 'powa_stat_all_rel';
 
@@ -1773,7 +1773,9 @@ $PROC$ LANGUAGE plpgsql; /* end of powa_take_snapshot(int) */
 CREATE OR REPLACE FUNCTION powa_databases_src(IN _srvid integer,
     OUT oid oid,
     OUT datname name)
-RETURNS SETOF record AS $PROC$
+RETURNS SETOF record
+STABLE
+AS $PROC$
 BEGIN
     IF (_srvid = 0) THEN
         RETURN QUERY SELECT d.oid, d.datname
@@ -1873,7 +1875,9 @@ CREATE OR REPLACE FUNCTION powa_statements_src(IN _srvid integer,
     OUT blk_read_time double precision,
     OUT blk_write_time double precision
 )
-RETURNS SETOF record AS $PROC$
+RETURNS SETOF record
+STABLE
+AS $PROC$
 BEGIN
     IF (_srvid = 0) THEN
         RETURN QUERY SELECT now(),
@@ -1983,7 +1987,9 @@ CREATE OR REPLACE FUNCTION powa_user_functions_src(IN _srvid integer,
     OUT calls bigint,
     OUT total_time double precision,
     OUT self_time double precision
-) RETURNS SETOF record AS $PROC$
+) RETURNS SETOF record
+STABLE
+AS $PROC$
 BEGIN
     IF (_srvid = 0) THEN
         RETURN QUERY SELECT now(), d.oid, r.funcid, r.calls, r.total_time,
@@ -2057,7 +2063,7 @@ CREATE OR REPLACE FUNCTION powa_all_relations_src(IN _srvid integer,
     OUT analyze_count bigint,
     OUT last_autoanalyze timestamp with time zone,
     OUT autoanalyze_count bigint
-) RETURNS SETOF record AS $PROC$
+) RETURNS SETOF record STABLE AS $PROC$
 BEGIN
     IF (_srvid = 0) THEN
         RETURN QUERY SELECT now(),
@@ -2547,7 +2553,7 @@ CREATE OR REPLACE FUNCTION powa_kcache_src(IN _srvid integer,
     OUT msgsnds bigint, OUT msgrcvs bigint,
     OUT nsignals bigint,
     OUT nvcsws bigint, OUT nivcsws bigint
-) RETURNS SETOF record AS $PROC$
+) RETURNS SETOF record STABLE AS $PROC$
 BEGIN
     IF (_srvid = 0) THEN
         RETURN QUERY SELECT now(),
@@ -2817,7 +2823,7 @@ CREATE OR REPLACE FUNCTION powa_qualstats_aggregate_constvalues_current(
     OUT mf qual_values[],
     OUT lf qual_values[],
     OUT me qual_values[])
-RETURNS SETOF record AS $_$
+RETURNS SETOF record STABLE AS $_$
 WITH consts AS (
   SELECT q.srvid, q.qualid, q.queryid, q.dbid, q.userid,
     min(q.ts) as mints, max(q.ts) as maxts,
@@ -2896,7 +2902,7 @@ CREATE OR REPLACE FUNCTION powa_qualstats_src(IN _srvid integer,
     OUT queryid bigint,
     OUT constvalues varchar[],
     OUT quals qual_type[]
-) RETURNS SETOF record AS $PROC$
+) RETURNS SETOF record STABLE AS $PROC$
 BEGIN
     IF (_srvid = 0) THEN
         RETURN QUERY
@@ -3240,7 +3246,7 @@ CREATE OR REPLACE FUNCTION powa_wait_sampling_src(IN _srvid integer,
     OUT event text,
     OUT queryid bigint,
     OUT count numeric
-) RETURNS SETOF RECORD AS $PROC$
+) RETURNS SETOF RECORD STABLE AS $PROC$
 BEGIN
     IF (_srvid = 0) THEN
         RETURN QUERY
