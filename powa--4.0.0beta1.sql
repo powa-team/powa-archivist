@@ -1443,6 +1443,9 @@ CREATE INDEX ON powa_wait_sampling_history_current_db(srvid);
 /* end of pg_wait_sampling integration - part 1 */
 
 -- Mark all of powa's tables as "to be dumped"
+SELECT pg_catalog.pg_extension_config_dump('powa_servers','WHERE id > 0');
+SELECT pg_catalog.pg_extension_config_dump('powa_snapshot_metas','WHERE id > 0');
+SELECT pg_catalog.pg_extension_config_dump('powa_databases','');
 SELECT pg_catalog.pg_extension_config_dump('powa_statements','');
 SELECT pg_catalog.pg_extension_config_dump('powa_statements_history','');
 SELECT pg_catalog.pg_extension_config_dump('powa_statements_history_db','');
