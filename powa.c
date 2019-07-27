@@ -187,12 +187,10 @@ _PG_init(void)
 							   false, PGC_USERSET, 0, NULL, NULL, NULL);
 
 	/*
-	 * Following code is only needed for the bgworker, so only used when powa
-	 * is loaded in shared_preload_libraries.
+	 * The rest of the GUCs are not required when the bgworker isn't active,
+	 * but it can be useful when manually calling powa_take_snapshot(), and
+	 * defining them doesn't hurt anyway
 	 */
-	if (!process_shared_preload_libraries_in_progress)
-		return;
-
 	DefineCustomIntVariable("powa.frequency",
 						 "Defines the frequency in seconds of the snapshots",
 							NULL,
@@ -220,13 +218,20 @@ _PG_init(void)
 							INT_MAX / SECS_PER_MINUTE,
 							PGC_SUSET, GUC_UNIT_MIN, NULL, NULL, NULL);
 
+	EmitWarningsOnPlaceholders("powa");
+
+	/*
+	 * Following code is only needed for the bgworker, so only used when powa
+	 * is loaded in shared_preload_libraries.
+	 */
+	if (!process_shared_preload_libraries_in_progress)
+		return;
+
 	DefineCustomStringVariable("powa.database",
 						   "Defines the database of the workload repository",
 							   NULL,
 							   &powa_database,
 							   "powa", PGC_POSTMASTER, 0, NULL, NULL, NULL);
-
-	EmitWarningsOnPlaceholders("powa");
 
 	/*
 	 * Register the worker processes
