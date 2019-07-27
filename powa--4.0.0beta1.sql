@@ -463,6 +463,118 @@ CREATE OPERATOR / (
 );
 /* end of pg_stat_all_relations operator support */
 
+CREATE TYPE powa_stat_bgwriter_history_record AS (
+    ts timestamp with time zone,
+    checkpoints_timed bigint,
+    checkpoints_req bigint,
+    checkpoint_write_time double precision,
+    checkpoint_sync_time double precision,
+    buffers_checkpoint bigint,
+    buffers_clean bigint,
+    maxwritten_clean bigint,
+    buffers_backend bigint,
+    buffers_backend_fsync bigint,
+    buffers_alloc bigint
+);
+
+/*pg_stat_bgwriter operator support */
+CREATE TYPE powa_stat_bgwriter_history_diff AS (
+    intvl interval,
+    checkpoints_timed bigint,
+    checkpoints_req bigint,
+    checkpoint_write_time double precision,
+    checkpoint_sync_time double precision,
+    buffers_checkpoint double precision,
+    buffers_clean bigint,
+    maxwritten_clean bigint,
+    buffers_backend bigint,
+    buffers_backend_fsync bigint,
+    buffers_alloc bigint
+);
+
+CREATE OR REPLACE FUNCTION powa_stat_bgwriter_history_mi(
+    a powa_stat_bgwriter_history_record,
+    b powa_stat_bgwriter_history_record)
+RETURNS powa_stat_bgwriter_history_diff AS
+$_$
+DECLARE
+    res powa_stat_bgwriter_history_diff;
+BEGIN
+    res.intvl = a.ts - b.ts;
+    res.checkpoints_timed = a.checkpoints_timed - b.checkpoints_timed;
+    res.checkpoints_req = a.checkpoints_req - b.checkpoints_req;
+    res.checkpoint_write_time = a.checkpoint_write_time - b.checkpoint_write_time;
+    res.checkpoint_sync_time = a.checkpoint_sync_time - b.checkpoint_sync_time;
+    res.buffers_checkpoint = a.buffers_checkpoint - b.buffers_checkpoint;
+    res.buffers_clean = a.buffers_clean - b.buffers_clean;
+    res.maxwritten_clean = a.maxwritten_clean - b.maxwritten_clean;
+    res.buffers_backend = a.buffers_backend - b.buffers_backend;
+    res.buffers_backend_fsync = a.buffers_backend_fsync - b.buffers_backend_fsync;
+    res.buffers_alloc = a.buffers_alloc - b.buffers_alloc;
+
+    return res;
+END;
+$_$
+LANGUAGE plpgsql IMMUTABLE STRICT;
+
+CREATE OPERATOR - (
+    PROCEDURE = powa_stat_bgwriter_history_mi,
+    LEFTARG = powa_stat_bgwriter_history_record,
+    RIGHTARG = powa_stat_bgwriter_history_record
+);
+
+CREATE TYPE powa_stat_bgwriter_history_rate AS (
+    sec integer,
+    checkpoints_timed double precision,
+    checkpoints_req double precision,
+    checkpoint_write_time double precision,
+    checkpoint_sync_time double precision,
+    buffers_checkpoint double precision,
+    buffers_clean double precision,
+    maxwritten_clean double precision,
+    buffers_backend double precision,
+    buffers_backend_fsync double precision,
+    buffers_alloc double precision
+);
+
+CREATE OR REPLACE FUNCTION powa_stat_bgwriter_history_div(
+    a powa_stat_bgwriter_history_record,
+    b powa_stat_bgwriter_history_record)
+RETURNS powa_stat_bgwriter_history_rate AS
+$_$
+DECLARE
+    res powa_stat_bgwriter_history_rate;
+    sec integer;
+BEGIN
+    res.sec = extract(EPOCH FROM (a.ts - b.ts));
+    IF res.sec = 0 THEN
+        sec = 1;
+    ELSE
+        sec = res.sec;
+    END IF;
+    res.checkpoints_timed_per_sec = (a.checkpoints_timed - b.checkpoints_timed)::double precision / sec;
+    res.checkpoints_req_per_sec = (a.checkpoints_req - b.checkpoints_req)::double precision / sec;
+    res.checkpoint_write_time_per_sec = (a.checkpoint_write_time - b.checkpoint_write_time)::double precision / sec;
+    res.checkpoint_sync_time_per_sec = (a.checkpoint_sync_time - b.checkpoint_sync_time)::double precision / sec;
+    res.buffers_checkpoint_per_sec = (a.buffers_checkpoint - b.buffers_checkpoint)::double precision / sec;
+    res.buffers_clean_per_sec = (a.buffers_clean - b.buffers_clean)::double precision / sec;
+    res.maxwritten_clean_per_sec = (a.maxwritten_clean - b.maxwritten_clean)::double precision / sec;
+    res.buffers_backend_per_sec = (a.buffers_backend - b.buffers_backend)::double precision / sec;
+    res.buffers_backend_fsync_per_sec = (a.buffers_backend_fsync - b.buffers_backend_fsync)::double precision / sec;
+    res.buffers_alloc_per_sec = (a.buffers_alloc - b.buffers_alloc)::double precision / sec;
+
+    return res;
+END;
+$_$
+LANGUAGE plpgsql IMMUTABLE STRICT;
+
+CREATE OPERATOR / (
+    PROCEDURE = powa_stat_bgwriter_history_div,
+    LEFTARG = powa_stat_bgwriter_history_record,
+    RIGHTARG = powa_stat_bgwriter_history_record
+);
+/* end of pg_stat_bgwriter operator support */
+
 
 CREATE UNLOGGED TABLE public.powa_databases_src_tmp(
     srvid integer NOT NULL,
@@ -529,6 +641,21 @@ CREATE UNLOGGED TABLE public.powa_all_relations_src_tmp(
     analyze_count bigint NOT NULL,
     last_autoanalyze timestamp with time zone,
     autoanalyze_count bigint NOT NULL
+);
+
+CREATE UNLOGGED TABLE public.powa_stat_bgwriter_src_tmp(
+    srvid integer NOT NULL,
+    ts timestamp with time zone NOT NULL,
+    checkpoints_timed bigint NOT NULL,
+    checkpoints_req bigint NOT NULL,
+    checkpoint_write_time double precision NOT NULL,
+    checkpoint_sync_time double precision NOT NULL,
+    buffers_checkpoint bigint NOT NULL,
+    buffers_clean bigint NOT NULL,
+    maxwritten_clean bigint NOT NULL,
+    buffers_backend bigint NOT NULL,
+    buffers_backend_fsync bigint NOT NULL,
+    buffers_alloc bigint NOT NULL
 );
 
 CREATE TABLE powa_statements_history (
@@ -627,6 +754,25 @@ CREATE TABLE powa_all_relations_history_current (
 );
 CREATE INDEX ON powa_all_relations_history_current(srvid);
 
+CREATE TABLE powa_stat_bgwriter_history (
+    srvid integer NOT NULL,
+    coalesce_range tstzrange NOT NULL,
+    records powa_stat_bgwriter_history_record[] NOT NULL,
+    mins_in_range powa_stat_bgwriter_history_record NOT NULL,
+    maxs_in_range powa_stat_bgwriter_history_record NOT NULL,
+    FOREIGN KEY (srvid) REFERENCES powa_servers(id)
+      MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
+);
+CREATE INDEX powa_stat_bgwriter_history_ts ON powa_stat_bgwriter_history USING gist (srvid, coalesce_range);
+
+CREATE TABLE powa_stat_bgwriter_history_current(
+    srvid integer NOT NULL,
+    record powa_stat_bgwriter_history_record NOT NULL,
+    FOREIGN KEY (srvid) REFERENCES powa_servers(id)
+      MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
+);
+CREATE INDEX ON powa_stat_bgwriter_history_current(srvid);
+
 
 CREATE TABLE powa_functions (
     srvid integer NOT NULL,
@@ -647,16 +793,20 @@ INSERT INTO powa_functions (srvid, module, operation, function_name, query_sourc
     (0, 'pg_stat_statements',       'snapshot',  'powa_statements_snapshot',      'powa_statements_src',     false, true, -2),
     (0, 'powa_stat_user_functions', 'snapshot',  'powa_user_functions_snapshot',  'powa_user_functions_src', false, true, default),
     (0, 'powa_stat_all_relations',  'snapshot',  'powa_all_relations_snapshot',   'powa_all_relations_src',  false, true, default),
+    (0, 'pg_stat_bgwriter',         'snapshot',  'powa_stat_bgwriter_snapshot',   'powa_stat_bgwriter_src',  false, true, default),
     (0, 'pg_stat_statements',       'aggregate', 'powa_statements_aggregate',     NULL,                      false, true, default),
     (0, 'powa_stat_user_functions', 'aggregate', 'powa_user_functions_aggregate', NULL,                      false, true, default),
     (0, 'powa_stat_all_relations',  'aggregate', 'powa_all_relations_aggregate',  NULL,                      false, true, default),
+    (0, 'pg_stat_bgwriter',         'aggregate', 'powa_stat_bgwriter_aggregate',  NULL,                      false, true, default),
     (0, 'pg_stat_statements',       'purge',     'powa_statements_purge',         NULL,                      false, true, default),
     (0, 'pg_stat_statements',       'purge',     'powa_databases_purge',          NULL,                      false, true, default),
     (0, 'powa_stat_user_functions', 'purge',     'powa_user_functions_purge',     NULL,                      false, true, default),
     (0, 'powa_stat_all_relations',  'purge',     'powa_all_relations_purge',      NULL,                      false, true, default),
+    (0, 'pg_stat_bgwriter',         'purge',     'powa_stat_bgwriter_purge',      NULL,                      false, true, default),
     (0, 'pg_stat_statements',       'reset',     'powa_statements_reset',         NULL,                      false, true, default),
     (0, 'powa_stat_user_functions', 'reset',     'powa_user_functions_reset',     NULL,                      false, true, default),
-    (0, 'powa_stat_all_relations',  'reset',     'powa_all_relations_reset',      NULL,                      false, true, default);
+    (0, 'powa_stat_all_relations',  'reset',     'powa_all_relations_reset',      NULL,                      false, true, default),
+    (0, 'pg_stat_bgwriter',         'reset',     'powa_stat_bgwriter_reset',      NULL,                      false, true, default);
 
 -- Register the extension if needed, and set the enabled flag to on
 CREATE FUNCTION powa_activate_extension(_srvid integer, _extname text) RETURNS boolean
@@ -713,6 +863,14 @@ BEGIN
         (_srvid, 'powa_stat_all_relations',  'aggregate', 'powa_all_relations_aggregate',  NULL,                      v_manually, true, default),
         (_srvid, 'powa_stat_all_relations',  'purge',     'powa_all_relations_purge',      NULL,                      v_manually, true, default),
         (_srvid, 'powa_stat_all_relations',  'reset',     'powa_all_relations_reset',      NULL,                      v_manually, true, default);
+    ELSIF (_extname = 'pg_stat_bgwriter') THEN
+        INSERT INTO powa_functions(srvid, module, operation, function_name,
+            query_source, added_manually, enabled, priority)
+        VALUES
+        (_srvid, 'pg_stat_bgwriter',  'snapshot',  'powa_stat_bgwriter_snapshot',   'powa_stat_bgwriter_src',  v_manually, true, default),
+        (_srvid, 'pg_stat_bgwriter',  'aggregate', 'powa_stat_bgwriter_aggregate',  NULL,                      v_manually, true, default),
+        (_srvid, 'pg_stat_bgwriter',  'purge',     'powa_stat_bgwriter_purge',      NULL,                      v_manually, true, default),
+        (_srvid, 'pg_stat_bgwriter',  'reset',     'powa_stat_bgwriter_reset',      NULL,                      v_manually, true, default);
     ELSIF (_extname = 'pg_stat_kcache') THEN
         RETURN powa_kcache_register(_srvid);
     ELSIF (_extname = 'pg_qualstats') THEN
@@ -782,6 +940,10 @@ BEGIN
         RAISE EXCEPTION 'Could not activate pg_stat_statements';
     END IF;
     SELECT powa_activate_extension(v_srvid, 'powa_stat_all_relations') INTO v_ok;
+    IF (NOT v_ok) THEN
+        RAISE EXCEPTION 'Could not activate pg_stat_statements';
+    END IF;
+    SELECT powa_activate_extension(v_srvid, 'pg_stat_bgwriter') INTO v_ok;
     IF (NOT v_ok) THEN
         RAISE EXCEPTION 'Could not activate pg_stat_statements';
     END IF;
@@ -1455,6 +1617,8 @@ SELECT pg_catalog.pg_extension_config_dump('powa_user_functions_history','');
 SELECT pg_catalog.pg_extension_config_dump('powa_user_functions_history_current','');
 SELECT pg_catalog.pg_extension_config_dump('powa_all_relations_history','');
 SELECT pg_catalog.pg_extension_config_dump('powa_all_relations_history_current','');
+SELECT pg_catalog.pg_extension_config_dump('powa_stat_bgwriter_history','');
+SELECT pg_catalog.pg_extension_config_dump('powa_stat_bgwriter_history_current','');
 SELECT pg_catalog.pg_extension_config_dump('powa_functions','WHERE added_manually');
 SELECT pg_catalog.pg_extension_config_dump('powa_kcache_metrics','');
 SELECT pg_catalog.pg_extension_config_dump('powa_kcache_metrics_db','');
@@ -2129,6 +2293,74 @@ BEGIN
 END;
 $PROC$ language plpgsql; /* end of powa_all_relations_snapshot */
 
+CREATE OR REPLACE FUNCTION powa_stat_bgwriter_src(IN _srvid integer,
+    OUT ts timestamp with time zone,
+    OUT checkpoints_timed bigint,
+    OUT checkpoints_req bigint,
+    OUT checkpoint_write_time double precision,
+    OUT checkpoint_sync_time double precision,
+    OUT buffers_checkpoint bigint,
+    OUT buffers_clean bigint,
+    OUT maxwritten_clean bigint,
+    OUT buffers_backend bigint,
+    OUT buffers_backend_fsync bigint,
+    OUT buffers_alloc bigint
+) RETURNS SETOF record STABLE AS $PROC$
+BEGIN
+    IF (_srvid = 0) THEN
+        RETURN QUERY SELECT now(),
+            s.checkpoints_timed, s.checkpoints_req, s.checkpoint_write_time,
+            s.checkpoint_sync_time, s.buffers_checkpoint, s.buffers_clean,
+            s.maxwritten_clean, s.buffers_backend, s.buffers_backend_fsync,
+            s.buffers_alloc
+        FROM pg_catalog.pg_stat_bgwriter AS s;
+    ELSE
+        RETURN QUERY SELECT s.ts,
+            s.checkpoints_timed, s.checkpoints_req, s.checkpoint_write_time,
+            s.checkpoint_sync_time, s.buffers_checkpoint, s.buffers_clean,
+            s.maxwritten_clean, s.buffers_backend, s.buffers_backend_fsync,
+            s.buffers_alloc
+        FROM powa_stat_bgwriter AS s
+        WHERE s.srvid = _srvid;
+    END IF;
+END;
+$PROC$ LANGUAGE plpgsql; /* end of pg_stat_bgwriter_src */
+
+CREATE OR REPLACE FUNCTION powa_stat_bgwriter_snapshot(_srvid integer) RETURNS void AS $PROC$
+DECLARE
+    result boolean;
+    v_funcname    text := 'powa_stat_bgwriter_snapshot';
+    v_rowcount    bigint;
+BEGIN
+    PERFORM powa_log(format('running %I', v_funcname));
+
+    PERFORM powa_prevent_concurrent_snapshot(_srvid);
+
+    -- Insert background writer statistics
+    WITH rel AS (
+        SELECT *
+        FROM powa_stat_bgwriter_src(_srvid)
+    )
+    INSERT INTO powa_stat_bgwriter_history_current
+        SELECT _srvid,
+        ROW(ts, checkpoints_timed, checkpoints_req, checkpoint_write_time,
+            checkpoint_sync_time, buffers_checkpoint, buffers_clean,
+            maxwritten_clean, buffers_backend, buffers_backend_fsync,
+            buffers_alloc)::powa_stat_bgwriter_history_record AS record
+        FROM rel;
+
+    GET DIAGNOSTICS v_rowcount = ROW_COUNT;
+    perform powa_log(format('%I - rowcount: %s',
+            v_funcname, v_rowcount));
+
+    IF (_srvid != 0) THEN
+        DELETE FROM powa_all_relations_src_tmp WHERE srvid = _srvid;
+    END IF;
+
+    result := true;
+END;
+$PROC$ language plpgsql; /* end of powa_all_relations_snapshot */
+
 
 CREATE OR REPLACE FUNCTION powa_databases_purge(_srvid integer)
 RETURNS void AS $PROC$
@@ -2240,6 +2472,31 @@ BEGIN
             v_funcname, v_rowcount));
 END;
 $PROC$ LANGUAGE plpgsql; /* end of powa_all_relations_purge */
+
+CREATE OR REPLACE FUNCTION powa_stat_bgwriter_purge(_srvid integer)
+RETURNS void AS $PROC$
+DECLARE
+    v_funcname    text := 'powa_stat_bgwriter_purge(' || _srvid || ')';
+    v_rowcount    bigint;
+    v_retention   interval;
+BEGIN
+    PERFORM powa_log(format('running %I', v_funcname));
+
+    PERFORM powa_prevent_concurrent_snapshot(_srvid);
+
+    SELECT powa_get_server_retention(_srvid) INTO v_retention;
+
+    -- Delete obsolete datas. We only bother with already coalesced data
+    DELETE FROM powa_stat_bgwriter_history
+    WHERE upper(coalesce_range)< (now() - v_retention)
+    AND srvid = _srvid;
+
+    GET DIAGNOSTICS v_rowcount = ROW_COUNT;
+    perform powa_log(format('%I - rowcount: %s',
+            v_funcname, v_rowcount));
+END;
+$PROC$ LANGUAGE plpgsql; /* end of powa_stat_bgwriter_purge */
+
 
 CREATE OR REPLACE FUNCTION powa_statements_aggregate(_srvid integer)
 RETURNS void AS $PROC$
@@ -2388,6 +2645,55 @@ BEGIN
  END;
 $PROC$ LANGUAGE plpgsql; /* end of powa_all_relations_aggregate */
 
+CREATE OR REPLACE FUNCTION powa_stat_bgwriter_aggregate(_srvid integer)
+RETURNS void AS $PROC$
+DECLARE
+    v_funcname    text := 'powa_stat_bgwriter_aggregate(' || _srvid || ')';
+    v_rowcount    bigint;
+BEGIN
+    PERFORM powa_log(format('running %I', v_funcname));
+
+    PERFORM powa_prevent_concurrent_snapshot(_srvid);
+
+    -- aggregate bgwriter table
+    INSERT INTO powa_stat_bgwriter_history
+        SELECT srvid,
+            tstzrange(min((record).ts), max((record).ts),'[]'),
+            array_agg(record),
+            ROW(min((record).ts),
+                min((record).checkpoints_timed),
+                min((record).checkpoints_req),
+                min((record).checkpoint_write_time),
+                min((record).checkpoint_sync_time),
+                min((record).buffers_checkpoint),
+                min((record).buffers_clean),
+                min((record).maxwritten_clean),
+                min((record).buffers_backend),
+                min((record).buffers_backend_fsync),
+                min((record).buffers_alloc))::powa_stat_bgwriter_history_record,
+            ROW(max((record).ts),
+                max((record).checkpoints_timed),
+                max((record).checkpoints_req),
+                max((record).checkpoint_write_time),
+                max((record).checkpoint_sync_time),
+                max((record).buffers_checkpoint),
+                max((record).buffers_clean),
+                max((record).maxwritten_clean),
+                max((record).buffers_backend),
+                max((record).buffers_backend_fsync),
+                max((record).buffers_alloc))::powa_stat_bgwriter_history_record
+        FROM powa_stat_bgwriter_history_current
+        WHERE srvid = _srvid
+        GROUP BY srvid;
+
+    GET DIAGNOSTICS v_rowcount = ROW_COUNT;
+    perform powa_log(format('%I - rowcount: %s',
+            v_funcname, v_rowcount));
+
+    DELETE FROM powa_stat_bgwriter_history_current WHERE srvid = _srvid;
+ END;
+$PROC$ LANGUAGE plpgsql; /* end of powa_stat_bgwriter_aggregate */
+
 CREATE OR REPLACE FUNCTION public.powa_reset(_srvid integer)
  RETURNS boolean
  LANGUAGE plpgsql
@@ -2487,6 +2793,21 @@ BEGIN
     RETURN true;
 END;
 $function$; /* end of powa_all_relations_reset */
+
+CREATE OR REPLACE FUNCTION public.powa_stat_bgwriter_reset(_srvid integer)
+ RETURNS boolean
+ LANGUAGE plpgsql
+AS $function$
+BEGIN
+    PERFORM powa_log('Resetting powa_stat_bgwriter_history(' || _srvid || ')');
+    DELETE FROM powa_stat_bgwriter_history WHERE srvid = _srvid;
+
+    PERFORM powa_log('Resetting powa_stat_bgwriter_history_current(' || _srvid || ')');
+    DELETE FROM powa_stat_bgwriter_history_current WHERE srvid = _srvid;
+
+    RETURN true;
+END;
+$function$; /* end of powa_stat_bgwriter_reset */
 
 /* pg_stat_kcache integration - part 2 */
 
