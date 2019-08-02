@@ -2354,7 +2354,7 @@ BEGIN
             v_funcname, v_rowcount));
 
     IF (_srvid != 0) THEN
-        DELETE FROM powa_all_relations_src_tmp WHERE srvid = _srvid;
+        DELETE FROM powa_stat_bgwriter_src_tmp WHERE srvid = _srvid;
     END IF;
 
     result := true;
