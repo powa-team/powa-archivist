@@ -828,7 +828,7 @@ BEGIN
         SET enabled = true
         WHERE enabled = false
         AND srvid = _srvid
-        AND extname = _extname;
+        AND module = _extname;
 
         return true;
     END IF;
