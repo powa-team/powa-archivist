@@ -2320,7 +2320,7 @@ BEGIN
             s.checkpoint_sync_time, s.buffers_checkpoint, s.buffers_clean,
             s.maxwritten_clean, s.buffers_backend, s.buffers_backend_fsync,
             s.buffers_alloc
-        FROM powa_stat_bgwriter AS s
+        FROM powa_stat_bgwriter_src_tmp AS s
         WHERE s.srvid = _srvid;
     END IF;
 END;
