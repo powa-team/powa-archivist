@@ -1555,7 +1555,8 @@ CREATE OPERATOR / (
 /* end of pg_wait_sampling operator support */
 
 CREATE TABLE public.powa_wait_sampling_history (
-    srvid integer NOT NULL REFERENCES powa_servers(id),
+    srvid integer NOT NULL REFERENCES powa_servers(id)
+      MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE,
     coalesce_range tstzrange NOT NULL,
     queryid bigint NOT NULL,
     dbid oid NOT NULL,
@@ -1570,7 +1571,8 @@ CREATE TABLE public.powa_wait_sampling_history (
 CREATE INDEX powa_wait_sampling_history_query_ts ON public.powa_wait_sampling_history USING gist (srvid, queryid, coalesce_range);
 
 CREATE TABLE public.powa_wait_sampling_history_db (
-    srvid integer NOT NULL REFERENCES powa_servers(id),
+    srvid integer NOT NULL REFERENCES powa_servers(id)
+      MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE,
     coalesce_range tstzrange NOT NULL,
     dbid oid NOT NULL,
     event_type text NOT NULL,
@@ -1584,7 +1586,8 @@ CREATE TABLE public.powa_wait_sampling_history_db (
 CREATE INDEX powa_wait_sampling_history_db_ts ON powa_wait_sampling_history_db USING gist (srvid, dbid, coalesce_range);
 
 CREATE TABLE public.powa_wait_sampling_history_current (
-    srvid integer NOT NULL REFERENCES powa_servers(id),
+    srvid integer NOT NULL REFERENCES powa_servers(id)
+      MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE,
     queryid bigint NOT NULL,
     dbid oid NOT NULL,
     event_type text NOT NULL,
@@ -1594,7 +1597,8 @@ CREATE TABLE public.powa_wait_sampling_history_current (
 CREATE INDEX ON powa_wait_sampling_history_current(srvid);
 
 CREATE TABLE public.powa_wait_sampling_history_current_db (
-    srvid integer NOT NULL REFERENCES powa_servers(id),
+    srvid integer NOT NULL REFERENCES powa_servers(id)
+      MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE,
     dbid oid NOT NULL,
     event_type text NOT NULL,
     event text NOT NULL,
