@@ -525,16 +525,16 @@ CREATE OPERATOR - (
 
 CREATE TYPE powa_stat_bgwriter_history_rate AS (
     sec integer,
-    checkpoints_timed double precision,
-    checkpoints_req double precision,
-    checkpoint_write_time double precision,
-    checkpoint_sync_time double precision,
-    buffers_checkpoint double precision,
-    buffers_clean double precision,
-    maxwritten_clean double precision,
-    buffers_backend double precision,
-    buffers_backend_fsync double precision,
-    buffers_alloc double precision
+    checkpoints_timed_per_sec double precision,
+    checkpoints_req_per_sec double precision,
+    checkpoint_write_time_per_sec double precision,
+    checkpoint_sync_time_per_sec double precision,
+    buffers_checkpoint_per_sec double precision,
+    buffers_clean_per_sec double precision,
+    maxwritten_clean_per_sec double precision,
+    buffers_backend_per_sec double precision,
+    buffers_backend_fsync_per_sec double precision,
+    buffers_alloc_per_sec double precision
 );
 
 CREATE OR REPLACE FUNCTION powa_stat_bgwriter_history_div(

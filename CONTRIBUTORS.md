@@ -25,3 +25,4 @@ Contributors to PoWA :
   * edechaux
   * ppetrov91
   * Ikrar-k
+  * care1e55
