@@ -1,3 +1,9 @@
+powa-archivist (3.2.0-2) unstable; urgency=medium
+
+  * Upload for PostgreSQL 12.
+
+ -- Christoph Berg <myon@debian.org>  Thu, 31 Oct 2019 11:06:58 +0100
+
 powa-archivist (3.2.0-1) unstable; urgency=medium
 
   * New upstream version
