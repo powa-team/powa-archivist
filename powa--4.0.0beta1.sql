@@ -23,6 +23,7 @@ CREATE TABLE powa_servers(
     frequency integer NOT NULL default 300 CHECK (frequency = -1 OR frequency >= 5),
     powa_coalesce integer NOT NULL default 100 CHECK (powa_coalesce >= 5),
     retention interval NOT NULL default '1 day'::interval,
+    allow_ui_connection boolean NOT NULL default true,
     UNIQUE (hostname, port),
     UNIQUE(alias)
 );
@@ -908,6 +909,7 @@ CREATE FUNCTION powa_register_server(hostname text,
     frequency integer DEFAULT 300,
     powa_coalesce integer default 100,
     retention interval DEFAULT '1 day'::interval,
+    allow_ui_connection boolean DEFAULT true,
     extensions text[] DEFAULT NULL)
 RETURNS boolean AS $_$
 DECLARE
@@ -918,13 +920,14 @@ BEGIN
     -- sanity checks
     SELECT coalesce(port, 5432), coalesce(username, 'powa'),
         coalesce(dbname, 'powa'), coalesce(frequency, 300),
-        coalesce(powa_coalesce, 100), coalesce(retention, '1 day')::interval
-    INTO port, username, dbname, frequency, powa_coalesce, retention;
+        coalesce(powa_coalesce, 100), coalesce(retention, '1 day')::interval,
+        coalesce(allow_ui_connection, true)
+    INTO port, username, dbname, frequency, powa_coalesce, retention, allow_ui_connection;
 
     INSERT INTO powa_servers
-        (alias, hostname, port, username, password, dbname, frequency, powa_coalesce, retention)
+        (alias, hostname, port, username, password, dbname, frequency, powa_coalesce, retention, allow_ui_connection)
     VALUES
-        (alias, hostname, port, username, password, dbname, frequency, powa_coalesce, retention)
+        (alias, hostname, port, username, password, dbname, frequency, powa_coalesce, retention, allow_ui_connection)
     RETURNING id INTO v_srvid;
 
     INSERT INTO powa_snapshot_metas(srvid) VALUES (v_srvid);
@@ -990,7 +993,7 @@ BEGIN
         END IF;
 
         IF (k NOT IN ('hostname', 'alias', 'port', 'username', 'password',
-            'dbname', 'frequency', 'retention')
+            'dbname', 'frequency', 'retention', 'allow_ui_connection')
         ) THEN
             RAISE EXCEPTION 'Unknown field: %', k;
         END IF;
