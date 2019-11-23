@@ -919,7 +919,7 @@ BEGIN
     SELECT coalesce(port, 5432), coalesce(username, 'powa'),
         coalesce(dbname, 'powa'), coalesce(frequency, 300),
         coalesce(powa_coalesce, 100), coalesce(retention, '1 day')::interval
-    INTO port, username, dbname, frequency, retention;
+    INTO port, username, dbname, frequency, powa_coalesce, retention;
 
     INSERT INTO powa_servers
         (alias, hostname, port, username, password, dbname, frequency, powa_coalesce, retention)
