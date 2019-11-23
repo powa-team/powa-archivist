@@ -10,7 +10,7 @@ provides real-time charts and graphs to help monitor and tune your PostgreSQL
 servers.
 
 For more information, please read the [PoWA-archivist
-documentation](http://powa.readthedocs.io/en/latest/powa-archivist/index.html):
+documentation](https://powa.readthedocs.io/en/latest/components/powa-archivist/index.html):
 
-http://powa.readthedocs.io/en/latest/powa-archivist/index.html
+https://powa.readthedocs.io/en/latest/components/powa-archivist/index.html
 
