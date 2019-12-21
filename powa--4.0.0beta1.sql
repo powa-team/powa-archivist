@@ -1330,7 +1330,7 @@ CREATE UNLOGGED TABLE public.powa_qualstats_src_tmp(
     quals qual_type[] NOT NULL
 );
 
-/* pg_stat_qualstats operator support */
+/* pg_qualstats operator support */
 CREATE TYPE powa_qualstats_history_diff AS (
     intvl interval,
     occurences bigint,
@@ -1398,7 +1398,7 @@ CREATE OPERATOR / (
     LEFTARG = powa_qualstats_history_item,
     RIGHTARG = powa_qualstats_history_item
 );
-/* end of pg_stat_qualstats operator support */
+/* end of pg_qualstats operator support */
 
 CREATE TABLE public.powa_qualstats_quals (
     srvid integer NOT NULL,
