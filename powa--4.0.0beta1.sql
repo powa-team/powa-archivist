@@ -3178,7 +3178,7 @@ FROM groups,
 LATERAL (
   SELECT array_agg(constvalues) as mu
   FROM (
-    SELECT (constvalues, occurences, nbfiltered, execution_count)::qual_values as constvalues
+    SELECT (constvalues, occurences, execution_count, nbfiltered)::qual_values AS constvalues
     FROM consts
     WHERE consts.qualid = groups.qualid AND consts.queryid = groups.queryid
     AND consts.dbid = groups.dbid AND consts.userid = groups.userid
@@ -3189,7 +3189,7 @@ LATERAL (
 LATERAL (
   SELECT array_agg(constvalues) as mf
   FROM (
-    SELECT (constvalues, occurences, nbfiltered, execution_count)::qual_values as constvalues
+    SELECT (constvalues, occurences, execution_count, nbfiltered)::qual_values AS constvalues
     FROM consts
     WHERE consts.qualid = groups.qualid AND consts.queryid = groups.queryid
     AND consts.dbid = groups.dbid AND consts.userid = groups.userid
@@ -3200,7 +3200,7 @@ LATERAL (
 LATERAL (
   SELECT array_agg(constvalues) as lf
   FROM (
-    SELECT (constvalues, occurences, nbfiltered, execution_count)::qual_values as constvalues
+    SELECT (constvalues, occurences, execution_count, nbfiltered)::qual_values AS constvalues
     FROM consts
     WHERE consts.qualid = groups.qualid AND consts.queryid = groups.queryid
     AND consts.dbid = groups.dbid AND consts.userid = groups.userid
@@ -3211,7 +3211,7 @@ LATERAL (
 LATERAL (
   SELECT array_agg(constvalues) as me
   FROM (
-    SELECT (constvalues, occurences, nbfiltered, execution_count)::qual_values as constvalues
+    SELECT (constvalues, occurences, execution_count, nbfiltered)::qual_values AS constvalues
     FROM consts
     WHERE consts.qualid = groups.qualid AND consts.queryid = groups.queryid
     AND consts.dbid = groups.dbid AND consts.userid = groups.userid
