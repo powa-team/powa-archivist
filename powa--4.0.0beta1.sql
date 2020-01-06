@@ -1305,14 +1305,18 @@ CREATE TYPE public.qual_values AS (
     constants text[],
     occurences bigint,
     execution_count bigint,
-    nbfiltered bigint
+    nbfiltered bigint,
+    mean_err_estimate_ratio double precision,
+    mean_err_estimate_num double precision
 );
 
 CREATE TYPE powa_qualstats_history_item AS (
   ts timestamptz,
   occurences bigint,
   execution_count bigint,
-  nbfiltered bigint
+  nbfiltered bigint,
+  mean_err_estimate_ratio double precision,
+  mean_err_estimate_num double precision
 );
 
 CREATE UNLOGGED TABLE public.powa_qualstats_src_tmp(
@@ -1325,6 +1329,8 @@ CREATE UNLOGGED TABLE public.powa_qualstats_src_tmp(
     occurences bigint NOT NULL,
     execution_count bigint NOT NULL,
     nbfiltered bigint NOT NULL,
+    mean_err_estimate_ratio double precision,
+    mean_err_estimate_num double precision,
     queryid bigint NOT NULL,
     constvalues varchar[] NOT NULL,
     quals qual_type[] NOT NULL
@@ -1335,7 +1341,9 @@ CREATE TYPE powa_qualstats_history_diff AS (
     intvl interval,
     occurences bigint,
     execution_count bigint,
-    nbfiltered bigint
+    nbfiltered bigint,
+    mean_err_estimate_ratio double precision,
+    mean_err_estimate_nun double precision
 );
 
 CREATE OR REPLACE FUNCTION powa_qualstats_history_mi(
@@ -1350,6 +1358,8 @@ BEGIN
     res.occurences = a.occurences - b.occurences;
     res.execution_count = a.execution_count - b.execution_count;
     res.nbfiltered = a.nbfiltered - b.nbfiltered;
+    res.mean_err_estimate_ratio = a.mean_err_estimate_ratio - b.mean_err_estimate_ratio;
+    res.mean_err_estimate_num = a.mean_err_estimate_num - b.mean_err_estimate_num;
 
     return res;
 END;
@@ -1366,7 +1376,9 @@ CREATE TYPE powa_qualstats_history_rate AS (
     sec integer,
     occurences_per_sec double precision,
     execution_count_per_sec double precision,
-    nbfiltered_per_sec double precision
+    nbfiltered_per_sec double precision,
+    mean_err_estimate_ratio double precision,
+    mean_err_estimate_num double precision
 );
 
 CREATE OR REPLACE FUNCTION powa_qualstats_history_div(
@@ -1387,6 +1399,8 @@ BEGIN
     res.occurences_per_sec = (a.occurences - b.occurences)::double precision / sec;
     res.execution_count_per_sec = (a.execution_count - b.execution_count)::double precision / sec;
     res.nbfiltered_per_sec = (a.nbfiltered - b.nbfiltered)::double precision / sec;
+    res.mean_err_estimate_ratio = (a.mean_err_estimate_ratio - b.mean_err_estimate_ratio)::double precision / sec;
+    res.mean_err_estimate_num = (a.mean_err_estimate_num - b.mean_err_estimate_num)::double precision / sec;
 
     return res;
 END;
@@ -1438,6 +1452,8 @@ CREATE TABLE public.powa_qualstats_quals_history_current (
     occurences bigint,
     execution_count   bigint,
     nbfiltered bigint,
+    mean_err_estimate_ratio double precision,
+    mean_err_estimate_num double precision,
     FOREIGN KEY (srvid, qualid, queryid, dbid, userid) REFERENCES powa_qualstats_quals(srvid, qualid, queryid, dbid, userid)
       MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
 );
@@ -1454,6 +1470,8 @@ CREATE TABLE public.powa_qualstats_constvalues_history (
     most_filtering qual_values[],
     least_filtering qual_values[],
     most_executed qual_values[],
+    most_errestim_ratio qual_values[],
+    most_errestim_num qual_values[],
     FOREIGN KEY (srvid, qualid, queryid, dbid, userid) REFERENCES public.powa_qualstats_quals (srvid, qualid, queryid, dbid, userid) MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
 );
 CREATE INDEX ON powa_qualstats_constvalues_history USING gist (srvid, queryid, qualid, coalesce_range);
@@ -1470,6 +1488,8 @@ CREATE TABLE public.powa_qualstats_constvalues_history_current (
     occurences bigint,
     execution_count bigint,
     nbfiltered bigint,
+    mean_err_estimate_ratio double precision,
+    mean_err_estimate_num double precision,
     FOREIGN KEY (srvid, qualid, queryid, dbid, userid) REFERENCES public.powa_qualstats_quals (srvid, qualid, queryid, dbid, userid) MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
 );
 CREATE INDEX ON powa_qualstats_constvalues_history_current(srvid);
@@ -3153,7 +3173,9 @@ CREATE OR REPLACE FUNCTION powa_qualstats_aggregate_constvalues_current(
     OUT mu qual_values[],
     OUT mf qual_values[],
     OUT lf qual_values[],
-    OUT me qual_values[])
+    OUT me qual_values[],
+    OUT mer qual_values[],
+    OUT men qual_values[])
 RETURNS SETOF record STABLE AS $_$
 WITH consts AS (
   SELECT q.srvid, q.qualid, q.queryid, q.dbid, q.userid,
@@ -3161,6 +3183,8 @@ WITH consts AS (
     sum(q.occurences) as occurences,
     sum(q.nbfiltered) as nbfiltered,
     sum(q.execution_count) as execution_count,
+    avg(q.mean_err_estimate_ratio) as mean_err_estimate_ratio,
+    avg(q.mean_err_estimate_num) as mean_err_estimate_num,
     q.constvalues
   FROM powa_qualstats_constvalues_history_current q
   WHERE q.srvid = _srvid
@@ -3178,7 +3202,9 @@ FROM groups,
 LATERAL (
   SELECT array_agg(constvalues) as mu
   FROM (
-    SELECT (constvalues, occurences, execution_count, nbfiltered)::qual_values AS constvalues
+    SELECT (constvalues, occurences, execution_count, nbfiltered,
+      mean_err_estimate_ratio, mean_err_estimate_num
+    )::qual_values AS constvalues
     FROM consts
     WHERE consts.qualid = groups.qualid AND consts.queryid = groups.queryid
     AND consts.dbid = groups.dbid AND consts.userid = groups.userid
@@ -3189,7 +3215,9 @@ LATERAL (
 LATERAL (
   SELECT array_agg(constvalues) as mf
   FROM (
-    SELECT (constvalues, occurences, execution_count, nbfiltered)::qual_values AS constvalues
+    SELECT (constvalues, occurences, execution_count, nbfiltered,
+      mean_err_estimate_ratio, mean_err_estimate_num
+    )::qual_values AS constvalues
     FROM consts
     WHERE consts.qualid = groups.qualid AND consts.queryid = groups.queryid
     AND consts.dbid = groups.dbid AND consts.userid = groups.userid
@@ -3200,7 +3228,9 @@ LATERAL (
 LATERAL (
   SELECT array_agg(constvalues) as lf
   FROM (
-    SELECT (constvalues, occurences, execution_count, nbfiltered)::qual_values AS constvalues
+    SELECT (constvalues, occurences, execution_count, nbfiltered,
+      mean_err_estimate_ratio, mean_err_estimate_num
+    )::qual_values AS constvalues
     FROM consts
     WHERE consts.qualid = groups.qualid AND consts.queryid = groups.queryid
     AND consts.dbid = groups.dbid AND consts.userid = groups.userid
@@ -3211,14 +3241,42 @@ LATERAL (
 LATERAL (
   SELECT array_agg(constvalues) as me
   FROM (
-    SELECT (constvalues, occurences, execution_count, nbfiltered)::qual_values AS constvalues
+    SELECT (constvalues, occurences, execution_count, nbfiltered,
+      mean_err_estimate_ratio, mean_err_estimate_num
+    )::qual_values AS constvalues
     FROM consts
     WHERE consts.qualid = groups.qualid AND consts.queryid = groups.queryid
     AND consts.dbid = groups.dbid AND consts.userid = groups.userid
     ORDER BY execution_count desc
     LIMIT 20
   ) s
-) as me;
+) as me,
+LATERAL (
+  SELECT array_agg(constvalues) as me
+  FROM (
+    SELECT (constvalues, occurences, execution_count, nbfiltered,
+      mean_err_estimate_ratio, mean_err_estimate_num
+    )::qual_values AS constvalues
+    FROM consts
+    WHERE consts.qualid = groups.qualid AND consts.queryid = groups.queryid
+    AND consts.dbid = groups.dbid AND consts.userid = groups.userid
+    ORDER BY mean_err_estimate_ratio desc
+    LIMIT 20
+  ) s
+) as mer,
+LATERAL (
+  SELECT array_agg(constvalues) as me
+  FROM (
+    SELECT (constvalues, occurences, execution_count, nbfiltered,
+      mean_err_estimate_ratio, mean_err_estimate_num
+    )::qual_values AS constvalues
+    FROM consts
+    WHERE consts.qualid = groups.qualid AND consts.queryid = groups.queryid
+    AND consts.dbid = groups.dbid AND consts.userid = groups.userid
+    ORDER BY mean_err_estimate_num desc
+    LIMIT 20
+  ) s
+) as men;
 $_$ LANGUAGE sql; /* end of powa_qualstats_aggregate_constvalues_current */
 
 CREATE OR REPLACE FUNCTION powa_qualstats_src(IN _srvid integer,
@@ -3230,20 +3288,32 @@ CREATE OR REPLACE FUNCTION powa_qualstats_src(IN _srvid integer,
     OUT occurences bigint,
     OUT execution_count bigint,
     OUT nbfiltered bigint,
+    OUT mean_err_estimate_ratio double precision,
+    OUT mean_err_estimate_num double precision,
     OUT queryid bigint,
     OUT constvalues varchar[],
     OUT quals qual_type[]
 ) RETURNS SETOF record STABLE AS $PROC$
+DECLARE
+  is_v2 bool;
 BEGIN
     IF (_srvid = 0) THEN
+        SELECT substr(extversion, 1, 1)::int >=2 INTO STRICT is_v2
+          FROM pg_extension
+          WHERE extname = 'pg_qualstats';
+
         RETURN QUERY
             SELECT now(), pgqs.uniquequalnodeid, pgqs.dbid, pgqs.userid,
                 pgqs.qualnodeid, pgqs.occurences, pgqs.execution_count,
-                pgqs.nbfiltered, pgqs.queryid, pgqs.constvalues, pgqs.quals
+                pgqs.nbfiltered, pgqs.mean_err_estimate_ratio,
+                pgqs.mean_err_estimate_num, pgqs.queryid, pgqs.constvalues,
+                pgqs.quals
             FROM (
                 SELECT coalesce(i.uniquequalid, i.uniquequalnodeid) AS uniquequalnodeid,
                     i.dbid, i.userid,  coalesce(i.qualid, i.qualnodeid) AS qualnodeid,
-                    i.occurences, i.execution_count, i.nbfiltered, i.queryid,
+                    i.occurences, i.execution_count, i.nbfiltered,
+                    i.mean_err_estimate_ratio, i.mean_err_estimate_num,
+                    i.queryid,
                     array_agg(i.constvalue order by i.constant_position) AS constvalues,
                     array_agg(ROW(i.relid, i.attnum, i.opno, i.eval_type)::qual_type) AS quals
                 FROM
@@ -3266,6 +3336,12 @@ BEGIN
                     qs.queryid as queryid,
                     qs.constvalue as constvalue,
                     qs.nbfiltered as nbfiltered,
+                    CASE WHEN is_v2 THEN qs.mean_err_estimate_ratio
+                      ELSE NULL
+                    END AS mean_err_estimate_ratio,
+                    CASE WHEN is_v2 THEN qs.mean_err_estimate_num
+                      ELSE NULL
+                    END AS mean_err_estimate_num,
                     qs.eval_type,
                     qs.constant_position
                     FROM pg_qualstats() qs
@@ -3273,7 +3349,9 @@ BEGIN
                 ) i
                 GROUP BY coalesce(i.uniquequalid, i.uniquequalnodeid),
                     coalesce(i.qualid, i.qualnodeid), i.dbid, i.userid,
-                    i.occurences, i.execution_count, i.nbfiltered, i.queryid
+                    i.occurences, i.execution_count, i.nbfiltered,
+                    i.mean_err_estimate_ratio, i.mean_err_estimate_num,
+                    i.queryid
             ) pgqs
             JOIN (
                 -- if we use remote capture, powa_statements won't be
@@ -3297,7 +3375,9 @@ BEGIN
         RETURN QUERY
             SELECT pgqs.ts, pgqs.uniquequalnodeid, pgqs.dbid, pgqs.userid,
                 pgqs.qualnodeid, pgqs.occurences, pgqs.execution_count,
-                pgqs.nbfiltered, pgqs.queryid, pgqs.constvalues, pgqs.quals
+                pgqs.nbfiltered, pgqs.mean_err_estimate_ratio,
+                pgqs.mean_err_estimate_num, pgqs.queryid, pgqs.constvalues,
+                pgqs.quals
             FROM powa_qualstats_src_tmp pgqs
         WHERE pgqs.srvid = _srvid;
     END IF;
@@ -3337,15 +3417,23 @@ BEGIN
       RETURNING *
   ),
   by_qual AS (
-      INSERT INTO powa_qualstats_quals_history_current (srvid, qualid, queryid, dbid, userid, ts, occurences, execution_count, nbfiltered)
-      SELECT _srvid AS srvid, qs.qualnodeid, qs.queryid, qs.dbid, qs.userid, ts, sum(occurences), sum(execution_count), sum(nbfiltered)
+      INSERT INTO powa_qualstats_quals_history_current (srvid, qualid, queryid,
+        dbid, userid, ts, occurences, execution_count, nbfiltered,
+        mean_err_estimate_ratio, mean_err_estimate_num)
+      SELECT _srvid AS srvid, qs.qualnodeid, qs.queryid, qs.dbid, qs.userid,
+          ts, sum(occurences), sum(execution_count), sum(nbfiltered),
+          avg(mean_err_estimate_ratio), avg(mean_err_estimate_num)
         FROM capture as qs
         GROUP BY srvid, ts, qualnodeid, qs.queryid, qs.dbid, qs.userid
       RETURNING *
   ),
   by_qual_with_const AS (
-      INSERT INTO powa_qualstats_constvalues_history_current(srvid, qualid, queryid, dbid, userid, ts, occurences, execution_count, nbfiltered, constvalues)
-      SELECT _srvid, qualnodeid, qs.queryid, qs.dbid, qs.userid, ts, occurences, execution_count, nbfiltered, constvalues
+      INSERT INTO powa_qualstats_constvalues_history_current(srvid, qualid,
+        queryid, dbid, userid, ts, occurences, execution_count, nbfiltered,
+        mean_err_estimate_ratio, mean_err_estimate_num, constvalues)
+      SELECT _srvid, qualnodeid, qs.queryid, qs.dbid, qs.userid, ts,
+        occurences, execution_count, nbfiltered, mean_err_estimate_ratio,
+        mean_err_estimate_num, constvalues
       FROM capture as qs
   )
   SELECT COUNT(*) into v_rowcount
@@ -3377,16 +3465,24 @@ BEGIN
 
   INSERT INTO powa_qualstats_constvalues_history (
       srvid, qualid, queryid, dbid, userid, coalesce_range, most_used,
-      most_filtering, least_filtering, most_executed)
+      most_filtering, least_filtering, most_executed, most_errestim_ratio,
+    most_errestim_num)
     SELECT * FROM powa_qualstats_aggregate_constvalues_current(_srvid)
     WHERE srvid = _srvid;
 
   INSERT INTO powa_qualstats_quals_history (srvid, qualid, queryid, dbid,
       userid, coalesce_range, records, mins_in_range, maxs_in_range)
     SELECT srvid, qualid, queryid, dbid, userid, tstzrange(min(ts),
-      max(ts),'[]'), array_agg((ts, occurences, execution_count, nbfiltered)::powa_qualstats_history_item),
-    ROW(min(ts), min(occurences), min(execution_count), min(nbfiltered))::powa_qualstats_history_item,
-    ROW(max(ts), max(occurences), max(execution_count), max(nbfiltered))::powa_qualstats_history_item
+      max(ts),'[]'),
+      array_agg((ts, occurences, execution_count, nbfiltered,
+            mean_err_estimate_ratio,
+            mean_err_estimate_num)::powa_qualstats_history_item),
+    ROW(min(ts), min(occurences), min(execution_count), min(nbfiltered),
+        min(mean_err_estimate_ratio), min(mean_err_estimate_num)
+    )::powa_qualstats_history_item,
+    ROW(max(ts), max(occurences), max(execution_count), max(nbfiltered),
+        max(mean_err_estimate_ratio), max(mean_err_estimate_num)
+    )::powa_qualstats_history_item
     FROM powa_qualstats_quals_history_current
     WHERE srvid = _srvid
     GROUP BY srvid, qualid, queryid, dbid, userid;
