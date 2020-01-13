@@ -1343,7 +1343,7 @@ CREATE TYPE powa_qualstats_history_diff AS (
     execution_count bigint,
     nbfiltered bigint,
     mean_err_estimate_ratio double precision,
-    mean_err_estimate_nun double precision
+    mean_err_estimate_num double precision
 );
 
 CREATE OR REPLACE FUNCTION powa_qualstats_history_mi(
