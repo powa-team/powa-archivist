@@ -464,6 +464,153 @@ CREATE OPERATOR / (
 );
 /* end of pg_stat_all_relations operator support */
 
+CREATE TYPE powa_all_relations_history_db_record AS (
+    ts timestamp with time zone,
+    seq_scan bigint,
+    idx_scan bigint,
+    tup_returned bigint,
+    tup_fetched bigint,
+    n_tup_ins bigint,
+    n_tup_upd bigint,
+    n_tup_del bigint,
+    n_tup_hot_upd bigint,
+    n_liv_tup bigint,
+    n_dead_tup bigint,
+    n_mod_since_analyze bigint,
+    blks_read bigint,
+    blks_hit bigint,
+    vacuum_count bigint,
+    autovacuum_count bigint,
+    analyze_count bigint,
+    autoanalyze_count bigint
+);
+
+/* pg_stat_all_relations_db operator support */
+CREATE TYPE powa_all_relations_history_db_diff AS (
+    intvl interval,
+    seq_scan bigint,
+    idx_scan bigint,
+    tup_returned bigint,
+    tup_fetched bigint,
+    n_tup_ins bigint,
+    n_tup_upd bigint,
+    n_tup_del bigint,
+    n_tup_hot_upd bigint,
+    n_liv_tup bigint,
+    n_dead_tup bigint,
+    n_mod_since_analyze bigint,
+    blks_read bigint,
+    blks_hit bigint,
+    vacuum_count bigint,
+    autovacuum_count bigint,
+    analyze_count bigint,
+    autoanalyze_count bigint
+);
+
+CREATE OR REPLACE FUNCTION powa_all_relations_history_db_mi(
+    a powa_all_relations_history_db_record,
+    b powa_all_relations_history_db_record)
+RETURNS powa_all_relations_history_db_diff AS
+$_$
+DECLARE
+    res powa_all_relations_history_db_diff;
+BEGIN
+    res.intvl = a.ts - b.ts;
+    res.seq_scan = a.seq_scan - b.seq_scan;
+    res.idx_scan = a.idx_scan - b.idx_scan;
+    res.tup_returned = a.tup_returned - b.tup_returned;
+    res.tup_fetched = a.tup_fetched - b.tup_fetched;
+    res.n_tup_ins = a.n_tup_ins - b.n_tup_ins;
+    res.n_tup_upd = a.n_tup_upd - b.n_tup_upd;
+    res.n_tup_del = a.n_tup_del - b.n_tup_del;
+    res.n_tup_hot_upd = a.n_tup_hot_upd - b.n_tup_hot_upd;
+    res.n_liv_tup = a.n_liv_tup - b.n_liv_tup;
+    res.n_dead_tup = a.n_dead_tup - b.n_dead_tup;
+    res.n_mod_since_analyze = a.n_mod_since_analyze - b.n_mod_since_analyze;
+    res.blks_read = a.blks_read - b.blks_read;
+    res.blks_hit = a.blks_hit - b.blks_hit;
+    res.vacuum_count = a.vacuum_count - b.vacuum_count;
+    res.autovacuum_count = a.autovacuum_count - b.autovacuum_count;
+    res.analyze_count = a.analyze_count - b.analyze_count;
+    res.autoanalyze_count = a.autoanalyze_count - b.autoanalyze_count;
+
+    return res;
+END;
+$_$
+LANGUAGE plpgsql IMMUTABLE STRICT;
+
+CREATE OPERATOR - (
+    PROCEDURE = powa_all_relations_history_db_mi,
+    LEFTARG = powa_all_relations_history_db_record,
+    RIGHTARG = powa_all_relations_history_db_record
+);
+
+CREATE TYPE powa_all_relations_history_db_rate AS (
+    sec integer,
+    seq_scan_per_sec double precision,
+    idx_scan_per_sec double precision,
+    tup_returned_per_sec double precision,
+    tup_fetched_per_sec double precision,
+    n_tup_ins_per_sec double precision,
+    n_tup_upd_per_sec double precision,
+    n_tup_del_per_sec double precision,
+    n_tup_hot_upd_per_sec double precision,
+    n_liv_tup_per_sec double precision,
+    n_dead_tup_per_sec double precision,
+    n_mod_since_analyze_per_sec double precision,
+    blks_read_per_sec double precision,
+    blks_hit_per_sec double precision,
+    vacuum_count_per_sec double precision,
+    autovacuum_count_per_sec double precision,
+    analyze_count_per_sec double precision,
+    autoanalyze_count_per_sec double precision
+);
+
+CREATE OR REPLACE FUNCTION powa_all_relations_history_db_div(
+    a powa_all_relations_history_db_record,
+    b powa_all_relations_history_db_record)
+RETURNS powa_all_relations_history_db_rate AS
+$_$
+DECLARE
+    res powa_all_relations_history_db_rate;
+    sec integer;
+BEGIN
+    res.sec = extract(EPOCH FROM (a.ts - b.ts));
+    IF res.sec = 0 THEN
+        sec = 1;
+    ELSE
+        sec = res.sec;
+    END IF;
+    res.seq_can_per_sec = (a.seq_scan - b.seq_scan)::double precision / sec;
+    res.idx_can_per_sec = (a.idx_scan - b.idx_scan)::double precision / sec;
+    res.tup_returned_per_sec = (a.tup_returned - b.tup_returned)::double precision / sec;
+    res.tup_fetched_per_sec = (a.tup_fetched - b.tup_fetched)::double precision / sec;
+    res.n_tup_ins_per_sec = (a.n_tup_ins - b.n_tup_ins)::double precision / sec;
+    res.n_tup_upd_per_sec = (a.n_tup_upd - b.n_tup_upd)::double precision / sec;
+    res.n_tup_del_per_sec = (a.n_tup_del - b.n_tup_del)::double precision / sec;
+    res.n_tup_hot_upd_per_sec = (a.n_tup_hot_upd - b.n_tup_hot_upd)::double precision / sec;
+    res.n_liv_tup_per_sec = (a.n_liv_tup - b.n_liv_tup)::double precision / sec;
+    res.n_dead_tup_per_sec = (a.n_dead_tup - b.n_dead_tup)::double precision / sec;
+    res.n_mod_since_analyze_per_sec = (a.n_mod_since_analyze - b.n_mod_since_analyze)::double precision / sec;
+    res.blks_read_per_sec = (a.blks_read - b.blks_read)::double precision / sec;
+    res.blks_hit_per_sec = (a.blks_hit - b.blks_hit)::double precision / sec;
+    res.vacuum_count_per_sec = (a.vacuum_count - b.vacuum_count)::double precision / sec;
+    res.autovacuum_count_per_sec = (a.autovacuum_count - b.autovacuum_count)::double precision / sec;
+    res.analyze_count_per_sec = (a.analyze_count - b.analyze_count)::double precision / sec;
+    res.autoanalyze_count_per_sec = (a.autoanalyze_count - b.autoanalyze_count)::double precision / sec;
+
+    return res;
+END;
+$_$
+LANGUAGE plpgsql IMMUTABLE STRICT;
+
+CREATE OPERATOR / (
+    PROCEDURE = powa_all_relations_history_db_div,
+    LEFTARG = powa_all_relations_history_db_record,
+    RIGHTARG = powa_all_relations_history_db_record
+);
+/* end of pg_stat_all_relations_db operator support */
+
 CREATE TYPE powa_stat_bgwriter_history_record AS (
     ts timestamp with time zone,
     checkpoints_timed bigint,
@@ -745,6 +892,19 @@ CREATE TABLE powa_all_relations_history (
 
 CREATE INDEX powa_all_relations_history_relid_ts ON powa_all_relations_history USING gist (srvid, relid, coalesce_range);
 
+CREATE TABLE powa_all_relations_history_db (
+    srvid integer NOT NULL,
+    dbid oid NOT NULL,
+    coalesce_range tstzrange NOT NULL,
+    records powa_all_relations_history_db_record[] NOT NULL,
+    mins_in_range powa_all_relations_history_db_record NOT NULL,
+    maxs_in_range powa_all_relations_history_db_record NOT NULL,
+    FOREIGN KEY (srvid) REFERENCES powa_servers(id)
+      MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
+);
+
+CREATE INDEX powa_all_relations_history_db_dbid_ts ON powa_all_relations_history_db USING gist (srvid, dbid, coalesce_range);
+
 CREATE TABLE powa_all_relations_history_current (
     srvid integer NOT NULL,
     dbid oid NOT NULL,
@@ -754,6 +914,15 @@ CREATE TABLE powa_all_relations_history_current (
       MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
 );
 CREATE INDEX ON powa_all_relations_history_current(srvid);
+
+CREATE TABLE powa_all_relations_history_current_db (
+    srvid integer NOT NULL,
+    dbid oid NOT NULL,
+    record powa_all_relations_history_db_record NOT NULL,
+    FOREIGN KEY (srvid) REFERENCES powa_servers(id)
+      MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
+);
+CREATE INDEX ON powa_all_relations_history_current_db(srvid);
 
 CREATE TABLE powa_stat_bgwriter_history (
     srvid integer NOT NULL,
@@ -1643,7 +1812,9 @@ SELECT pg_catalog.pg_extension_config_dump('powa_statements_history_current_db',
 SELECT pg_catalog.pg_extension_config_dump('powa_user_functions_history','');
 SELECT pg_catalog.pg_extension_config_dump('powa_user_functions_history_current','');
 SELECT pg_catalog.pg_extension_config_dump('powa_all_relations_history','');
+SELECT pg_catalog.pg_extension_config_dump('powa_all_relations_history_db','');
 SELECT pg_catalog.pg_extension_config_dump('powa_all_relations_history_current','');
+SELECT pg_catalog.pg_extension_config_dump('powa_all_relations_history_current_db','');
 SELECT pg_catalog.pg_extension_config_dump('powa_stat_bgwriter_history','');
 SELECT pg_catalog.pg_extension_config_dump('powa_stat_bgwriter_history_current','');
 SELECT pg_catalog.pg_extension_config_dump('powa_functions','WHERE added_manually');
@@ -2296,19 +2467,47 @@ BEGIN
     WITH rel AS (
         SELECT *
         FROM powa_all_relations_src(_srvid)
-    )
-    INSERT INTO powa_all_relations_history_current
-        SELECT _srvid, dbid, relid,
-        ROW(ts,numscan, tup_returned, tup_fetched,
-            n_tup_ins, n_tup_upd, n_tup_del, n_tup_hot_upd,
-            n_liv_tup, n_dead_tup, n_mod_since_analyze,
-            blks_read, blks_hit, last_vacuum, vacuum_count,
-            last_autovacuum, autovacuum_count, last_analyze,
-            analyze_count, last_autoanalyze,
-            autoanalyze_count)::powa_all_relations_history_record AS record
-        FROM rel;
+    ),
 
-    GET DIAGNOSTICS v_rowcount = ROW_COUNT;
+    by_relation AS (
+        INSERT INTO powa_all_relations_history_current
+            SELECT _srvid, dbid, relid,
+            ROW(ts,numscan, tup_returned, tup_fetched,
+                n_tup_ins, n_tup_upd, n_tup_del, n_tup_hot_upd,
+                n_liv_tup, n_dead_tup, n_mod_since_analyze,
+                blks_read, blks_hit, last_vacuum, vacuum_count,
+                last_autovacuum, autovacuum_count, last_analyze,
+                analyze_count, last_autoanalyze,
+                autoanalyze_count)::powa_all_relations_history_record AS record
+            FROM rel
+    ),
+
+    by_database AS (
+        INSERT INTO powa_all_relations_history_current_db (srvid, dbid, record)
+            SELECT _srvid AS srvid, dbid,
+            ROW(ts,
+                sum(CASE WHEN
+                        (n_tup_ins + n_tup_upd + n_tup_del + n_tup_hot_upd +
+                         n_liv_tup + n_dead_tup + n_mod_since_analyze) = 0
+                    THEN 0 ELSE numscan END),
+                sum(CASE WHEN
+                        (n_tup_ins + n_tup_upd + n_tup_del + n_tup_hot_upd +
+                         n_liv_tup + n_dead_tup + n_mod_since_analyze) = 0
+                    THEN numscan ELSE 0 END),
+                sum(rel.tup_returned), sum(rel.tup_fetched),
+                sum(n_tup_ins), sum(n_tup_upd), sum(n_tup_del), sum(n_tup_hot_upd),
+                sum(n_liv_tup), sum(n_dead_tup), sum(n_mod_since_analyze),
+                sum(rel.blks_read), sum(rel.blks_hit),
+                sum(vacuum_count), sum(autovacuum_count),
+                sum(analyze_count), sum(autoanalyze_count)
+            )::powa_all_relations_history_db_record
+            FROM rel
+            GROUP BY srvid, dbid, ts
+    )
+ 
+    SELECT COUNT(*) into v_rowcount
+    FROM rel;
+
     perform powa_log(format('%I - rowcount: %s',
             v_funcname, v_rowcount));
 
@@ -2495,7 +2694,15 @@ BEGIN
     AND srvid = _srvid;
 
     GET DIAGNOSTICS v_rowcount = ROW_COUNT;
-    perform powa_log(format('%I - rowcount: %s',
+    perform powa_log(format('%I - (powa_all_relations_history) rowcount: %s',
+            v_funcname, v_rowcount));
+
+    DELETE FROM powa_all_relations_history_db
+    WHERE upper(coalesce_range)< (now() - v_retention)
+    AND srvid = _srvid;
+
+    GET DIAGNOSTICS v_rowcount = ROW_COUNT;
+    perform powa_log(format('%I - (powa_all_relations_history_db) rowcount: %s',
             v_funcname, v_rowcount));
 END;
 $PROC$ LANGUAGE plpgsql; /* end of powa_all_relations_purge */
@@ -2665,10 +2872,47 @@ BEGIN
         GROUP BY srvid, dbid, relid;
 
     GET DIAGNOSTICS v_rowcount = ROW_COUNT;
-    perform powa_log(format('%I - rowcount: %s',
+    perform powa_log(format('%I - (powa_all_relations_history_current) rowcount: %s',
             v_funcname, v_rowcount));
 
     DELETE FROM powa_all_relations_history_current WHERE srvid = _srvid;
+
+    -- aggregate all_relations_db table
+    INSERT INTO powa_all_relations_history_db
+        SELECT srvid, dbid,
+            tstzrange(min((record).ts), max((record).ts),'[]'),
+            array_agg(record),
+            ROW(min((record).ts),
+                min((record).seq_scan),min((record).idx_scan),
+                min((record).tup_returned),min((record).tup_fetched),
+                min((record).n_tup_ins),min((record).n_tup_upd),
+                min((record).n_tup_del),min((record).n_tup_hot_upd),
+                min((record).n_liv_tup),min((record).n_dead_tup),
+                min((record).n_mod_since_analyze),
+                min((record).blks_read),min((record).blks_hit),
+                min((record).vacuum_count),min((record).autovacuum_count),
+                min((record).analyze_count),min((record).autoanalyze_count)
+            )::powa_all_relations_history_db_record,
+            ROW(max((record).ts),
+                max((record).seq_scan),max((record).idx_scan),
+                max((record).tup_returned),max((record).tup_fetched),
+                max((record).n_tup_ins),max((record).n_tup_upd),
+                max((record).n_tup_del),max((record).n_tup_hot_upd),
+                max((record).n_liv_tup),max((record).n_dead_tup),
+                max((record).n_mod_since_analyze),
+                max((record).blks_read),max((record).blks_hit),
+                max((record).vacuum_count),max((record).autovacuum_count),
+                max((record).analyze_count),max((record).autoanalyze_count)
+            )::powa_all_relations_history_db_record
+        FROM powa_all_relations_history_current_db
+        WHERE srvid = _srvid
+        GROUP BY srvid, dbid;
+
+    GET DIAGNOSTICS v_rowcount = ROW_COUNT;
+    perform powa_log(format('%I (powa_all_relations_history_db) - rowcount: %s',
+            v_funcname, v_rowcount));
+
+    DELETE FROM powa_all_relations_history_current_db WHERE srvid = _srvid;
  END;
 $PROC$ LANGUAGE plpgsql; /* end of powa_all_relations_aggregate */
 
@@ -2814,8 +3058,14 @@ BEGIN
     PERFORM powa_log('Resetting powa_all_relations_history(' || _srvid || ')');
     DELETE FROM powa_all_relations_history WHERE srvid = _srvid;
 
+    PERFORM powa_log('Resetting powa_all_relations_history_db(' || _srvid || ')');
+    DELETE FROM powa_all_relations_history_db WHERE srvid = _srvid;
+
     PERFORM powa_log('Resetting powa_all_relations_history_current(' || _srvid || ')');
     DELETE FROM powa_all_relations_history_current WHERE srvid = _srvid;
+
+    PERFORM powa_log('Resetting powa_all_relations_history_current_db(' || _srvid || ')');
+    DELETE FROM powa_all_relations_history_current_db WHERE srvid = _srvid;
 
     RETURN true;
 END;
