@@ -781,6 +781,7 @@ CREATE TABLE powa_functions (
     operation text NOT NULL,
     function_name text NOT NULL,
     query_source text default NULL,
+    query_cleanup text default NULL,
     added_manually boolean NOT NULL default true,
     enabled boolean NOT NULL default true,
     priority numeric NOT NULL default 10,
@@ -3143,12 +3144,12 @@ BEGIN
         IF ( NOT v_func_present) THEN
             PERFORM powa_log('registering pg_qualstats');
 
-            INSERT INTO powa_functions (srvid, module, operation, function_name, query_source, added_manually, enabled)
-            VALUES (_srvid, 'pg_qualstats', 'snapshot',   'powa_qualstats_snapshot',   'powa_qualstats_src', true, true),
-                   (_srvid, 'pg_qualstats', 'aggregate',  'powa_qualstats_aggregate',  NULL,                 true, true),
-                   (_srvid, 'pg_qualstats', 'unregister', 'powa_qualstats_unregister', NULL,                 true, true),
-                   (_srvid, 'pg_qualstats', 'purge',      'powa_qualstats_purge',      NULL,                 true, true),
-                   (_srvid, 'pg_qualstats', 'reset',      'powa_qualstats_reset',      NULL,                 true, true);
+            INSERT INTO powa_functions (srvid, module, operation, function_name, query_source, query_cleanup, added_manually, enabled)
+            VALUES (_srvid, 'pg_qualstats', 'snapshot',   'powa_qualstats_snapshot',   'powa_qualstats_src', 'pg_qualstats_reset()', true, true),
+                   (_srvid, 'pg_qualstats', 'aggregate',  'powa_qualstats_aggregate',  NULL,                 NULL,                   true, true),
+                   (_srvid, 'pg_qualstats', 'unregister', 'powa_qualstats_unregister', NULL,                 NULL,                   true, true),
+                   (_srvid, 'pg_qualstats', 'purge',      'powa_qualstats_purge',      NULL,                 NULL,                   true, true),
+                   (_srvid, 'pg_qualstats', 'reset',      'powa_qualstats_reset',      NULL,                 NULL,                   true, true);
         END IF;
     END IF;
 
@@ -3447,7 +3448,13 @@ BEGIN
     END IF;
 
   result := true;
-  PERFORM pg_qualstats_reset();
+
+  -- pg_qualstats metrics are not accumulated, so we force a reset after every
+  -- snapshot.  For local snapshot this is done here, remote snapshots will
+  -- rely on the collector doing it through query_cleanup.
+  IF (_srvid = 0) THEN
+    PERFORM pg_qualstats_reset();
+  END IF;
 END
 $PROC$ language plpgsql; /* end of powa_qualstats_snapshot */
 
