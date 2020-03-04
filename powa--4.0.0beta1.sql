@@ -3145,11 +3145,11 @@ BEGIN
             PERFORM powa_log('registering pg_qualstats');
 
             INSERT INTO powa_functions (srvid, module, operation, function_name, query_source, query_cleanup, added_manually, enabled)
-            VALUES (_srvid, 'pg_qualstats', 'snapshot',   'powa_qualstats_snapshot',   'powa_qualstats_src', 'pg_qualstats_reset()', true, true),
-                   (_srvid, 'pg_qualstats', 'aggregate',  'powa_qualstats_aggregate',  NULL,                 NULL,                   true, true),
-                   (_srvid, 'pg_qualstats', 'unregister', 'powa_qualstats_unregister', NULL,                 NULL,                   true, true),
-                   (_srvid, 'pg_qualstats', 'purge',      'powa_qualstats_purge',      NULL,                 NULL,                   true, true),
-                   (_srvid, 'pg_qualstats', 'reset',      'powa_qualstats_reset',      NULL,                 NULL,                   true, true);
+            VALUES (_srvid, 'pg_qualstats', 'snapshot',   'powa_qualstats_snapshot',   'powa_qualstats_src', 'SELECT pg_qualstats_reset()', true, true),
+                   (_srvid, 'pg_qualstats', 'aggregate',  'powa_qualstats_aggregate',  NULL,                 NULL,                          true, true),
+                   (_srvid, 'pg_qualstats', 'unregister', 'powa_qualstats_unregister', NULL,                 NULL,                          true, true),
+                   (_srvid, 'pg_qualstats', 'purge',      'powa_qualstats_purge',      NULL,                 NULL,                          true, true),
+                   (_srvid, 'pg_qualstats', 'reset',      'powa_qualstats_reset',      NULL,                 NULL,                          true, true);
         END IF;
     END IF;
 
