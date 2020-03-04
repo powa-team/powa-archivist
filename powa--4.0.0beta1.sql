@@ -3297,13 +3297,22 @@ CREATE OR REPLACE FUNCTION powa_qualstats_src(IN _srvid integer,
 ) RETURNS SETOF record STABLE AS $PROC$
 DECLARE
   is_v2 bool;
+  ratio_col text := 'qs.mean_err_estimate_ratio';
+  num_col text := 'qs.mean_err_estimate_num';
+  sql text;
 BEGIN
     IF (_srvid = 0) THEN
         SELECT substr(extversion, 1, 1)::int >=2 INTO STRICT is_v2
           FROM pg_extension
           WHERE extname = 'pg_qualstats';
 
-        RETURN QUERY
+
+        IF NOT is_v2 THEN
+            ratio_col := 'NULL::double precision';
+            num_col := 'NULL::double precision';
+        END IF;
+
+        sql := format($sql$
             SELECT now(), pgqs.uniquequalnodeid, pgqs.dbid, pgqs.userid,
                 pgqs.qualnodeid, pgqs.occurences, pgqs.execution_count,
                 pgqs.nbfiltered, pgqs.mean_err_estimate_ratio,
@@ -3337,12 +3346,8 @@ BEGIN
                     qs.queryid as queryid,
                     qs.constvalue as constvalue,
                     qs.nbfiltered as nbfiltered,
-                    CASE WHEN is_v2 THEN qs.mean_err_estimate_ratio
-                      ELSE NULL
-                    END AS mean_err_estimate_ratio,
-                    CASE WHEN is_v2 THEN qs.mean_err_estimate_num
-                      ELSE NULL
-                    END AS mean_err_estimate_num,
+                    %s AS mean_err_estimate_ratio,
+                    %s AS mean_err_estimate_num,
                     qs.eval_type,
                     qs.constant_position
                     FROM pg_qualstats() qs
@@ -3371,7 +3376,9 @@ BEGIN
           AND NOT (r.rolname = ANY (string_to_array(
                     coalesce(current_setting('powa.ignored_users'), ''),
                     ',')))
-        WHERE pgqs.dbid NOT IN (SELECT oid FROM powa_databases WHERE dropped IS NOT NULL);
+        WHERE pgqs.dbid NOT IN (SELECT oid FROM powa_databases WHERE dropped IS NOT NULL)
+        $sql$, ratio_col, num_col);
+        RETURN QUERY EXECUTE sql;
     ELSE
         RETURN QUERY
             SELECT pgqs.ts, pgqs.uniquequalnodeid, pgqs.dbid, pgqs.userid,
