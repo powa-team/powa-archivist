@@ -109,7 +109,7 @@ compute_powa_frequency(void)
 	int local_frequency = powa_frequency;
 
 	/*
-	 * If PoWA is deactivated, artitrarily set a sleep time of one hour to save
+	 * If PoWA is deactivated, arbitrarily set a sleep time of one hour to save
 	 * resources.  The actual sleep time is not problematic since the
 	 * reactivation can only be done with a sighup, which will set the latch
 	 * used for the sleep.
@@ -274,6 +274,36 @@ powa_main(Datum main_arg)
 	pqsignal(SIGHUP, powa_sighup);
 
 	BackgroundWorkerUnblockSignals();
+
+	if (powa_frequency == -1)
+	{
+		elog(LOG, "PoWA is deactivated");
+		pgstat_report_activity(STATE_IDLE, NULL);
+	}
+
+	/*
+	 * First check if local snapshot is disabled, and sleep at that point if
+	 * that's the case.  This avoids spurious logging if powa is in
+	 * shared_preload_libraries but the target database hasn't been created.
+	 */
+	while (powa_frequency == -1)
+	{
+		/* Check if a SIGHUP has been received */
+		powa_process_sighup();
+
+		if (powa_frequency != -1)
+			break;
+
+		/* sleep */
+		WaitLatch(&MyProc->procLatch,
+				  WL_LATCH_SET | WL_TIMEOUT | WL_POSTMASTER_DEATH,
+				  3600000
+#if PG_VERSION_NUM >= 100000
+				  ,PG_WAIT_EXTENSION
+#endif
+				  );
+		ResetLatch(&MyProc->procLatch);
+	}
 
 	/* Define the snapshot reference time when the bgworker start */
 	INSTR_TIME_SET_CURRENT(last_start);
