@@ -2488,11 +2488,13 @@ BEGIN
             ROW(ts,
                 sum(CASE WHEN
                         (n_tup_ins + n_tup_upd + n_tup_del + n_tup_hot_upd +
-                         n_liv_tup + n_dead_tup + n_mod_since_analyze) = 0
+                         n_liv_tup + n_dead_tup + n_mod_since_analyze + vacuum_count +
+                         autovacuum_count + analyze_count + autoanalyze_count) = 0
                     THEN 0 ELSE numscan END),
                 sum(CASE WHEN
                         (n_tup_ins + n_tup_upd + n_tup_del + n_tup_hot_upd +
-                         n_liv_tup + n_dead_tup + n_mod_since_analyze) = 0
+                         n_liv_tup + n_dead_tup + n_mod_since_analyze + vacuum_count +
+                         autovacuum_count + analyze_count + autoanalyze_count) = 0
                     THEN numscan ELSE 0 END),
                 sum(rel.tup_returned), sum(rel.tup_fetched),
                 sum(n_tup_ins), sum(n_tup_upd), sum(n_tup_del), sum(n_tup_hot_upd),
