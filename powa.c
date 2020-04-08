@@ -317,7 +317,11 @@ powa_main(Datum main_arg)
 
 	elog(LOG, "POWA connected to database %s", quote_identifier(powa_database));
 
-	set_ps_display("init", false);
+	set_ps_display("init"
+#if PG_VERSION_NUM < 130000
+			, false
+#endif
+			);
 	StartTransactionCommand();
 	SetCurrentStatementStartTimestamp();
 	SPI_connect();
@@ -328,7 +332,11 @@ powa_main(Datum main_arg)
 	PopActiveSnapshot();
 	CommitTransactionCommand();
 	pgstat_report_activity(STATE_IDLE, NULL);
-	set_ps_display("idle", false);
+	set_ps_display("idle"
+#if PG_VERSION_NUM < 130000
+			, false
+#endif
+			);
 
 	/*------------------
 	 * Main loop of POWA
@@ -343,7 +351,11 @@ powa_main(Datum main_arg)
 
 		if (powa_frequency != -1)
 		{
-			set_ps_display("snapshot", false);
+			set_ps_display("snapshot"
+#if PG_VERSION_NUM < 130000
+			, false
+#endif
+			);
 			SetCurrentStatementStartTimestamp();
 			StartTransactionCommand();
 			SPI_connect();
@@ -357,7 +369,11 @@ powa_main(Datum main_arg)
 			CommitTransactionCommand();
 			pgstat_report_stat(false);
 			pgstat_report_activity(STATE_IDLE, NULL);
-			set_ps_display("idle", false);
+			set_ps_display("idle"
+#if PG_VERSION_NUM < 130000
+			, false
+#endif
+			);
 		}
 
 		/* sleep loop */
