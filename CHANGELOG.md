@@ -1,4 +1,4 @@
-## 4.0.0 (Beta)
+## 4.0.0
 
 This is a major rework of PoWA.  Please not that there is not upgrade to switch
 to this version. You need to remove the old one and install the new 4.0.0
@@ -11,6 +11,9 @@ version.
       allows using PoWA on hot-standby server (Julien Rouhaud, Thanks to Adrien
       Nayrat for extensive testing).
     - Store new metrics added in pg_stat_kcache 2.1.0 (Julien Rouhaud)
+    - Aggregate relation statistics per database (Alexander Kukushkin)
+    - Add support for pg_qualstats 2.0.0 (Julien Rouhaud)
+    - Add a query_cleanup column to powa_functions (Julien Rouhaud)
   - Miscellaneous:
     - Add support for makefile option NO_PGXS (Julien Rouhaud)
     - Cleanup old databases after the expiration period, and stop gathering
@@ -18,9 +21,16 @@ version.
     - Fix possible bug with background worker type in pg_stat_activity
       (github user ppetrov91)
     - Add some missing indexes (Julien Rouhaud, thanks to PoWA for noticing)
+    - Add compatibility with upcoming pg13 (Julien Rouhaud)
+    - Reduce noise is powa is disabled and the target database doesn't exist
+      (Julien Rouhaud)
   - Bugfix
     - Schema qualify powa_take_snapshot() call, so powa can work without public
       being in the superuser search_path (Julien Rouhaud)
+    - Fix powa_snapshot_metas dump config (Julien Rouhaud, reported by Adrien
+      Nayrat)
+    - Fix long standing bug in pg_qualstats aggregation
+    - Fix typos in SQL comments (Magnus Hagander)
 
 ## 3.2.0 (2018-10-14)
 
