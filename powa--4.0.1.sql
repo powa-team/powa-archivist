@@ -581,8 +581,8 @@ BEGIN
     ELSE
         sec = res.sec;
     END IF;
-    res.seq_can_per_sec = (a.seq_scan - b.seq_scan)::double precision / sec;
-    res.idx_can_per_sec = (a.idx_scan - b.idx_scan)::double precision / sec;
+    res.seq_scan_per_sec = (a.seq_scan - b.seq_scan)::double precision / sec;
+    res.idx_scan_per_sec = (a.idx_scan - b.idx_scan)::double precision / sec;
     res.tup_returned_per_sec = (a.tup_returned - b.tup_returned)::double precision / sec;
     res.tup_fetched_per_sec = (a.tup_fetched - b.tup_fetched)::double precision / sec;
     res.n_tup_ins_per_sec = (a.n_tup_ins - b.n_tup_ins)::double precision / sec;

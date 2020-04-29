@@ -27,3 +27,4 @@ Contributors to PoWA :
   * Ikrar-k
   * care1e55
   * optimadba
+  * pessonnier
