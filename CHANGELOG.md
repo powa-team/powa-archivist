@@ -1,3 +1,9 @@
+## 4.0.1
+
+  - Bugfixes
+    - Fix typo in powa_all_relations_history_db_div
+    - Fix regression tests
+
 ## 4.0.0
 
 This is a major rework of PoWA.  Please not that there is not upgrade to switch
