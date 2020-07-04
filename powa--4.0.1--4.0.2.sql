@@ -2,8 +2,8 @@
 --\echo Use "ALTER EXTENSION powa" to load this file. \quit
 
 ALTER TABLE public.powa_statements ADD IF NOT EXISTS last_present_ts timestamptz NULL DEFAULT now();
---create a performance index to speed up clean up process
-create index  if not exists powa_statements_mru_idx on powa_statements (last_present_ts);
+-- Create a performance index to speed up clean up process
+CREATE INDEX IF NOT EXISTS powa_statements_mru_idx ON powa_statements (last_present_ts);
 
 CREATE OR REPLACE FUNCTION powa_statements_snapshot(_srvid integer) RETURNS void AS $PROC$
 DECLARE
@@ -23,12 +23,13 @@ BEGIN
         SELECT *
         FROM powa_statements_src(_srvid)
     ),
-    mru as (UPDATE powa_statements set last_present_ts = now() 
-            from capture         
+    mru as (UPDATE powa_statements set last_present_ts = now()
+            FROM capture
             WHERE powa_statements.queryid = capture.queryid
               AND powa_statements.dbid = capture.dbid
               AND powa_statements.userid = capture.userid
-              AND powa_statements.srvid = _srvid   ),
+              AND powa_statements.srvid = _srvid
+    ),
     missing_statements AS(
         INSERT INTO powa_statements (srvid, queryid, dbid, userid, query)
             SELECT _srvid, queryid, dbid, userid, query
@@ -82,10 +83,10 @@ END;
 $PROC$ language plpgsql; /* end of powa_statements_snapshot */
 
 
-CREATE OR REPLACE FUNCTION public.powa_statements_purge(_srvid integer)
+CREATE OR REPLACE FUNCTION powa_statements_purge(_srvid integer)
  RETURNS void
  LANGUAGE plpgsql
-AS $function$   
+AS $function$
 DECLARE
     v_funcname    text := 'powa_statements_purge(' || _srvid || ')';
     v_rowcount    bigint;
@@ -123,5 +124,4 @@ BEGIN
             v_funcname, v_rowcount));
 
 END;
-$function$
-;
+$function$;
