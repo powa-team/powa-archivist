@@ -28,3 +28,4 @@ Contributors to PoWA :
   * care1e55
   * optimadba
   * pessonnier
+  * Andriy Bartash
