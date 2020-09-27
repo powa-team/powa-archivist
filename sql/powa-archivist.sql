@@ -66,3 +66,22 @@ SELECT 4, COUNT(*) = 0 FROM powa_user_functions_history;
 SELECT 4, COUNT(*) = 0 FROM powa_all_relations_history;
 SELECT 4, COUNT(*) = 0 FROM powa_statements_history;
 SELECT 4, COUNT(*) = 0 FROM powa_statements_history;
+
+-- Check API
+SELECT powa_register_server(hostname => '127.0.0.1',
+    extensions => '{pg_qualstats}');
+SELECT COUNT(*) FROM powa_servers;
+SELECT hostname FROM powa_servers WHERE id = 1;
+
+-- Check missing powa_statements FK for pg_qualstats doesn't prevent snapshot
+INSERT INTO powa_qualstats_src_tmp(srvid, ts, uniquequalnodeid, dbid, userid,
+    qualnodeid, occurences, execution_count, nbfiltered,
+    mean_err_estimate_ratio, mean_err_estimate_num,
+    queryid, constvalues, quals)
+    SELECT 1, now(), 1, 1, 1,
+        1, 1000, 1, 0,
+        0, 0,
+        1, '{}', ARRAY[(1259,1,607,'i')::qual_type];
+SELECT count(*) FROM powa_qualstats_src_tmp;
+SELECT powa_qualstats_snapshot(1);
+SELECT count(*) FROM powa_qualstats_src_tmp;

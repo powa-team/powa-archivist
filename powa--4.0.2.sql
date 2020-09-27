@@ -3672,7 +3672,13 @@ BEGIN
 
   WITH capture AS (
     SELECT *
-    FROM powa_qualstats_src(_srvid)
+    FROM powa_qualstats_src(_srvid) q
+    WHERE EXISTS (SELECT 1
+      FROM powa_statements s
+      WHERE s.srvid = _srvid
+      AND q.queryid = s.queryid
+      AND q.dbid = s.dbid
+      AND q.userid = s.dbid)
   ),
   missing_quals AS (
       INSERT INTO powa_qualstats_quals (srvid, qualid, queryid, dbid, userid, quals)
