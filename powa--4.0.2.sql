@@ -8,10 +8,6 @@ SET client_min_messages = warning;
 SET escape_string_warning = off;
 SET search_path = public, pg_catalog;
 
--- in case the extension is not in shared_preload_libraries, we don't want to
--- fail on powa.debug GUC not being present
-LOAD 'powa';
-
 CREATE TABLE powa_servers(
     id serial PRIMARY KEY,
     hostname text NOT NULL,
@@ -1236,17 +1232,42 @@ BEGIN
 END;
 $_$ LANGUAGE plpgsql; /* powa_deactivate_server */
 
-CREATE FUNCTION powa_log (msg text) RETURNS void
-LANGUAGE plpgsql
-AS $_$
+DO $anon$
 BEGIN
-    IF current_setting('powa.debug')::bool THEN
-        RAISE WARNING '%', msg;
+    IF current_setting('server_version_num')::int < 90500 THEN
+        CREATE FUNCTION powa_log (msg text) RETURNS void
+        LANGUAGE plpgsql
+        AS $_$
+        DECLARE
+            v_debug bool;
+        BEGIN
+            BEGIN
+                SELECT current_setting('powa.debug')::bool INTO v_debug;
+            EXCEPTION WHEN OTHERS THEN
+                v_debug = false;
+            END;
+            IF v_debug THEN
+                RAISE WARNING '%', msg;
+            ELSE
+                RAISE DEBUG '%', msg;
+            END IF;
+        END;
+        $_$;
     ELSE
-        RAISE DEBUG '%', msg;
+        CREATE FUNCTION powa_log (msg text) RETURNS void
+        LANGUAGE plpgsql
+        AS $_$
+        BEGIN
+            IF COALESCE(current_setting('powa.debug', true), 'off')::bool THEN
+                RAISE WARNING '%', msg;
+            ELSE
+                RAISE DEBUG '%', msg;
+            END IF;
+        END;
+        $_$;
     END IF;
 END;
-$_$;
+$anon$;
 
 CREATE FUNCTION powa_get_server_retention(_srvid integer)
 RETURNS interval AS $_$
@@ -1843,10 +1864,6 @@ LANGUAGE plpgsql
 AS $_$
 DECLARE
 BEGIN
-    -- in case the extension is not in shared_preload_libraries, we don't want
-    -- to fail on powa.debug GUC not being present
-    LOAD 'powa';
-
     /* We have for now no way for a proper handling of this event,
      * as we don't have a table with the list of supported extensions.
      * So just call every powa_*_register() function we know each time an
@@ -1879,10 +1896,6 @@ DECLARE
     v_hint    text;
     v_context text;
 BEGIN
-    -- in case the extension is not in shared_preload_libraries, we don't want
-    -- to fail on powa.debug GUC not being present
-    LOAD 'powa';
-
     -- We unregister extensions regardless the "enabled" field
     WITH ext AS (
         SELECT object_name
