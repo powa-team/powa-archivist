@@ -543,3 +543,72 @@ BEGIN
 END;
 $PROC$ LANGUAGE plpgsql; /* end of powa_statements_purge */
 
+-- automatically configure powa for local snapshot if supported extension are
+-- created locally
+CREATE OR REPLACE FUNCTION public.powa_check_created_extensions()
+RETURNS event_trigger
+LANGUAGE plpgsql
+AS $_$
+DECLARE
+BEGIN
+    /* We have for now no way for a proper handling of this event,
+     * as we don't have a table with the list of supported extensions.
+     * So just call every powa_*_register() function we know each time an
+     * extension is created. Powa should be in a dedicated database and the
+     * register function handle to be called several time, so it's not critical
+     */
+    PERFORM public.powa_kcache_register(0);
+    PERFORM public.powa_qualstats_register(0);
+    PERFORM public.powa_track_settings_register(0);
+    PERFORM public.powa_wait_sampling_register(0);
+END;
+$_$; /* end of powa_check_created_extensions */
+
+-- automatically remove extensions from local snapshot if supported extension
+-- is removed locally
+CREATE OR REPLACE FUNCTION public.powa_check_dropped_extensions()
+RETURNS event_trigger
+LANGUAGE plpgsql
+AS $_$
+DECLARE
+    funcname text;
+    v_state   text;
+    v_msg     text;
+    v_detail  text;
+    v_hint    text;
+    v_context text;
+BEGIN
+    -- We unregister extensions regardless the "enabled" field
+    WITH ext AS (
+        SELECT object_name
+        FROM pg_event_trigger_dropped_objects() d
+        WHERE d.object_type = 'extension'
+    )
+    SELECT function_name INTO funcname
+    FROM powa_functions f
+    JOIN ext ON f.module = ext.object_name
+    WHERE operation = 'unregister'
+    ORDER BY module;
+
+    IF ( funcname IS NOT NULL ) THEN
+        BEGIN
+            PERFORM powa_log(format('running %I', funcname));
+            EXECUTE 'SELECT ' || quote_ident(funcname) || '(0)';
+        EXCEPTION
+          WHEN OTHERS THEN
+            GET STACKED DIAGNOSTICS
+                v_state   = RETURNED_SQLSTATE,
+                v_msg     = MESSAGE_TEXT,
+                v_detail  = PG_EXCEPTION_DETAIL,
+                v_hint    = PG_EXCEPTION_HINT,
+                v_context = PG_EXCEPTION_CONTEXT;
+            RAISE WARNING 'powa_check_dropped_extensions(): function "%" failed:
+                state  : %
+                message: %
+                detail : %
+                hint   : %
+                context: %', funcname, v_state, v_msg, v_detail, v_hint, v_context;
+        END;
+    END IF;
+END;
+$_$; /* end of powa_check_dropped_extensions */
