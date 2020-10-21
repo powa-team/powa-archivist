@@ -1234,7 +1234,7 @@ $_$ LANGUAGE plpgsql; /* powa_deactivate_server */
 
 DO $anon$
 BEGIN
-    IF current_setting('server_version_num')::int < 90500 THEN
+    IF current_setting('server_version_num')::int < 90600 THEN
         CREATE FUNCTION powa_log (msg text) RETURNS void
         LANGUAGE plpgsql
         AS $_$
