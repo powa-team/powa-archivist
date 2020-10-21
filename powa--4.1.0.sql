@@ -104,7 +104,7 @@ AS '$libdir/powa', 'powa_stat_all_rel';
 CREATE TYPE powa_statements_history_record AS (
     ts timestamp with time zone,
     calls bigint,
-    total_time double precision,
+    total_exec_time double precision,
     rows bigint,
     shared_blks_hit bigint,
     shared_blks_read bigint,
@@ -117,14 +117,19 @@ CREATE TYPE powa_statements_history_record AS (
     temp_blks_read bigint,
     temp_blks_written bigint,
     blk_read_time double precision,
-    blk_write_time double precision
+    blk_write_time double precision,
+    plans bigint,
+    total_plan_time double precision,
+    wal_records bigint,
+    wal_fpi bigint,
+    wal_bytes numeric
 );
 
 /* pg_stat_statements operator support */
 CREATE TYPE powa_statements_history_diff AS (
     intvl interval,
     calls bigint,
-    total_time double precision,
+    total_exec_time double precision,
     rows bigint,
     shared_blks_hit bigint,
     shared_blks_read bigint,
@@ -137,7 +142,12 @@ CREATE TYPE powa_statements_history_diff AS (
     temp_blks_read bigint,
     temp_blks_written bigint,
     blk_read_time double precision,
-    blk_write_time double precision
+    blk_write_time double precision,
+    plans bigint,
+    total_plan_time double precision,
+    wal_records bigint,
+    wal_fpi bigint,
+    wal_bytes numeric
 );
 
 CREATE OR REPLACE FUNCTION powa_statements_history_mi(
@@ -150,7 +160,7 @@ DECLARE
 BEGIN
     res.intvl = a.ts - b.ts;
     res.calls = a.calls - b.calls;
-    res.total_time = a.total_time - b.total_time;
+    res.total_exec_time = a.total_exec_time - b.total_exec_time;
     res.rows = a.rows - b.rows;
     res.shared_blks_hit = a.shared_blks_hit - b.shared_blks_hit;
     res.shared_blks_read = a.shared_blks_read - b.shared_blks_read;
@@ -164,6 +174,11 @@ BEGIN
     res.temp_blks_written = a.temp_blks_written - b.temp_blks_written;
     res.blk_read_time = a.blk_read_time - b.blk_read_time;
     res.blk_write_time = a.blk_write_time - b.blk_write_time;
+    res.plans = a.plans - b.plans;
+    res.total_plan_time = a.total_plan_time - b.total_plan_time;
+    res.wal_records = a.wal_records - b.wal_records;
+    res.wal_fpi = a.wal_fpi - b.wal_fpi;
+    res.wal_bytes = a.wal_bytes - b.wal_bytes;
 
     return res;
 END;
@@ -192,7 +207,12 @@ CREATE TYPE powa_statements_history_rate AS (
     temp_blks_read_per_sec double precision,
     temp_blks_written_per_sec double precision,
     blk_read_time_per_sec double precision,
-    blk_write_time_per_sec double precision
+    blk_write_time_per_sec double precision,
+    plans_per_sec double precision,
+    plantime_per_sec double precision,
+    wal_records_per_sec bigint,
+    wal_fpi_per_sec bigint,
+    wal_bytes_per_sec numeric
 );
 
 CREATE OR REPLACE FUNCTION powa_statements_history_div(
@@ -211,7 +231,7 @@ BEGIN
         sec = res.sec;
     END IF;
     res.calls_per_sec = (a.calls - b.calls)::double precision / sec;
-    res.runtime_per_sec = (a.total_time - b.total_time)::double precision / sec;
+    res.runtime_per_sec = (a.total_exec_time - b.total_exec_time)::double precision / sec;
     res.rows_per_sec = (a.rows - b.rows)::double precision / sec;
     res.shared_blks_hit_per_sec = (a.shared_blks_hit - b.shared_blks_hit)::double precision / sec;
     res.shared_blks_read_per_sec = (a.shared_blks_read - b.shared_blks_read)::double precision / sec;
@@ -225,6 +245,11 @@ BEGIN
     res.temp_blks_written_per_sec = (a.temp_blks_written - b.temp_blks_written)::double precision / sec;
     res.blk_read_time_per_sec = (a.blk_read_time - b.blk_read_time)::double precision / sec;
     res.blk_write_time_per_sec = (a.blk_write_time - b.blk_write_time)::double precision / sec;
+    res.plans_per_sec = (a.plans - b.plans)::double precision / sec;
+    res.plantime_per_sec = (a.total_plan_time - b.total_plan_time)::double precision / sec;
+    res.wal_records_per_sec = (a.wal_records - b.wal_records)::double precision / sec;
+    res.wal_fpi_per_sec = (a.wal_fpi - b.wal_fpi)::double precision / sec;
+    res.wal_bytes_per_sec = (a.wal_bytes - b.wal_bytes)::double precision / sec;
 
     return res;
 END;
@@ -736,7 +761,7 @@ CREATE UNLOGGED TABLE public.powa_statements_src_tmp (
     queryid bigint NOT NULL,
     query text NOT NULL,
     calls bigint NOT NULL,
-    total_time double precision NOT NULL,
+    total_exec_time double precision NOT NULL,
     rows bigint NOT NULL,
     shared_blks_hit bigint NOT NULL,
     shared_blks_read bigint NOT NULL,
@@ -749,7 +774,12 @@ CREATE UNLOGGED TABLE public.powa_statements_src_tmp (
     temp_blks_read bigint NOT NULL,
     temp_blks_written bigint NOT NULL,
     blk_read_time double precision NOT NULL,
-    blk_write_time double precision NOT NULL
+    blk_write_time double precision NOT NULL,
+    plans bigint NOT NULL,
+    total_plan_time double precision NOT NULL,
+    wal_records bigint NOT NULL,
+    wal_fpi bigint NOT NULL,
+    wal_bytes numeric NOT NULL
 );
 
 CREATE UNLOGGED TABLE public.powa_user_functions_src_tmp(
@@ -2241,7 +2271,7 @@ CREATE OR REPLACE FUNCTION powa_statements_src(IN _srvid integer,
     OUT queryid bigint,
     OUT query text,
     OUT calls bigint,
-    OUT total_time double precision,
+    OUT total_exec_time double precision,
     OUT rows bigint,
     OUT shared_blks_hit bigint,
     OUT shared_blks_read bigint,
@@ -2254,37 +2284,76 @@ CREATE OR REPLACE FUNCTION powa_statements_src(IN _srvid integer,
     OUT temp_blks_read bigint,
     OUT temp_blks_written bigint,
     OUT blk_read_time double precision,
-    OUT blk_write_time double precision
+    OUT blk_write_time double precision,
+    OUT plans bigint,
+    OUT total_plan_time float8,
+    OUT wal_records bigint,
+    OUT wal_fpi bigint,
+    OUT wal_bytes numeric
 )
 RETURNS SETOF record
 STABLE
 AS $PROC$
+DECLARE
+    v_pgss integer[];
 BEGIN
     IF (_srvid = 0) THEN
-        RETURN QUERY SELECT now(),
-            pgss.userid, pgss.dbid, pgss.queryid, pgss.query, pgss.calls,
-            pgss.total_time, pgss.rows, pgss.shared_blks_hit,
-            pgss.shared_blks_read, pgss.shared_blks_dirtied,
-            pgss.shared_blks_written, pgss.local_blks_hit,
-            pgss.local_blks_read, pgss.local_blks_dirtied,
-            pgss.local_blks_written, pgss.temp_blks_read,
-            pgss.temp_blks_written, pgss.blk_read_time, pgss.blk_write_time
-        FROM pg_stat_statements pgss
-        JOIN pg_database d ON d.oid = pgss.dbid
-        JOIN pg_roles r ON pgss.userid = r.oid
-        WHERE pgss.query !~* '^[[:space:]]*(DEALLOCATE|BEGIN|PREPARE TRANSACTION|COMMIT PREPARED|ROLLBACK PREPARED)'
-        AND NOT (r.rolname = ANY (string_to_array(
-                    coalesce(current_setting('powa.ignored_users'), ''),
-                    ',')));
+        SELECT regexp_split_to_array(extversion, '\.') INTO STRICT v_pgss
+        FROM pg_extension
+        WHERE extname = 'pg_stat_statements';
+
+        IF (v_pgss[1] = 1 AND v_pgss[2] < 8) THEN
+            RETURN QUERY SELECT now(),
+                pgss.userid, pgss.dbid, pgss.queryid, pgss.query,
+                pgss.calls, pgss.total_time,
+                pgss.rows, pgss.shared_blks_hit,
+                pgss.shared_blks_read, pgss.shared_blks_dirtied,
+                pgss.shared_blks_written, pgss.local_blks_hit,
+                pgss.local_blks_read, pgss.local_blks_dirtied,
+                pgss.local_blks_written, pgss.temp_blks_read,
+                pgss.temp_blks_written, pgss.blk_read_time,pgss.blk_write_time,
+                0::bigint, 0::double precision,
+                0::bigint, 0::bigint, 0::numeric
+
+            FROM pg_stat_statements pgss
+            JOIN pg_database d ON d.oid = pgss.dbid
+            JOIN pg_roles r ON pgss.userid = r.oid
+            WHERE pgss.query !~* '^[[:space:]]*(DEALLOCATE|BEGIN|PREPARE TRANSACTION|COMMIT PREPARED|ROLLBACK PREPARED)'
+            AND NOT (r.rolname = ANY (string_to_array(
+                        coalesce(current_setting('powa.ignored_users'), ''),
+                        ',')));
+        ELSE
+            RETURN QUERY SELECT now(),
+                pgss.userid, pgss.dbid, pgss.queryid, pgss.query,
+                pgss.calls, pgss.total_exec_time,
+                pgss.rows, pgss.shared_blks_hit,
+                pgss.shared_blks_read, pgss.shared_blks_dirtied,
+                pgss.shared_blks_written, pgss.local_blks_hit,
+                pgss.local_blks_read, pgss.local_blks_dirtied,
+                pgss.local_blks_written, pgss.temp_blks_read,
+                pgss.temp_blks_written, pgss.blk_read_time, pgss.blk_write_time,
+                pgss.plans, pgss.total_plan_time,
+                pgss.wal_records, pgss.wal_fpi, pgss.wal_bytes
+            FROM pg_stat_statements pgss
+            JOIN pg_database d ON d.oid = pgss.dbid
+            JOIN pg_roles r ON pgss.userid = r.oid
+            WHERE pgss.query !~* '^[[:space:]]*(DEALLOCATE|BEGIN|PREPARE TRANSACTION|COMMIT PREPARED|ROLLBACK PREPARED)'
+            AND NOT (r.rolname = ANY (string_to_array(
+                        coalesce(current_setting('powa.ignored_users'), ''),
+                        ',')));
+        END IF;
     ELSE
         RETURN QUERY SELECT pgss.ts,
-            pgss.userid, pgss.dbid, pgss.queryid, pgss.query, pgss.calls,
-            pgss.total_time, pgss.rows, pgss.shared_blks_hit,
+            pgss.userid, pgss.dbid, pgss.queryid, pgss.query,
+            pgss.calls, pgss.total_exec_time,
+            pgss.rows, pgss.shared_blks_hit,
             pgss.shared_blks_read, pgss.shared_blks_dirtied,
             pgss.shared_blks_written, pgss.local_blks_hit,
             pgss.local_blks_read, pgss.local_blks_dirtied,
             pgss.local_blks_written, pgss.temp_blks_read,
-            pgss.temp_blks_written, pgss.blk_read_time, pgss.blk_write_time
+            pgss.temp_blks_written, pgss.blk_read_time, pgss.blk_write_time,
+            pgss.plans, pgss.total_plan_time,
+            pgss.wal_records, pgss.wal_fpi, pgss.wal_bytes
         FROM powa_statements_src_tmp pgss WHERE srvid = _srvid;
     END IF;
 END;
@@ -2332,10 +2401,13 @@ BEGIN
         INSERT INTO powa_statements_history_current
             SELECT _srvid, queryid, dbid, userid,
             ROW(
-                ts, calls, total_time, rows, shared_blks_hit, shared_blks_read,
-                shared_blks_dirtied, shared_blks_written, local_blks_hit, local_blks_read,
-                local_blks_dirtied, local_blks_written, temp_blks_read, temp_blks_written,
-                blk_read_time, blk_write_time
+                ts, calls, total_exec_time, rows,
+                shared_blks_hit, shared_blks_read, shared_blks_dirtied,
+                shared_blks_written, local_blks_hit, local_blks_read,
+                local_blks_dirtied, local_blks_written, temp_blks_read,
+                temp_blks_written, blk_read_time, blk_write_time,
+                plans, total_plan_time,
+                wal_records, wal_fpi, wal_bytes
             )::powa_statements_history_record AS record
             FROM capture
     ),
@@ -2344,10 +2416,15 @@ BEGIN
         INSERT INTO powa_statements_history_current_db
             SELECT _srvid, dbid,
             ROW(
-                ts, sum(calls), sum(total_time), sum(rows), sum(shared_blks_hit), sum(shared_blks_read),
-                sum(shared_blks_dirtied), sum(shared_blks_written), sum(local_blks_hit), sum(local_blks_read),
-                sum(local_blks_dirtied), sum(local_blks_written), sum(temp_blks_read), sum(temp_blks_written),
-                sum(blk_read_time), sum(blk_write_time)
+                ts, sum(calls),
+                sum(total_exec_time), sum(rows), sum(shared_blks_hit),
+                sum(shared_blks_read), sum(shared_blks_dirtied),
+                sum(shared_blks_written), sum(local_blks_hit),
+                sum(local_blks_read), sum(local_blks_dirtied),
+                sum(local_blks_written), sum(temp_blks_read),
+                sum(temp_blks_written), sum(blk_read_time), sum(blk_write_time),
+                sum(plans), sum(total_plan_time),
+                sum(wal_records), sum(wal_fpi), sum(wal_bytes)
             )::powa_statements_history_record AS record
             FROM capture
             GROUP BY dbid, ts
@@ -2780,21 +2857,31 @@ BEGIN
             tstzrange(min((record).ts), max((record).ts),'[]'),
             array_agg(record),
             ROW(min((record).ts),
-                min((record).calls),min((record).total_time),min((record).rows),
+                min((record).calls),min((record).total_exec_time),
+                min((record).rows),
                 min((record).shared_blks_hit),min((record).shared_blks_read),
                 min((record).shared_blks_dirtied),min((record).shared_blks_written),
                 min((record).local_blks_hit),min((record).local_blks_read),
                 min((record).local_blks_dirtied),min((record).local_blks_written),
                 min((record).temp_blks_read),min((record).temp_blks_written),
-                min((record).blk_read_time),min((record).blk_write_time))::powa_statements_history_record,
+                min((record).blk_read_time),min((record).blk_write_time),
+                min((record).plans),min((record).total_plan_time),
+                min((record).wal_records),min((record).wal_fpi),
+                min((record).wal_bytes)
+            )::powa_statements_history_record,
             ROW(max((record).ts),
-                max((record).calls),max((record).total_time),max((record).rows),
+                max((record).calls),max((record).total_exec_time),
+                max((record).rows),
                 max((record).shared_blks_hit),max((record).shared_blks_read),
                 max((record).shared_blks_dirtied),max((record).shared_blks_written),
                 max((record).local_blks_hit),max((record).local_blks_read),
                 max((record).local_blks_dirtied),max((record).local_blks_written),
                 max((record).temp_blks_read),max((record).temp_blks_written),
-                max((record).blk_read_time),max((record).blk_write_time))::powa_statements_history_record
+                max((record).blk_read_time),max((record).blk_write_time),
+                max((record).plans),max((record).total_plan_time),
+                max((record).wal_records),max((record).wal_fpi),
+                max((record).wal_bytes)
+            )::powa_statements_history_record
         FROM powa_statements_history_current
         WHERE srvid = _srvid
         GROUP BY srvid, queryid, dbid, userid;
@@ -2811,21 +2898,31 @@ BEGIN
             tstzrange(min((record).ts), max((record).ts),'[]'),
             array_agg(record),
             ROW(min((record).ts),
-                min((record).calls),min((record).total_time),min((record).rows),
+                min((record).calls),min((record).total_exec_time),
+                min((record).rows),
                 min((record).shared_blks_hit),min((record).shared_blks_read),
                 min((record).shared_blks_dirtied),min((record).shared_blks_written),
                 min((record).local_blks_hit),min((record).local_blks_read),
                 min((record).local_blks_dirtied),min((record).local_blks_written),
                 min((record).temp_blks_read),min((record).temp_blks_written),
-                min((record).blk_read_time),min((record).blk_write_time))::powa_statements_history_record,
+                min((record).blk_read_time),min((record).blk_write_time),
+                min((record).plans),min((record).total_plan_time),
+                min((record).wal_records),min((record).wal_fpi),
+                min((record).wal_bytes)
+            )::powa_statements_history_record,
             ROW(max((record).ts),
-                max((record).calls),max((record).total_time),max((record).rows),
+                max((record).calls),max((record).total_exec_time),
+                max((record).rows),
                 max((record).shared_blks_hit),max((record).shared_blks_read),
                 max((record).shared_blks_dirtied),max((record).shared_blks_written),
                 max((record).local_blks_hit),max((record).local_blks_read),
                 max((record).local_blks_dirtied),max((record).local_blks_written),
                 max((record).temp_blks_read),max((record).temp_blks_written),
-                max((record).blk_read_time),max((record).blk_write_time))::powa_statements_history_record
+                max((record).blk_read_time),max((record).blk_write_time),
+                max((record).plans),max((record).total_plan_time),
+                max((record).wal_records),max((record).wal_fpi),
+                max((record).wal_bytes)
+            )::powa_statements_history_record
         FROM powa_statements_history_current_db
         WHERE srvid = _srvid
         GROUP BY srvid, dbid;
