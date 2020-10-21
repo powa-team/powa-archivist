@@ -1,6 +1,89 @@
 -- complain if script is sourced in psql, rather than via CREATE EXTENSION
 --\echo Use "ALTER EXTENSION powa" to load this file. \quit
 
+ALTER TABLE powa_statements ADD last_present_ts timestamptz NULL DEFAULT now();
+--- Create a performance index to speed up clean up process
+CREATE INDEX powa_statements_mru_idx ON powa_statements (last_present_ts);
+
+CREATE OR REPLACE FUNCTION powa_qualstats_snapshot(_srvid integer) RETURNS void as $PROC$
+DECLARE
+    result     bool;
+    v_funcname text := 'powa_qualstats_snapshot';
+    v_rowcount bigint;
+BEGIN
+  PERFORM powa_log(format('running %I', v_funcname));
+
+  PERFORM powa_prevent_concurrent_snapshot(_srvid);
+
+  WITH capture AS (
+    SELECT *
+    FROM powa_qualstats_src(_srvid) q
+    WHERE EXISTS (SELECT 1
+      FROM powa_statements s
+      WHERE s.srvid = _srvid
+      AND q.queryid = s.queryid
+      AND q.dbid = s.dbid
+      AND q.userid = s.dbid)
+  ),
+  missing_quals AS (
+      INSERT INTO powa_qualstats_quals (srvid, qualid, queryid, dbid, userid, quals)
+        SELECT DISTINCT _srvid AS srvid, qs.qualnodeid, qs.queryid, qs.dbid, qs.userid,
+          array_agg(DISTINCT q::qual_type)
+        FROM capture qs,
+        LATERAL (SELECT (unnest(quals)).*) as q
+        WHERE NOT EXISTS (
+          SELECT 1
+          FROM powa_qualstats_quals nh
+          WHERE nh.srvid = _srvid
+            AND nh.qualid = qs.qualnodeid
+            AND nh.queryid = qs.queryid
+            AND nh.dbid = qs.dbid
+            AND nh.userid = qs.userid
+        )
+        GROUP BY srvid, qualnodeid, qs.queryid, qs.dbid, qs.userid
+      RETURNING *
+  ),
+  by_qual AS (
+      INSERT INTO powa_qualstats_quals_history_current (srvid, qualid, queryid,
+        dbid, userid, ts, occurences, execution_count, nbfiltered,
+        mean_err_estimate_ratio, mean_err_estimate_num)
+      SELECT _srvid AS srvid, qs.qualnodeid, qs.queryid, qs.dbid, qs.userid,
+          ts, sum(occurences), sum(execution_count), sum(nbfiltered),
+          avg(mean_err_estimate_ratio), avg(mean_err_estimate_num)
+        FROM capture as qs
+        GROUP BY srvid, ts, qualnodeid, qs.queryid, qs.dbid, qs.userid
+      RETURNING *
+  ),
+  by_qual_with_const AS (
+      INSERT INTO powa_qualstats_constvalues_history_current(srvid, qualid,
+        queryid, dbid, userid, ts, occurences, execution_count, nbfiltered,
+        mean_err_estimate_ratio, mean_err_estimate_num, constvalues)
+      SELECT _srvid, qualnodeid, qs.queryid, qs.dbid, qs.userid, ts,
+        occurences, execution_count, nbfiltered, mean_err_estimate_ratio,
+        mean_err_estimate_num, constvalues
+      FROM capture as qs
+  )
+  SELECT COUNT(*) into v_rowcount
+  FROM capture;
+
+  perform powa_log(format('%I - rowcount: %s',
+        v_funcname, v_rowcount));
+
+    IF (_srvid != 0) THEN
+        DELETE FROM powa_qualstats_src_tmp WHERE srvid = _srvid;
+    END IF;
+
+  result := true;
+
+  -- pg_qualstats metrics are not accumulated, so we force a reset after every
+  -- snapshot.  For local snapshot this is done here, remote snapshots will
+  -- rely on the collector doing it through query_cleanup.
+  IF (_srvid = 0) THEN
+    PERFORM pg_qualstats_reset();
+  END IF;
+END
+$PROC$ language plpgsql; /* end of powa_qualstats_snapshot */
+
 DROP FUNCTION powa_log(text);
 DO $anon$
 BEGIN
@@ -418,3 +501,45 @@ BEGIN
     DELETE FROM powa_statements_history_current_db WHERE srvid = _srvid;
  END;
 $PROC$ LANGUAGE plpgsql; /* end of powa_statements_aggregate */
+
+CREATE OR REPLACE FUNCTION powa_statements_purge(_srvid integer)
+RETURNS void AS $PROC$
+DECLARE
+    v_funcname    text := 'powa_statements_purge(' || _srvid || ')';
+    v_rowcount    bigint;
+    v_retention   interval;
+BEGIN
+    PERFORM powa_log(format('running %I', v_funcname));
+
+    PERFORM powa_prevent_concurrent_snapshot(_srvid);
+
+    SELECT powa_get_server_retention(_srvid) INTO v_retention;
+
+    -- Delete obsolete data. We only bother with already coalesced data
+    DELETE FROM powa_statements_history
+    WHERE upper(coalesce_range)< (now() - v_retention)
+    AND srvid = _srvid;
+
+    GET DIAGNOSTICS v_rowcount = ROW_COUNT;
+    perform powa_log(format('%I (powa_statements_hitory) - rowcount: %s',
+            v_funcname, v_rowcount));
+
+    DELETE FROM powa_statements_history_db
+    WHERE upper(coalesce_range)< (now() - v_retention)
+    AND srvid = _srvid;
+
+    GET DIAGNOSTICS v_rowcount = ROW_COUNT;
+    perform powa_log(format('%I (powa_statements_history_db) - rowcount: %s',
+            v_funcname, v_rowcount));
+
+    DELETE FROM powa_statements
+    WHERE last_present_ts < (now() - v_retention)
+    AND srvid = _srvid;
+
+    GET DIAGNOSTICS v_rowcount = ROW_COUNT;
+    perform powa_log(format('%I (powa_statements) - rowcount: %s',
+            v_funcname, v_rowcount));
+
+END;
+$PROC$ LANGUAGE plpgsql; /* end of powa_statements_purge */
+
