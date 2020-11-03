@@ -20,10 +20,11 @@ CREATE TABLE powa_servers(
     powa_coalesce integer NOT NULL default 100 CHECK (powa_coalesce >= 5),
     retention interval NOT NULL default '1 day'::interval,
     allow_ui_connection boolean NOT NULL default true,
+    version text,
     UNIQUE (hostname, port),
     UNIQUE(alias)
 );
-INSERT INTO powa_servers VALUES (0, '', '<local>', 0, '', NULL, '', -1, 100, '0 second');
+INSERT INTO public.powa_servers VALUES (0, '', '<local>', 0, '', NULL, '', -1, 100, '0 second');
 
 CREATE TABLE powa_snapshot_metas(
     srvid integer PRIMARY KEY,
@@ -35,7 +36,7 @@ CREATE TABLE powa_snapshot_metas(
     FOREIGN KEY (srvid) REFERENCES powa_servers(id)
       MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
 );
-INSERT INTO powa_snapshot_metas (srvid) VALUES (0);
+INSERT INTO public.powa_snapshot_metas (srvid) VALUES (0);
 
 CREATE TABLE powa_databases(
     srvid   integer NOT NULL,
@@ -210,8 +211,8 @@ CREATE TYPE powa_statements_history_rate AS (
     blk_write_time_per_sec double precision,
     plans_per_sec double precision,
     plantime_per_sec double precision,
-    wal_records_per_sec bigint,
-    wal_fpi_per_sec bigint,
+    wal_records_per_sec double precision,
+    wal_fpi_per_sec double precision,
     wal_bytes_per_sec numeric
 );
 
@@ -972,7 +973,19 @@ CREATE TABLE powa_stat_bgwriter_history_current(
 CREATE INDEX ON powa_stat_bgwriter_history_current(srvid);
 
 
-CREATE TABLE powa_functions (
+CREATE TABLE public.powa_extensions (
+    srvid integer,
+    extname text,
+    version text,
+    PRIMARY KEY (srvid, extname),
+    FOREIGN KEY (srvid) REFERENCES public.powa_servers (id)
+);
+
+INSERT INTO public.powa_extensions(srvid, extname) VALUES
+    (0, 'pg_stat_statements'),
+    (0, 'powa');
+
+CREATE TABLE public.powa_functions (
     srvid integer NOT NULL,
     module text NOT NULL,
     operation text NOT NULL,
@@ -982,42 +995,57 @@ CREATE TABLE powa_functions (
     added_manually boolean NOT NULL default true,
     enabled boolean NOT NULL default true,
     priority numeric NOT NULL default 10,
+    extname text,
     CHECK (operation IN ('snapshot','aggregate','purge','unregister','reset')),
     FOREIGN KEY (srvid) REFERENCES powa_servers(id)
-      MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
+      MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE,
+    FOREIGN KEY (srvid, extname)
+      REFERENCES public.powa_extensions (srvid, extname)
+      ON UPDATE CASCADE ON DELETE CASCADE
 );
 
-INSERT INTO powa_functions (srvid, module, operation, function_name, query_source, added_manually, enabled, priority) VALUES
-    (0, 'pg_stat_statements',       'snapshot',  'powa_databases_snapshot',       'powa_databases_src',      false, true, -3),
-    (0, 'pg_stat_statements',       'snapshot',  'powa_statements_snapshot',      'powa_statements_src',     false, true, -2),
-    (0, 'powa_stat_user_functions', 'snapshot',  'powa_user_functions_snapshot',  'powa_user_functions_src', false, true, default),
-    (0, 'powa_stat_all_relations',  'snapshot',  'powa_all_relations_snapshot',   'powa_all_relations_src',  false, true, default),
-    (0, 'pg_stat_bgwriter',         'snapshot',  'powa_stat_bgwriter_snapshot',   'powa_stat_bgwriter_src',  false, true, default),
-    (0, 'pg_stat_statements',       'aggregate', 'powa_statements_aggregate',     NULL,                      false, true, default),
-    (0, 'powa_stat_user_functions', 'aggregate', 'powa_user_functions_aggregate', NULL,                      false, true, default),
-    (0, 'powa_stat_all_relations',  'aggregate', 'powa_all_relations_aggregate',  NULL,                      false, true, default),
-    (0, 'pg_stat_bgwriter',         'aggregate', 'powa_stat_bgwriter_aggregate',  NULL,                      false, true, default),
-    (0, 'pg_stat_statements',       'purge',     'powa_statements_purge',         NULL,                      false, true, default),
-    (0, 'pg_stat_statements',       'purge',     'powa_databases_purge',          NULL,                      false, true, default),
-    (0, 'powa_stat_user_functions', 'purge',     'powa_user_functions_purge',     NULL,                      false, true, default),
-    (0, 'powa_stat_all_relations',  'purge',     'powa_all_relations_purge',      NULL,                      false, true, default),
-    (0, 'pg_stat_bgwriter',         'purge',     'powa_stat_bgwriter_purge',      NULL,                      false, true, default),
-    (0, 'pg_stat_statements',       'reset',     'powa_statements_reset',         NULL,                      false, true, default),
-    (0, 'powa_stat_user_functions', 'reset',     'powa_user_functions_reset',     NULL,                      false, true, default),
-    (0, 'powa_stat_all_relations',  'reset',     'powa_all_relations_reset',      NULL,                      false, true, default),
-    (0, 'pg_stat_bgwriter',         'reset',     'powa_stat_bgwriter_reset',      NULL,                      false, true, default);
+INSERT INTO public.powa_functions (srvid, extname, module, operation, function_name, query_source, added_manually, enabled, priority) VALUES
+    (0, 'pg_stat_statements', 'pg_stat_statements',       'snapshot',  'powa_databases_snapshot',       'powa_databases_src',      false, true, -3),
+    (0, 'pg_stat_statements', 'pg_stat_statements',       'snapshot',  'powa_statements_snapshot',      'powa_statements_src',     false, true, -2),
+    (0, 'powa', 'powa_stat_user_functions', 'snapshot',  'powa_user_functions_snapshot',  'powa_user_functions_src', false, true, default),
+    (0, 'powa', 'powa_stat_all_relations',  'snapshot',  'powa_all_relations_snapshot',   'powa_all_relations_src',  false, true, default),
+    (0, NULL, 'pg_stat_bgwriter',         'snapshot',  'powa_stat_bgwriter_snapshot',   'powa_stat_bgwriter_src',  false, true, default),
+    (0, 'pg_stat_statements', 'pg_stat_statements',       'aggregate', 'powa_statements_aggregate',     NULL,                      false, true, default),
+    (0, 'powa', 'powa_stat_user_functions', 'aggregate', 'powa_user_functions_aggregate', NULL,                      false, true, default),
+    (0, 'powa', 'powa_stat_all_relations',  'aggregate', 'powa_all_relations_aggregate',  NULL,                      false, true, default),
+    (0, NULL, 'pg_stat_bgwriter',         'aggregate', 'powa_stat_bgwriter_aggregate',  NULL,                      false, true, default),
+    (0, 'pg_stat_statements', 'pg_stat_statements',       'purge',     'powa_statements_purge',         NULL,                      false, true, default),
+    (0, 'pg_stat_statements', 'pg_stat_statements',       'purge',     'powa_databases_purge',          NULL,                      false, true, default),
+    (0, 'powa', 'powa_stat_user_functions', 'purge',     'powa_user_functions_purge',     NULL,                      false, true, default),
+    (0, 'powa', 'powa_stat_all_relations',  'purge',     'powa_all_relations_purge',      NULL,                      false, true, default),
+    (0, NULL, 'pg_stat_bgwriter',         'purge',     'powa_stat_bgwriter_purge',      NULL,                      false, true, default),
+    (0, 'pg_stat_statements', 'pg_stat_statements',       'reset',     'powa_statements_reset',         NULL,                      false, true, default),
+    (0, 'powa', 'powa_stat_user_functions', 'reset',     'powa_user_functions_reset',     NULL,                      false, true, default),
+    (0, 'powa', 'powa_stat_all_relations',  'reset',     'powa_all_relations_reset',      NULL,                      false, true, default),
+    (0, NULL, 'pg_stat_bgwriter',         'reset',     'powa_stat_bgwriter_reset',      NULL,                      false, true, default);
 
--- Register the extension if needed, and set the enabled flag to on
-CREATE FUNCTION powa_activate_extension(_srvid integer, _extname text) RETURNS boolean
+-- Register the module if needed, and set the enabled flag to on.  This
+-- function should only be callsed by powa_register_server.
+CREATE FUNCTION public.powa_activate_extension(_srvid integer, _module text) RETURNS boolean
 AS $_$
 DECLARE
     v_ext_registered boolean;
     v_manually boolean;
+    v_found boolean;
+    v_extname text;
 BEGIN
     SELECT COUNT(*) > 0 INTO v_ext_registered
     FROM powa_functions
-    WHERE module = _extname
+    WHERE module = _module
     AND srvid = _srvid;
+
+    IF (_module LIKE 'powa%') THEN
+        v_extname = 'powa';
+    ELSIF (_module = 'pg_stat_bgwriter') THEN
+        v_extname = NULL;
+    ELSE
+        v_extname = _module;
+    END IF;
 
     -- the rows may already be present, but the enabled flag could be off,
     -- so enabled it everywhere it's disabled.  We don't check for other cases,
@@ -1027,71 +1055,91 @@ BEGIN
         SET enabled = true
         WHERE enabled = false
         AND srvid = _srvid
-        AND module = _extname;
+        AND module = _module;
 
-        return true;
+        RETURN true;
+    END IF;
+
+    -- Add the row in powa_extensions if needed.  Note that since we add the
+    -- row before knowing if it's a supported extension, we may have to remove
+    -- it later.
+    IF (v_extname IS NOT NULL) THEN
+        SELECT COUNT(*) = 1 INTO v_found
+        FROM public.powa_extensions
+        WHERE srvid = _srvid
+        AND extname = v_extname;
+
+        IF NOT v_found THEN
+            INSERT INTO public.powa_extensions (srvid, extname)
+            VALUES (_srvid, v_extname);
+        END IF;
     END IF;
 
     -- default extensions for non-local server have to be dumped
     SELECT _srvid != 0 INTO v_manually;
 
-    IF (_extname = 'pg_stat_statements') THEN
-
-        INSERT INTO powa_functions(srvid, module, operation, function_name,
+    IF (_module = 'pg_stat_statements') THEN
+        INSERT INTO public.powa_functions(srvid, extname, module, operation, function_name,
             query_source, added_manually, enabled, priority)
         VALUES
-        (_srvid, 'pg_stat_statements', 'snapshot',  'powa_databases_snapshot',   'powa_databases_src',  v_manually, true, -1),
-        (_srvid, 'pg_stat_statements', 'snapshot',  'powa_statements_snapshot',  'powa_statements_src', v_manually, true, default),
-        (_srvid, 'pg_stat_statements', 'aggregate', 'powa_statements_aggregate', NULL,                  v_manually, true, default),
-        (_srvid, 'pg_stat_statements', 'purge',     'powa_statements_purge',     NULL,                  v_manually, true, default),
-        (_srvid, 'pg_stat_statements', 'purge',     'powa_databases_purge',      NULL,                  v_manually, true, default),
-        (_srvid, 'pg_stat_statements', 'reset',     'powa_statements_reset',     NULL,                  v_manually, true, default);
-    ELSIF (_extname = 'powa_stat_user_functions') THEN
-        INSERT INTO powa_functions(srvid, module, operation, function_name,
+        (_srvid, 'pg_stat_statements', 'pg_stat_statements', 'snapshot',  'powa_databases_snapshot',   'powa_databases_src',  v_manually, true, -1),
+        (_srvid, 'pg_stat_statements', 'pg_stat_statements', 'snapshot',  'powa_statements_snapshot',  'powa_statements_src', v_manually, true, default),
+        (_srvid, 'pg_stat_statements', 'pg_stat_statements', 'aggregate', 'powa_statements_aggregate', NULL,                  v_manually, true, default),
+        (_srvid, 'pg_stat_statements', 'pg_stat_statements', 'purge',     'powa_statements_purge',     NULL,                  v_manually, true, default),
+        (_srvid, 'pg_stat_statements', 'pg_stat_statements', 'purge',     'powa_databases_purge',      NULL,                  v_manually, true, default),
+        (_srvid, 'pg_stat_statements', 'pg_stat_statements', 'reset',     'powa_statements_reset',     NULL,                  v_manually, true, default);
+    ELSIF (_module = 'powa_stat_user_functions') THEN
+        INSERT INTO public.powa_functions(srvid, extname, module, operation, function_name,
             query_source, added_manually, enabled, priority)
         VALUES
-         (_srvid, 'powa_stat_user_functions', 'snapshot',  'powa_user_functions_snapshot',  'powa_user_functions_src', v_manually, true, default),
-         (_srvid, 'powa_stat_user_functions', 'aggregate', 'powa_user_functions_aggregate', NULL,                      v_manually, true, default),
-         (_srvid, 'powa_stat_user_functions', 'purge',     'powa_user_functions_purge',     NULL,                      v_manually, true, default),
-         (_srvid, 'powa_stat_user_functions', 'reset',     'powa_user_functions_reset',     NULL,                      v_manually, true, default);
-    ELSIF (_extname = 'powa_stat_all_relations') THEN
-        INSERT INTO powa_functions(srvid, module, operation, function_name,
+         (_srvid, 'powa', 'powa_stat_user_functions', 'snapshot',  'powa_user_functions_snapshot',  'powa_user_functions_src', v_manually, true, default),
+         (_srvid, 'powa', 'powa_stat_user_functions', 'aggregate', 'powa_user_functions_aggregate', NULL,                      v_manually, true, default),
+         (_srvid, 'powa', 'powa_stat_user_functions', 'purge',     'powa_user_functions_purge',     NULL,                      v_manually, true, default),
+         (_srvid, 'powa', 'powa_stat_user_functions', 'reset',     'powa_user_functions_reset',     NULL,                      v_manually, true, default);
+    ELSIF (_module = 'powa_stat_all_relations') THEN
+        INSERT INTO public.powa_functions(srvid, extname, module, operation, function_name,
             query_source, added_manually, enabled, priority)
         VALUES
-        (_srvid, 'powa_stat_all_relations',  'snapshot',  'powa_all_relations_snapshot',   'powa_all_relations_src',  v_manually, true, default),
-        (_srvid, 'powa_stat_all_relations',  'aggregate', 'powa_all_relations_aggregate',  NULL,                      v_manually, true, default),
-        (_srvid, 'powa_stat_all_relations',  'purge',     'powa_all_relations_purge',      NULL,                      v_manually, true, default),
-        (_srvid, 'powa_stat_all_relations',  'reset',     'powa_all_relations_reset',      NULL,                      v_manually, true, default);
-    ELSIF (_extname = 'pg_stat_bgwriter') THEN
-        INSERT INTO powa_functions(srvid, module, operation, function_name,
+        (_srvid, 'powa', 'powa_stat_all_relations',  'snapshot',  'powa_all_relations_snapshot',   'powa_all_relations_src',  v_manually, true, default),
+        (_srvid, 'powa', 'powa_stat_all_relations',  'aggregate', 'powa_all_relations_aggregate',  NULL,                      v_manually, true, default),
+        (_srvid, 'powa', 'powa_stat_all_relations',  'purge',     'powa_all_relations_purge',      NULL,                      v_manually, true, default),
+        (_srvid, 'powa', 'powa_stat_all_relations',  'reset',     'powa_all_relations_reset',      NULL,                      v_manually, true, default);
+    ELSIF (_module = 'pg_stat_bgwriter') THEN
+        INSERT INTO public.powa_functions(srvid, extname, module, operation, function_name,
             query_source, added_manually, enabled, priority)
         VALUES
-        (_srvid, 'pg_stat_bgwriter',  'snapshot',  'powa_stat_bgwriter_snapshot',   'powa_stat_bgwriter_src',  v_manually, true, default),
-        (_srvid, 'pg_stat_bgwriter',  'aggregate', 'powa_stat_bgwriter_aggregate',  NULL,                      v_manually, true, default),
-        (_srvid, 'pg_stat_bgwriter',  'purge',     'powa_stat_bgwriter_purge',      NULL,                      v_manually, true, default),
-        (_srvid, 'pg_stat_bgwriter',  'reset',     'powa_stat_bgwriter_reset',      NULL,                      v_manually, true, default);
-    ELSIF (_extname = 'pg_stat_kcache') THEN
+        (_srvid, NULL, 'pg_stat_bgwriter',  'snapshot',  'powa_stat_bgwriter_snapshot',   'powa_stat_bgwriter_src',  v_manually, true, default),
+        (_srvid, NULL, 'pg_stat_bgwriter',  'aggregate', 'powa_stat_bgwriter_aggregate',  NULL,                      v_manually, true, default),
+        (_srvid, NULL, 'pg_stat_bgwriter',  'purge',     'powa_stat_bgwriter_purge',      NULL,                      v_manually, true, default),
+        (_srvid, NULL, 'pg_stat_bgwriter',  'reset',     'powa_stat_bgwriter_reset',      NULL,                      v_manually, true, default);
+    ELSIF (_module = 'pg_stat_kcache') THEN
         RETURN powa_kcache_register(_srvid);
-    ELSIF (_extname = 'pg_qualstats') THEN
+    ELSIF (_module = 'pg_qualstats') THEN
         RETURN powa_qualstats_register(_srvid);
-    ELSIF (_extname = 'pg_wait_sampling') THEN
+    ELSIF (_module = 'pg_wait_sampling') THEN
         RETURN powa_wait_sampling_register(_srvid);
-    ELSIF (_extname = 'pg_track_settings') THEN
+    ELSIF (_module = 'pg_track_settings') THEN
         RETURN powa_track_settings_register(_srvid);
     ELSE
-        return false;
+        -- remove the previously added row in powa_extensions
+        IF (v_extname IS NOT NULL) THEN
+            DELETE FROM public.powa_extensions
+                WHERE srvid = _srvid AND extname = v_extname;
+        END IF;
+
+        RETURN false;
     END IF;
 
     return true;
 END;
 $_$ LANGUAGE plpgsql; /* end of powa_activate_extension */
 
-CREATE FUNCTION powa_deactivate_extension(_srvid integer, _extname text) RETURNS boolean
+CREATE FUNCTION powa_deactivate_extension(_srvid integer, _module text) RETURNS boolean
 AS $_$
 BEGIN
     UPDATE powa_functions
     SET enabled = false
-    WHERE module = _extname
+    WHERE module = _module
     AND srvid = _srvid;
 
     return true;
@@ -1122,13 +1170,13 @@ BEGIN
         coalesce(allow_ui_connection, true)
     INTO port, username, dbname, frequency, powa_coalesce, retention, allow_ui_connection;
 
-    INSERT INTO powa_servers
+    INSERT INTO public.powa_servers
         (alias, hostname, port, username, password, dbname, frequency, powa_coalesce, retention, allow_ui_connection)
     VALUES
         (alias, hostname, port, username, password, dbname, frequency, powa_coalesce, retention, allow_ui_connection)
     RETURNING id INTO v_srvid;
 
-    INSERT INTO powa_snapshot_metas(srvid) VALUES (v_srvid);
+    INSERT INTO public.powa_snapshot_metas(srvid) VALUES (v_srvid);
 
     -- always register pgss, as it's mandatory
     SELECT powa_activate_extension(v_srvid, 'pg_stat_statements') INTO v_ok;
@@ -1265,39 +1313,44 @@ $_$ LANGUAGE plpgsql; /* powa_deactivate_server */
 DO $anon$
 BEGIN
     IF current_setting('server_version_num')::int < 90600 THEN
-        CREATE FUNCTION powa_log (msg text) RETURNS void
+        CREATE FUNCTION powa_get_guc (guc text, def text DEFAULT NULL) RETURNS text
         LANGUAGE plpgsql
         AS $_$
         DECLARE
-            v_debug bool;
+            v_val text;
         BEGIN
             BEGIN
-                SELECT current_setting('powa.debug')::bool INTO v_debug;
+                SELECT current_setting(guc) INTO v_val;
             EXCEPTION WHEN OTHERS THEN
-                v_debug = false;
+                v_val = def;
             END;
-            IF v_debug THEN
-                RAISE WARNING '%', msg;
-            ELSE
-                RAISE DEBUG '%', msg;
-            END IF;
+
+            RETURN v_val;
         END;
         $_$;
     ELSE
-        CREATE FUNCTION powa_log (msg text) RETURNS void
+        CREATE FUNCTION powa_get_guc (guc text, def text DEFAULT NULL) RETURNS text
         LANGUAGE plpgsql
         AS $_$
         BEGIN
-            IF COALESCE(current_setting('powa.debug', true), 'off')::bool THEN
-                RAISE WARNING '%', msg;
-            ELSE
-                RAISE DEBUG '%', msg;
-            END IF;
+            RETURN COALESCE(current_setting(guc, true), def);
         END;
         $_$;
     END IF;
 END;
 $anon$;
+
+CREATE FUNCTION powa_log (msg text) RETURNS void
+LANGUAGE plpgsql
+AS $_$
+BEGIN
+    IF powa_get_guc('powa.debug', 'false')::bool THEN
+        RAISE WARNING '%', msg;
+    ELSE
+        RAISE DEBUG '%', msg;
+    END IF;
+END;
+$_$;
 
 CREATE FUNCTION powa_get_server_retention(_srvid integer)
 RETURNS interval AS $_$
@@ -1894,16 +1947,17 @@ LANGUAGE plpgsql
 AS $_$
 DECLARE
 BEGIN
+
     /* We have for now no way for a proper handling of this event,
      * as we don't have a table with the list of supported extensions.
      * So just call every powa_*_register() function we know each time an
      * extension is created. Powa should be in a dedicated database and the
      * register function handle to be called several time, so it's not critical
      */
-    PERFORM public.powa_kcache_register(0);
-    PERFORM public.powa_qualstats_register(0);
-    PERFORM public.powa_track_settings_register(0);
-    PERFORM public.powa_wait_sampling_register(0);
+    PERFORM public.powa_activate_extension(0, 'pg_stat_kcache');
+    PERFORM public.powa_activate_extension(0, 'pg_qualstats');
+    PERFORM public.powa_activate_extension(0, 'pg_track_settings');
+    PERFORM public.powa_activate_extension(0, 'pg_wait_sampling');
 END;
 $_$; /* end of powa_check_created_extensions */
 
@@ -2219,7 +2273,7 @@ BEGIN
         LEFT JOIN powa_databases p ON d.oid = p.oid AND p.srvid = _srvid
         WHERE p.oid IS NULL
     )
-    INSERT INTO powa_databases
+    INSERT INTO public.powa_databases
     SELECT * FROM missing;
 
     GET DIAGNOSTICS v_rowcount = ROW_COUNT;
@@ -2320,7 +2374,7 @@ BEGIN
             JOIN pg_roles r ON pgss.userid = r.oid
             WHERE pgss.query !~* '^[[:space:]]*(DEALLOCATE|BEGIN|PREPARE TRANSACTION|COMMIT PREPARED|ROLLBACK PREPARED)'
             AND NOT (r.rolname = ANY (string_to_array(
-                        coalesce(current_setting('powa.ignored_users'), ''),
+                        powa_get_guc('powa.ignored_users', ''),
                         ',')));
         ELSE
             RETURN QUERY SELECT now(),
@@ -2339,7 +2393,7 @@ BEGIN
             JOIN pg_roles r ON pgss.userid = r.oid
             WHERE pgss.query !~* '^[[:space:]]*(DEALLOCATE|BEGIN|PREPARE TRANSACTION|COMMIT PREPARED|ROLLBACK PREPARED)'
             AND NOT (r.rolname = ANY (string_to_array(
-                        coalesce(current_setting('powa.ignored_users'), ''),
+                        powa_get_guc('powa.ignored_users', ''),
                         ',')));
         END IF;
     ELSE
@@ -2385,7 +2439,7 @@ BEGIN
               AND powa_statements.srvid = _srvid
     ),
     missing_statements AS(
-        INSERT INTO powa_statements (srvid, queryid, dbid, userid, query)
+        INSERT INTO public.powa_statements (srvid, queryid, dbid, userid, query)
             SELECT _srvid, queryid, dbid, userid, query
             FROM capture c
             WHERE NOT EXISTS (SELECT 1
@@ -2398,7 +2452,7 @@ BEGIN
     ),
 
     by_query AS (
-        INSERT INTO powa_statements_history_current
+        INSERT INTO public.powa_statements_history_current
             SELECT _srvid, queryid, dbid, userid,
             ROW(
                 ts, calls, total_exec_time, rows,
@@ -2413,7 +2467,7 @@ BEGIN
     ),
 
     by_database AS (
-        INSERT INTO powa_statements_history_current_db
+        INSERT INTO public.powa_statements_history_current_db
             SELECT _srvid, dbid,
             ROW(
                 ts, sum(calls),
@@ -2483,7 +2537,7 @@ BEGIN
         SELECT *
         FROM powa_user_functions_src(_srvid)
     )
-    INSERT INTO powa_user_functions_history_current
+    INSERT INTO public.powa_user_functions_history_current
         SELECT _srvid, dbid, funcid,
         ROW(ts, calls,
             total_time,
@@ -2569,7 +2623,7 @@ BEGIN
     ),
 
     by_relation AS (
-        INSERT INTO powa_all_relations_history_current
+        INSERT INTO public.powa_all_relations_history_current
             SELECT _srvid, dbid, relid,
             ROW(ts,numscan, tup_returned, tup_fetched,
                 n_tup_ins, n_tup_upd, n_tup_del, n_tup_hot_upd,
@@ -2582,7 +2636,7 @@ BEGIN
     ),
 
     by_database AS (
-        INSERT INTO powa_all_relations_history_current_db (srvid, dbid, record)
+        INSERT INTO public.powa_all_relations_history_current_db (srvid, dbid, record)
             SELECT _srvid AS srvid, dbid,
             ROW(ts,
                 sum(CASE WHEN
@@ -2668,7 +2722,7 @@ BEGIN
         SELECT *
         FROM powa_stat_bgwriter_src(_srvid)
     )
-    INSERT INTO powa_stat_bgwriter_history_current
+    INSERT INTO public.powa_stat_bgwriter_history_current
         SELECT _srvid,
         ROW(ts, checkpoints_timed, checkpoints_req, checkpoint_write_time,
             checkpoint_sync_time, buffers_checkpoint, buffers_clean,
@@ -2756,7 +2810,6 @@ BEGIN
     GET DIAGNOSTICS v_rowcount = ROW_COUNT;
     perform powa_log(format('%I (powa_statements) - rowcount: %s',
             v_funcname, v_rowcount));
-
 END;
 $PROC$ LANGUAGE plpgsql; /* end of powa_statements_purge */
 
@@ -2852,7 +2905,7 @@ BEGIN
     PERFORM powa_prevent_concurrent_snapshot(_srvid);
 
     -- aggregate statements table
-    INSERT INTO powa_statements_history
+    INSERT INTO public.powa_statements_history
         SELECT srvid, queryid, dbid, userid,
             tstzrange(min((record).ts), max((record).ts),'[]'),
             array_agg(record),
@@ -2893,7 +2946,7 @@ BEGIN
     DELETE FROM powa_statements_history_current WHERE srvid = _srvid;
 
     -- aggregate db table
-    INSERT INTO powa_statements_history_db
+    INSERT INTO public.powa_statements_history_db
         SELECT srvid, dbid,
             tstzrange(min((record).ts), max((record).ts),'[]'),
             array_agg(record),
@@ -2932,7 +2985,7 @@ BEGIN
             v_funcname, v_rowcount));
 
     DELETE FROM powa_statements_history_current_db WHERE srvid = _srvid;
- END;
+END;
 $PROC$ LANGUAGE plpgsql; /* end of powa_statements_aggregate */
 
 CREATE OR REPLACE FUNCTION powa_user_functions_aggregate(_srvid integer)
@@ -2943,7 +2996,7 @@ BEGIN
     PERFORM powa_prevent_concurrent_snapshot(_srvid);
 
     -- aggregate user_functions table
-    INSERT INTO powa_user_functions_history
+    INSERT INTO public.powa_user_functions_history
         SELECT srvid, dbid, funcid,
             tstzrange(min((record).ts), max((record).ts),'[]'),
             array_agg(record),
@@ -2970,7 +3023,7 @@ BEGIN
     PERFORM powa_prevent_concurrent_snapshot(_srvid);
 
     -- aggregate all_relations table
-    INSERT INTO powa_all_relations_history
+    INSERT INTO public.powa_all_relations_history
         SELECT srvid, dbid, relid,
             tstzrange(min((record).ts), max((record).ts),'[]'),
             array_agg(record),
@@ -3007,7 +3060,7 @@ BEGIN
     DELETE FROM powa_all_relations_history_current WHERE srvid = _srvid;
 
     -- aggregate all_relations_db table
-    INSERT INTO powa_all_relations_history_db
+    INSERT INTO public.powa_all_relations_history_db
         SELECT srvid, dbid,
             tstzrange(min((record).ts), max((record).ts),'[]'),
             array_agg(record),
@@ -3056,7 +3109,7 @@ BEGIN
     PERFORM powa_prevent_concurrent_snapshot(_srvid);
 
     -- aggregate bgwriter table
-    INSERT INTO powa_stat_bgwriter_history
+    INSERT INTO public.powa_stat_bgwriter_history
         SELECT srvid,
             tstzrange(min((record).ts), max((record).ts),'[]'),
             array_agg(record),
@@ -3244,12 +3297,12 @@ BEGIN
         IF ( NOT v_func_present) THEN
             PERFORM powa_log('registering pg_stat_kcache');
 
-            INSERT INTO powa_functions (srvid, module, operation, function_name, query_source, added_manually, enabled, priority)
-            VALUES (_srvid, 'pg_stat_kcache', 'snapshot',   'powa_kcache_snapshot',   'powa_kcache_src', true, true, -1),
-                   (_srvid, 'pg_stat_kcache', 'aggregate',  'powa_kcache_aggregate',  NULL,              true, true, default),
-                   (_srvid, 'pg_stat_kcache', 'unregister', 'powa_kcache_unregister', NULL,              true, true, default),
-                   (_srvid, 'pg_stat_kcache', 'purge',      'powa_kcache_purge',      NULL,              true, true, default),
-                   (_srvid, 'pg_stat_kcache', 'reset',      'powa_kcache_reset',      NULL,              true, true, default);
+            INSERT INTO public.powa_functions (srvid, extname, module, operation, function_name, query_source, added_manually, enabled, priority)
+            VALUES (_srvid, 'pg_stat_kcache', 'pg_stat_kcache', 'snapshot',   'powa_kcache_snapshot',   'powa_kcache_src', true, true, -1),
+                   (_srvid, 'pg_stat_kcache', 'pg_stat_kcache', 'aggregate',  'powa_kcache_aggregate',  NULL,              true, true, default),
+                   (_srvid, 'pg_stat_kcache', 'pg_stat_kcache', 'unregister', 'powa_kcache_unregister', NULL,              true, true, default),
+                   (_srvid, 'pg_stat_kcache', 'pg_stat_kcache', 'purge',      'powa_kcache_purge',      NULL,              true, true, default),
+                   (_srvid, 'pg_stat_kcache', 'pg_stat_kcache', 'reset',      'powa_kcache_reset',      NULL,              true, true, default);
         END IF;
     END IF;
 
@@ -3293,7 +3346,7 @@ BEGIN
         FROM pg_stat_kcache() k
         JOIN pg_roles r ON r.oid = k.userid
         WHERE NOT (r.rolname = ANY (string_to_array(
-                    coalesce(current_setting('powa.ignored_users'), ''),
+                    powa_get_guc('powa.ignored_users', ''),
                     ',')))
         AND k.dbid NOT IN (SELECT oid FROM powa_databases WHERE dropped IS NOT NULL);
     ELSE
@@ -3326,7 +3379,7 @@ BEGIN
     ),
 
     by_query AS (
-        INSERT INTO powa_kcache_metrics_current (srvid, queryid, dbid, userid, metrics)
+        INSERT INTO public.powa_kcache_metrics_current (srvid, queryid, dbid, userid, metrics)
             SELECT _srvid, queryid, dbid, userid,
               (ts, reads, writes, user_time, system_time, minflts, majflts,
                nswaps, msgsnds, msgrcvs, nsignals, nvcsws, nivcsws)::powa_kcache_type
@@ -3334,7 +3387,7 @@ BEGIN
     ),
 
     by_database AS (
-        INSERT INTO powa_kcache_metrics_current_db (srvid, dbid, metrics)
+        INSERT INTO public.powa_kcache_metrics_current_db (srvid, dbid, metrics)
             SELECT _srvid AS srvid, dbid,
               (ts, sum(reads), sum(writes), sum(user_time), sum(system_time),
                sum(minflts), sum(majflts), sum(nswaps), sum(msgsnds),
@@ -3372,7 +3425,7 @@ BEGIN
     PERFORM powa_prevent_concurrent_snapshot(_srvid);
 
     -- aggregate metrics table
-    INSERT INTO powa_kcache_metrics (coalesce_range, srvid, queryid, dbid, userid, metrics, mins_in_range, maxs_in_range)
+    INSERT INTO public.powa_kcache_metrics (coalesce_range, srvid, queryid, dbid, userid, metrics, mins_in_range, maxs_in_range)
         SELECT tstzrange(min((metrics).ts), max((metrics).ts),'[]'),
         srvid, queryid, dbid, userid, array_agg(metrics),
         ROW(min((metrics).ts),
@@ -3400,7 +3453,7 @@ BEGIN
     DELETE FROM powa_kcache_metrics_current WHERE srvid = _srvid;
 
     -- aggregate metrics_db table
-    INSERT INTO powa_kcache_metrics_db (srvid, coalesce_range, dbid, metrics, mins_in_range, maxs_in_range)
+    INSERT INTO public.powa_kcache_metrics_db (srvid, coalesce_range, dbid, metrics, mins_in_range, maxs_in_range)
         SELECT srvid, tstzrange(min((metrics).ts), max((metrics).ts),'[]'),
         dbid, array_agg(metrics),
         ROW(min((metrics).ts),
@@ -3490,7 +3543,7 @@ END;
 $PROC$ language plpgsql; /* end of powa_kcache_reset */
 
 -- By default, try to register pg_stat_kcache, in case it's alreay here
-SELECT * FROM public.powa_kcache_register();
+SELECT * FROM public.powa_activate_extension(0, 'pg_stat_kcache');
 
 /* end of pg_stat_kcache integration - part 2 */
 
@@ -3522,12 +3575,12 @@ BEGIN
         IF ( NOT v_func_present) THEN
             PERFORM powa_log('registering pg_qualstats');
 
-            INSERT INTO powa_functions (srvid, module, operation, function_name, query_source, query_cleanup, added_manually, enabled)
-            VALUES (_srvid, 'pg_qualstats', 'snapshot',   'powa_qualstats_snapshot',   'powa_qualstats_src', 'SELECT pg_qualstats_reset()', true, true),
-                   (_srvid, 'pg_qualstats', 'aggregate',  'powa_qualstats_aggregate',  NULL,                 NULL,                          true, true),
-                   (_srvid, 'pg_qualstats', 'unregister', 'powa_qualstats_unregister', NULL,                 NULL,                          true, true),
-                   (_srvid, 'pg_qualstats', 'purge',      'powa_qualstats_purge',      NULL,                 NULL,                          true, true),
-                   (_srvid, 'pg_qualstats', 'reset',      'powa_qualstats_reset',      NULL,                 NULL,                          true, true);
+            INSERT INTO public.powa_functions (srvid, extname, module, operation, function_name, query_source, query_cleanup, added_manually, enabled)
+            VALUES (_srvid, 'pg_qualstats', 'pg_qualstats', 'snapshot',   'powa_qualstats_snapshot',   'powa_qualstats_src', 'SELECT pg_qualstats_reset()', true, true),
+                   (_srvid, 'pg_qualstats', 'pg_qualstats', 'aggregate',  'powa_qualstats_aggregate',  NULL,                 NULL,                          true, true),
+                   (_srvid, 'pg_qualstats', 'pg_qualstats', 'unregister', 'powa_qualstats_unregister', NULL,                 NULL,                          true, true),
+                   (_srvid, 'pg_qualstats', 'pg_qualstats', 'purge',      'powa_qualstats_purge',      NULL,                 NULL,                          true, true),
+                   (_srvid, 'pg_qualstats', 'pg_qualstats', 'reset',      'powa_qualstats_reset',      NULL,                 NULL,                          true, true);
         END IF;
     END IF;
 
@@ -3752,7 +3805,7 @@ BEGIN
         JOIN pg_database d ON d.oid = s.dbid
         JOIN pg_roles r ON s.userid = r.oid
           AND NOT (r.rolname = ANY (string_to_array(
-                    coalesce(current_setting('powa.ignored_users'), ''),
+                    powa_get_guc('powa.ignored_users', ''),
                     ',')))
         WHERE pgqs.dbid NOT IN (SELECT oid FROM powa_databases WHERE dropped IS NOT NULL)
         $sql$, ratio_col, num_col);
@@ -3791,7 +3844,7 @@ BEGIN
       AND q.userid = s.dbid)
   ),
   missing_quals AS (
-      INSERT INTO powa_qualstats_quals (srvid, qualid, queryid, dbid, userid, quals)
+      INSERT INTO public.powa_qualstats_quals (srvid, qualid, queryid, dbid, userid, quals)
         SELECT DISTINCT _srvid AS srvid, qs.qualnodeid, qs.queryid, qs.dbid, qs.userid,
           array_agg(DISTINCT q::qual_type)
         FROM capture qs,
@@ -3809,7 +3862,7 @@ BEGIN
       RETURNING *
   ),
   by_qual AS (
-      INSERT INTO powa_qualstats_quals_history_current (srvid, qualid, queryid,
+      INSERT INTO public.powa_qualstats_quals_history_current (srvid, qualid, queryid,
         dbid, userid, ts, occurences, execution_count, nbfiltered,
         mean_err_estimate_ratio, mean_err_estimate_num)
       SELECT _srvid AS srvid, qs.qualnodeid, qs.queryid, qs.dbid, qs.userid,
@@ -3820,7 +3873,7 @@ BEGIN
       RETURNING *
   ),
   by_qual_with_const AS (
-      INSERT INTO powa_qualstats_constvalues_history_current(srvid, qualid,
+      INSERT INTO public.powa_qualstats_constvalues_history_current(srvid, qualid,
         queryid, dbid, userid, ts, occurences, execution_count, nbfiltered,
         mean_err_estimate_ratio, mean_err_estimate_num, constvalues)
       SELECT _srvid, qualnodeid, qs.queryid, qs.dbid, qs.userid, ts,
@@ -3861,14 +3914,14 @@ BEGIN
 
   PERFORM powa_prevent_concurrent_snapshot(_srvid);
 
-  INSERT INTO powa_qualstats_constvalues_history (
+  INSERT INTO public.powa_qualstats_constvalues_history (
       srvid, qualid, queryid, dbid, userid, coalesce_range, most_used,
       most_filtering, least_filtering, most_executed, most_errestim_ratio,
     most_errestim_num)
     SELECT * FROM powa_qualstats_aggregate_constvalues_current(_srvid)
     WHERE srvid = _srvid;
 
-  INSERT INTO powa_qualstats_quals_history (srvid, qualid, queryid, dbid,
+  INSERT INTO public.powa_qualstats_quals_history (srvid, qualid, queryid, dbid,
       userid, coalesce_range, records, mins_in_range, maxs_in_range)
     SELECT srvid, qualid, queryid, dbid, userid, tstzrange(min(ts),
       max(ts),'[]'),
@@ -3948,7 +4001,8 @@ END;
 $_$
 language plpgsql; /* end of powa_qualstats_unregister */
 
-SELECT * FROM public.powa_qualstats_register();
+-- By default, try to register pg_qualstats, in case it's alreay here
+SELECT * FROM public.powa_activate_extension(0, 'pg_qualstats');
 
 /* end of pg_qualstats integration - part 2 */
 
@@ -3976,14 +4030,14 @@ BEGIN
         IF ( NOT v_func_present) THEN
             PERFORM powa_log('registering pg_track_settings');
 
-            -- This extension handles its own storage, just its snapshot
-            -- function and an unregister function.
-            INSERT INTO powa_functions (srvid, module, operation, function_name, query_source, added_manually, enabled)
-            VALUES (_srvid, 'pg_track_settings', 'snapshot',   'pg_track_settings_snapshot_settings', 'pg_track_settings_settings_src', true, true),
-                   (_srvid, 'pg_track_settings', 'snapshot',   'pg_track_settings_snapshot_rds',      'pg_track_settings_rds_src',      true, true),
-                   (_srvid, 'pg_track_settings', 'snapshot',   'pg_track_settings_snapshot_reboot',   'pg_track_settings_reboot_src',   true, true),
-                   (_srvid, 'pg_track_settings', 'reset',      'pg_track_settings_reset',             NULL,                             true, true),
-                   (_srvid, 'pg_track_settings', 'unregister', 'powa_track_settings_unregister',      NULL,                             true, true);
+            -- This extension handles its own storage, just add its snapshot,
+            -- reset and an unregister function.
+            INSERT INTO public.powa_functions (srvid, extname, module, operation, function_name, query_source, added_manually, enabled)
+            VALUES (_srvid, 'pg_track_settings', 'pg_track_settings', 'snapshot',   'pg_track_settings_snapshot_settings', 'pg_track_settings_settings_src', true, true),
+                   (_srvid, 'pg_track_settings', 'pg_track_settings', 'snapshot',   'pg_track_settings_snapshot_rds',      'pg_track_settings_rds_src',      true, true),
+                   (_srvid, 'pg_track_settings', 'pg_track_settings', 'snapshot',   'pg_track_settings_snapshot_reboot',   'pg_track_settings_reboot_src',   true, true),
+                   (_srvid, 'pg_track_settings', 'pg_track_settings', 'reset',      'pg_track_settings_reset',             NULL,                             true, true),
+                   (_srvid, 'pg_track_settings', 'pg_track_settings', 'unregister', 'powa_track_settings_unregister',      NULL,                             true, true);
         END IF;
     END IF;
 
@@ -4004,7 +4058,7 @@ $_$
 language plpgsql; /* end of powa_track_settings_unregister */
 
 -- By default, try to register pg_track_settings, in case it's alreay here
-SELECT * FROM public.powa_track_settings_register();
+SELECT * FROM public.powa_activate_extension(0, 'pg_track_settings');
 
 /* end pg_track_settings integration */
 
@@ -4037,12 +4091,12 @@ BEGIN
         IF ( NOT v_func_present) THEN
             PERFORM powa_log('registering pg_wait_sampling');
 
-            INSERT INTO powa_functions (srvid, module, operation, function_name, query_source, added_manually, enabled)
-            VALUES (_srvid, 'pg_wait_sampling', 'snapshot',   'powa_wait_sampling_snapshot',   'powa_wait_sampling_src', true, true),
-                   (_srvid, 'pg_wait_sampling', 'aggregate',  'powa_wait_sampling_aggregate',  NULL,                     true, true),
-                   (_srvid, 'pg_wait_sampling', 'unregister', 'powa_wait_sampling_unregister', NULL,                     true, true),
-                   (_srvid, 'pg_wait_sampling', 'purge',      'powa_wait_sampling_purge',      NULL,                     true, true),
-                   (_srvid, 'pg_wait_sampling', 'reset',      'powa_wait_sampling_reset',      NULL,                     true, true);
+            INSERT INTO public.powa_functions (srvid, extname, module, operation, function_name, query_source, added_manually, enabled)
+            VALUES (_srvid, 'pg_wait_sampling', 'pg_wait_sampling', 'snapshot',   'powa_wait_sampling_snapshot',   'powa_wait_sampling_src', true, true),
+                   (_srvid, 'pg_wait_sampling', 'pg_wait_sampling', 'aggregate',  'powa_wait_sampling_aggregate',  NULL,                     true, true),
+                   (_srvid, 'pg_wait_sampling', 'pg_wait_sampling', 'unregister', 'powa_wait_sampling_unregister', NULL,                     true, true),
+                   (_srvid, 'pg_wait_sampling', 'pg_wait_sampling', 'purge',      'powa_wait_sampling_purge',      NULL,                     true, true),
+                   (_srvid, 'pg_wait_sampling', 'pg_wait_sampling', 'reset',      'powa_wait_sampling_reset',      NULL,                     true, true);
         END IF;
     END IF;
 
@@ -4116,14 +4170,14 @@ BEGIN
     ),
 
     by_query AS (
-        INSERT INTO powa_wait_sampling_history_current (srvid, queryid, dbid,
+        INSERT INTO public.powa_wait_sampling_history_current (srvid, queryid, dbid,
                 event_type, event, record)
             SELECT _srvid, queryid, dbid, event_type, event, (ts, count)::wait_sampling_type
             FROM capture
     ),
 
     by_database AS (
-        INSERT INTO powa_wait_sampling_history_current_db (srvid, dbid,
+        INSERT INTO public.powa_wait_sampling_history_current_db (srvid, dbid,
                 event_type, event, record)
             SELECT _srvid AS srvid, dbid, event_type, event, (ts, sum(count))::wait_sampling_type
             FROM capture
@@ -4159,7 +4213,7 @@ BEGIN
     PERFORM powa_prevent_concurrent_snapshot(_srvid);
 
     -- aggregate history table
-    INSERT INTO powa_wait_sampling_history (coalesce_range, srvid, queryid,
+    INSERT INTO public.powa_wait_sampling_history (coalesce_range, srvid, queryid,
             dbid, event_type, event, records, mins_in_range, maxs_in_range)
         SELECT tstzrange(min((record).ts), max((record).ts),'[]'),
             srvid, queryid, dbid, event_type, event, array_agg(record),
@@ -4178,7 +4232,7 @@ BEGIN
     DELETE FROM powa_wait_sampling_history_current WHERE srvid = _srvid;
 
     -- aggregate history_db table
-    INSERT INTO powa_wait_sampling_history_db (coalesce_range, srvid, dbid,
+    INSERT INTO public.powa_wait_sampling_history_db (coalesce_range, srvid, dbid,
             event_type, event, records, mins_in_range, maxs_in_range)
         SELECT tstzrange(min((record).ts), max((record).ts),'[]'), srvid, dbid,
             event_type, event, array_agg(record),
@@ -4259,6 +4313,6 @@ END;
 $PROC$ language plpgsql; /* end of powa_wait_sampling_reset */
 
 -- By default, try to register pg_wait_sampling, in case it's alreay here
-SELECT * FROM public.powa_wait_sampling_register();
+SELECT * FROM public.powa_activate_extension(0, 'pg_wait_sampling');
 
 /* end of pg_wait_sampling integration - part 2 */
