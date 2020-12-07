@@ -1313,7 +1313,7 @@ $_$ LANGUAGE plpgsql; /* powa_deactivate_server */
 DO $anon$
 BEGIN
     IF current_setting('server_version_num')::int < 90600 THEN
-        CREATE FUNCTION powa_get_guc (guc text, def text DEFAULT NULL) RETURNS text
+        CREATE FUNCTION public.powa_get_guc (guc text, def text DEFAULT NULL) RETURNS text
         LANGUAGE plpgsql
         AS $_$
         DECLARE
@@ -1329,7 +1329,7 @@ BEGIN
         END;
         $_$;
     ELSE
-        CREATE FUNCTION powa_get_guc (guc text, def text DEFAULT NULL) RETURNS text
+        CREATE FUNCTION public.powa_get_guc (guc text, def text DEFAULT NULL) RETURNS text
         LANGUAGE plpgsql
         AS $_$
         BEGIN
@@ -1340,7 +1340,7 @@ BEGIN
 END;
 $anon$;
 
-CREATE FUNCTION powa_log (msg text) RETURNS void
+CREATE FUNCTION public.powa_log (msg text) RETURNS void
 LANGUAGE plpgsql
 AS $_$
 BEGIN
