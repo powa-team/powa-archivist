@@ -126,6 +126,9 @@ BEGIN
 END;
 $_$;
 
+--
+-- handle pg_stat_statements transition to 1.8
+--
 ALTER TYPE powa_statements_history_record RENAME ATTRIBUTE total_time TO total_exec_time CASCADE;
 ALTER TYPE powa_statements_history_record ADD ATTRIBUTE plans bigint;
 ALTER TYPE powa_statements_history_record ADD ATTRIBUTE total_plan_time double precision;
@@ -354,7 +357,7 @@ BEGIN
     ),
     missing_statements AS(
         INSERT INTO public.powa_statements (srvid, queryid, dbid, userid, query)
-            SELECT _srvid, queryid, dbid, userid, query
+            SELECT DISTINCT _srvid, queryid, dbid, userid, query
             FROM capture c
             WHERE NOT EXISTS (SELECT 1
                               FROM powa_statements ps
@@ -910,40 +913,6 @@ BEGIN
 END;
 $_$ language plpgsql; /* end of pg_track_settings_register */
 
-CREATE OR REPLACE FUNCTION powa_kcache_src(IN _srvid integer,
-    OUT ts timestamp with time zone,
-    OUT queryid bigint, OUT userid oid, OUT dbid oid,
-    OUT reads bigint, OUT writes bigint,
-    OUT user_time double precision, OUT system_time double precision,
-    OUT minflts bigint, OUT majflts bigint,
-    OUT nswaps bigint,
-    OUT msgsnds bigint, OUT msgrcvs bigint,
-    OUT nsignals bigint,
-    OUT nvcsws bigint, OUT nivcsws bigint
-) RETURNS SETOF record STABLE AS $PROC$
-BEGIN
-    IF (_srvid = 0) THEN
-        RETURN QUERY SELECT now(),
-            k.queryid, k.userid, k.dbid, k.reads, k.writes, k.user_time,
-            k.system_time, k.minflts, k.majflts, k.nswaps, k.msgsnds,
-            k.msgrcvs, k.nsignals, k.nvcsws, k.nivcsws
-        FROM pg_stat_kcache() k
-        JOIN pg_roles r ON r.oid = k.userid
-        WHERE NOT (r.rolname = ANY (string_to_array(
-                    powa_get_guc('powa.ignored_users', ''),
-                    ',')))
-        AND k.dbid NOT IN (SELECT oid FROM powa_databases WHERE dropped IS NOT NULL);
-    ELSE
-        RETURN QUERY SELECT k.ts,
-            k.queryid, k.userid, k.dbid, k.reads, k.writes, k.user_time,
-            k.system_time, k.minflts, k.majflts, k.nswaps, k.msgsnds,
-            k.msgrcvs, k.nsignals, k.nvcsws, k.nivcsws
-        FROM powa_kcache_src_tmp k
-        WHERE k.srvid = _srvid;
-    END IF;
-END;
-$PROC$ LANGUAGE plpgsql; /* end of powa_kcache_src */
-
 CREATE OR REPLACE FUNCTION powa_qualstats_src(IN _srvid integer,
     OUT ts timestamp with time zone,
     OUT uniquequalnodeid bigint,
@@ -966,12 +935,11 @@ DECLARE
   sql text;
 BEGIN
     IF (_srvid = 0) THEN
-        SELECT substr(extversion, 1, 1)::int >=2 INTO STRICT is_v2
+        SELECT substr(extversion, 1, 1)::int >=2 INTO is_v2
           FROM pg_extension
           WHERE extname = 'pg_qualstats';
 
-
-        IF NOT is_v2 THEN
+        IF is_v2 IS DISTINCT FROM 'true'::bool THEN
             ratio_col := 'NULL::double precision';
             num_col := 'NULL::double precision';
         END IF;
@@ -1055,3 +1023,494 @@ BEGIN
     END IF;
 END;
 $PROC$ LANGUAGE plpgsql; /* end of powa_qualstats_src */
+
+--
+-- handle pg_stat_kcache transition to 2.2.0
+--
+ALTER TYPE powa_kcache_type RENAME ATTRIBUTE reads TO plan_reads CASCADE;
+ALTER TYPE powa_kcache_type RENAME ATTRIBUTE writes TO plan_writes CASCADE;
+ALTER TYPE powa_kcache_type RENAME ATTRIBUTE user_time TO plan_user_time CASCADE;
+ALTER TYPE powa_kcache_type RENAME ATTRIBUTE system_time TO plan_system_time CASCADE;
+ALTER TYPE powa_kcache_type RENAME ATTRIBUTE minflts TO plan_minflts CASCADE;
+ALTER TYPE powa_kcache_type RENAME ATTRIBUTE majflts TO plan_majflts CASCADE;
+ALTER TYPE powa_kcache_type RENAME ATTRIBUTE nswaps TO plan_nswaps CASCADE;
+ALTER TYPE powa_kcache_type RENAME ATTRIBUTE msgsnds TO plan_msgsnds CASCADE;
+ALTER TYPE powa_kcache_type RENAME ATTRIBUTE msgrcvs TO plan_msgrcvs CASCADE;
+ALTER TYPE powa_kcache_type RENAME ATTRIBUTE nsignals TO plan_nsignals CASCADE;
+ALTER TYPE powa_kcache_type RENAME ATTRIBUTE nvcsws TO plan_nvcsws CASCADE;
+ALTER TYPE powa_kcache_type RENAME ATTRIBUTE nivcsws TO plan_nivcsws CASCADE;
+ALTER TYPE powa_kcache_type ADD ATTRIBUTE exec_reads bigint CASCADE;
+ALTER TYPE powa_kcache_type ADD ATTRIBUTE exec_writes bigint CASCADE;
+ALTER TYPE powa_kcache_type ADD ATTRIBUTE exec_user_time double precision CASCADE;
+ALTER TYPE powa_kcache_type ADD ATTRIBUTE exec_system_time double precision CASCADE;
+ALTER TYPE powa_kcache_type ADD ATTRIBUTE exec_minflts bigint CASCADE;
+ALTER TYPE powa_kcache_type ADD ATTRIBUTE exec_majflts bigint CASCADE;
+ALTER TYPE powa_kcache_type ADD ATTRIBUTE exec_nswaps bigint CASCADE;
+ALTER TYPE powa_kcache_type ADD ATTRIBUTE exec_msgsnds bigint CASCADE;
+ALTER TYPE powa_kcache_type ADD ATTRIBUTE exec_msgrcvs bigint CASCADE;
+ALTER TYPE powa_kcache_type ADD ATTRIBUTE exec_nsignals bigint CASCADE;
+ALTER TYPE powa_kcache_type ADD ATTRIBUTE exec_nvcsws bigint CASCADE;
+ALTER TYPE powa_kcache_type ADD ATTRIBUTE exec_nivcsws bigint CASCADE;
+
+ALTER TYPE powa_kcache_diff RENAME ATTRIBUTE reads TO plan_reads CASCADE;
+ALTER TYPE powa_kcache_diff RENAME ATTRIBUTE writes TO plan_writes CASCADE;
+ALTER TYPE powa_kcache_diff RENAME ATTRIBUTE user_time TO plan_user_time CASCADE;
+ALTER TYPE powa_kcache_diff RENAME ATTRIBUTE system_time TO plan_system_time CASCADE;
+ALTER TYPE powa_kcache_diff RENAME ATTRIBUTE minflts TO plan_minflts CASCADE;
+ALTER TYPE powa_kcache_diff RENAME ATTRIBUTE majflts TO plan_majflts CASCADE;
+ALTER TYPE powa_kcache_diff RENAME ATTRIBUTE nswaps TO plan_nswaps CASCADE;
+ALTER TYPE powa_kcache_diff RENAME ATTRIBUTE msgsnds TO plan_msgsnds CASCADE;
+ALTER TYPE powa_kcache_diff RENAME ATTRIBUTE msgrcvs TO plan_msgrcvs CASCADE;
+ALTER TYPE powa_kcache_diff RENAME ATTRIBUTE nsignals TO plan_nsignals CASCADE;
+ALTER TYPE powa_kcache_diff RENAME ATTRIBUTE nvcsws TO plan_nvcsws CASCADE;
+ALTER TYPE powa_kcache_diff RENAME ATTRIBUTE nivcsws TO plan_nivcsws CASCADE;
+ALTER TYPE powa_kcache_diff ADD ATTRIBUTE exec_reads bigint CASCADE;
+ALTER TYPE powa_kcache_diff ADD ATTRIBUTE exec_writes bigint CASCADE;
+ALTER TYPE powa_kcache_diff ADD ATTRIBUTE exec_user_time double precision CASCADE;
+ALTER TYPE powa_kcache_diff ADD ATTRIBUTE exec_system_time double precision CASCADE;
+ALTER TYPE powa_kcache_diff ADD ATTRIBUTE exec_minflts bigint CASCADE;
+ALTER TYPE powa_kcache_diff ADD ATTRIBUTE exec_majflts bigint CASCADE;
+ALTER TYPE powa_kcache_diff ADD ATTRIBUTE exec_nswaps bigint CASCADE;
+ALTER TYPE powa_kcache_diff ADD ATTRIBUTE exec_msgsnds bigint CASCADE;
+ALTER TYPE powa_kcache_diff ADD ATTRIBUTE exec_msgrcvs bigint CASCADE;
+ALTER TYPE powa_kcache_diff ADD ATTRIBUTE exec_nsignals bigint CASCADE;
+ALTER TYPE powa_kcache_diff ADD ATTRIBUTE exec_nvcsws bigint CASCADE;
+ALTER TYPE powa_kcache_diff ADD ATTRIBUTE exec_nivcsws bigint CASCADE;
+
+CREATE OR REPLACE FUNCTION public.powa_kcache_mi(
+    a powa_kcache_type,
+    b powa_kcache_type)
+RETURNS powa_kcache_diff AS
+$_$
+DECLARE
+    res powa_kcache_diff;
+BEGIN
+    res.intvl = a.ts - b.ts;
+    res.plan_reads = a.plan_reads - b.plan_reads;
+    res.plan_writes = a.plan_writes - b.plan_writes;
+    res.plan_user_time = a.plan_user_time - b.plan_user_time;
+    res.plan_system_time = a.plan_system_time - b.plan_system_time;
+    res.plan_minflts = a.plan_minflts - b.plan_minflts;
+    res.plan_majflts = a.plan_majflts - b.plan_majflts;
+    res.plan_nswaps = a.plan_nswaps - b.plan_nswaps;
+    res.plan_msgsnds = a.plan_msgsnds - b.plan_msgsnds;
+    res.plan_msgrcvs = a.plan_msgrcvs - b.plan_msgrcvs;
+    res.plan_nsignals = a.plan_nsignals - b.plan_nsignals;
+    res.plan_nvcsws = a.plan_nvcsws - b.plan_nvcsws;
+    res.plan_nivcsws = a.plan_nivcsws - b.plan_nivcsws;
+    res.exec_reads = a.exec_reads - b.exec_reads;
+    res.exec_writes = a.exec_writes - b.exec_writes;
+    res.exec_user_time = a.exec_user_time - b.exec_user_time;
+    res.exec_system_time = a.exec_system_time - b.exec_system_time;
+    res.exec_minflts = a.exec_minflts - b.exec_minflts;
+    res.exec_majflts = a.exec_majflts - b.exec_majflts;
+    res.exec_nswaps = a.exec_nswaps - b.exec_nswaps;
+    res.exec_msgsnds = a.exec_msgsnds - b.exec_msgsnds;
+    res.exec_msgrcvs = a.exec_msgrcvs - b.exec_msgrcvs;
+    res.exec_nsignals = a.exec_nsignals - b.exec_nsignals;
+    res.exec_nvcsws = a.exec_nvcsws - b.exec_nvcsws;
+    res.exec_nivcsws = a.exec_nivcsws - b.exec_nivcsws;
+
+    return res;
+END;
+$_$
+LANGUAGE plpgsql IMMUTABLE STRICT;
+
+-- previous types were wrong
+ALTER TYPE powa_kcache_rate ALTER ATTRIBUTE minflts_per_sec TYPE double precision CASCADE;
+ALTER TYPE powa_kcache_rate ALTER ATTRIBUTE majflts_per_sec TYPE double precision CASCADE;
+ALTER TYPE powa_kcache_rate ALTER ATTRIBUTE nswaps_per_sec TYPE double precision CASCADE;
+ALTER TYPE powa_kcache_rate ALTER ATTRIBUTE msgsnds_per_sec TYPE double precision CASCADE;
+ALTER TYPE powa_kcache_rate ALTER ATTRIBUTE msgrcvs_per_sec TYPE double precision CASCADE;
+ALTER TYPE powa_kcache_rate ALTER ATTRIBUTE nsignals_per_sec TYPE double precision CASCADE;
+ALTER TYPE powa_kcache_rate ALTER ATTRIBUTE nvcsws_per_sec TYPE double precision CASCADE;
+ALTER TYPE powa_kcache_rate ALTER ATTRIBUTE nivcsws_per_sec TYPE double precision CASCADE;
+
+ALTER TYPE powa_kcache_rate RENAME ATTRIBUTE reads_per_sec TO plan_reads_per_sec CASCADE;
+ALTER TYPE powa_kcache_rate RENAME ATTRIBUTE writes_per_sec TO plan_writes_per_sec CASCADE;
+ALTER TYPE powa_kcache_rate RENAME ATTRIBUTE user_time_per_sec TO plan_user_time_per_sec CASCADE;
+ALTER TYPE powa_kcache_rate RENAME ATTRIBUTE system_time_per_sec TO plan_system_time_per_sec CASCADE;
+ALTER TYPE powa_kcache_rate RENAME ATTRIBUTE minflts_per_sec TO plan_minflts_per_sec CASCADE;
+ALTER TYPE powa_kcache_rate RENAME ATTRIBUTE majflts_per_sec TO plan_majflts_per_sec CASCADE;
+ALTER TYPE powa_kcache_rate RENAME ATTRIBUTE nswaps_per_sec TO plan_nswaps_per_sec CASCADE;
+ALTER TYPE powa_kcache_rate RENAME ATTRIBUTE msgsnds_per_sec TO plan_msgsnds_per_sec CASCADE;
+ALTER TYPE powa_kcache_rate RENAME ATTRIBUTE msgrcvs_per_sec TO plan_msgrcvs_per_sec CASCADE;
+ALTER TYPE powa_kcache_rate RENAME ATTRIBUTE nsignals_per_sec TO plan_nsignals_per_sec CASCADE;
+ALTER TYPE powa_kcache_rate RENAME ATTRIBUTE nvcsws_per_sec TO plan_nvcsws_per_sec CASCADE;
+ALTER TYPE powa_kcache_rate RENAME ATTRIBUTE nivcsws_per_sec TO plan_nivcsws_per_sec CASCADE;
+ALTER TYPE powa_kcache_rate ADD ATTRIBUTE exec_reads_per_sec double precision CASCADE;
+ALTER TYPE powa_kcache_rate ADD ATTRIBUTE exec_writes_per_sec double precision CASCADE;
+ALTER TYPE powa_kcache_rate ADD ATTRIBUTE exec_user_time_per_sec double precision CASCADE;
+ALTER TYPE powa_kcache_rate ADD ATTRIBUTE exec_system_time_per_sec double precision CASCADE;
+ALTER TYPE powa_kcache_rate ADD ATTRIBUTE exec_minflts_per_sec double precision CASCADE;
+ALTER TYPE powa_kcache_rate ADD ATTRIBUTE exec_majflts_per_sec double precision CASCADE;
+ALTER TYPE powa_kcache_rate ADD ATTRIBUTE exec_nswaps_per_sec double precision CASCADE;
+ALTER TYPE powa_kcache_rate ADD ATTRIBUTE exec_msgsnds_per_sec double precision CASCADE;
+ALTER TYPE powa_kcache_rate ADD ATTRIBUTE exec_msgrcvs_per_sec double precision CASCADE;
+ALTER TYPE powa_kcache_rate ADD ATTRIBUTE exec_nsignals_per_sec double precision CASCADE;
+ALTER TYPE powa_kcache_rate ADD ATTRIBUTE exec_nvcsws_per_sec double precision CASCADE;
+ALTER TYPE powa_kcache_rate ADD ATTRIBUTE exec_nivcsws_per_sec double precision CASCADE;
+
+ALTER TABLE public.powa_kcache_metrics ADD top boolean NOT NULL DEFAULT 'true'::bool;
+ALTER TABLE public.powa_kcache_metrics ALTER COLUMN top DROP default;
+ALTER TABLE public.powa_kcache_metrics DROP CONSTRAINT powa_kcache_metrics_pkey;
+ALTER TABLE public.powa_kcache_metrics ADD CONSTRAINT powa_kcache_metrics_pkey PRIMARY KEY (srvid, coalesce_range, queryid, dbid, userid, top);
+
+ALTER TABLE public.powa_kcache_metrics_db ADD top boolean NOT NULL DEFAULT 'true'::bool;
+ALTER TABLE public.powa_kcache_metrics_db ALTER COLUMN top DROP default;
+ALTER TABLE public.powa_kcache_metrics_db DROP CONSTRAINT powa_kcache_metrics_db_pkey;
+ALTER TABLE public.powa_kcache_metrics_db ADD CONSTRAINT powa_kcache_metrics_db_pkey PRIMARY KEY (srvid, coalesce_range, dbid, top);
+
+ALTER TABLE public.powa_kcache_metrics_current ADD top boolean NOT NULL DEFAULT 'true'::bool;
+ALTER TABLE public.powa_kcache_metrics_current ALTER COLUMN top DROP default;
+
+ALTER TABLE public.powa_kcache_metrics_current_db ADD top boolean NOT NULL DEFAULT 'true'::bool;
+ALTER TABLE public.powa_kcache_metrics_current_db ALTER COLUMN top DROP default;
+
+CREATE OR REPLACE FUNCTION public.powa_kcache_div(
+    a powa_kcache_type,
+    b powa_kcache_type)
+RETURNS powa_kcache_rate AS
+$_$
+DECLARE
+    res powa_kcache_rate;
+    sec integer;
+BEGIN
+    res.sec = extract(EPOCH FROM (a.ts - b.ts));
+    IF res.sec = 0 THEN
+        sec = 1;
+    ELSE
+        sec = res.sec;
+    END IF;
+    res.plan_reads_per_sec = (a.plan_reads - b.plan_reads)::double precision / sec;
+    res.plan_writes_per_sec = (a.plan_writes - b.plan_writes)::double precision / sec;
+    res.plan_user_time_per_sec = (a.plan_user_time - b.plan_user_time)::double precision / sec;
+    res.plan_system_time_per_sec = (a.plan_system_time - b.plan_system_time)::double precision / sec;
+    res.plan_minflts_per_sec = (a.plan_minflts_per_sec - b.plan_minflts_per_sec)::double precision / sec;
+    res.plan_majflts_per_sec = (a.plan_majflts_per_sec - b.plan_majflts_per_sec)::double precision / sec;
+    res.plan_nswaps_per_sec = (a.plan_nswaps_per_sec - b.plan_nswaps_per_sec)::double precision / sec;
+    res.plan_msgsnds_per_sec = (a.plan_msgsnds_per_sec - b.plan_msgsnds_per_sec)::double precision / sec;
+    res.plan_msgrcvs_per_sec = (a.plan_msgrcvs_per_sec - b.plan_msgrcvs_per_sec)::double precision / sec;
+    res.plan_nsignals_per_sec = (a.plan_nsignals_per_sec - b.plan_nsignals_per_sec)::double precision / sec;
+    res.plan_nvcsws_per_sec = (a.plan_nvcsws_per_sec - b.plan_nvcsws_per_sec)::double precision / sec;
+    res.plan_nivcsws_per_sec = (a.plan_nivcsws_per_sec - b.plan_nivcsws_per_sec)::double precision / sec;
+    res.exec_reads_per_sec = (a.exec_reads - b.exec_reads)::double precision / sec;
+    res.exec_writes_per_sec = (a.exec_writes - b.exec_writes)::double precision / sec;
+    res.exec_user_time_per_sec = (a.exec_user_time - b.exec_user_time)::double precision / sec;
+    res.exec_system_time_per_sec = (a.exec_system_time - b.exec_system_time)::double precision / sec;
+    res.exec_minflts_per_sec = (a.exec_minflts_per_sec - b.exec_minflts_per_sec)::double precision / sec;
+    res.exec_majflts_per_sec = (a.exec_majflts_per_sec - b.exec_majflts_per_sec)::double precision / sec;
+    res.exec_nswaps_per_sec = (a.exec_nswaps_per_sec - b.exec_nswaps_per_sec)::double precision / sec;
+    res.exec_msgsnds_per_sec = (a.exec_msgsnds_per_sec - b.exec_msgsnds_per_sec)::double precision / sec;
+    res.exec_msgrcvs_per_sec = (a.exec_msgrcvs_per_sec - b.exec_msgrcvs_per_sec)::double precision / sec;
+    res.exec_nsignals_per_sec = (a.exec_nsignals_per_sec - b.exec_nsignals_per_sec)::double precision / sec;
+    res.exec_nvcsws_per_sec = (a.exec_nvcsws_per_sec - b.exec_nvcsws_per_sec)::double precision / sec;
+    res.exec_nivcsws_per_sec = (a.exec_nivcsws_per_sec - b.exec_nivcsws_per_sec)::double precision / sec;
+
+    return res;
+END;
+$_$
+LANGUAGE plpgsql IMMUTABLE STRICT;
+
+DROP TABLE public.powa_kcache_src_tmp;
+CREATE UNLOGGED TABLE public.powa_kcache_src_tmp(
+    srvid            integer NOT NULL,
+    ts               timestamp with time zone NOT NULL,
+    queryid          bigint NOT NULL,
+    top              bool NOT NULL,
+    userid           oid NOT NULL,
+    dbid             oid NOT NULL,
+    plan_reads       bigint NOT NULL,
+    plan_writes      bigint NOT NULL,
+    plan_user_time   double precision NOT NULL,
+    plan_system_time double precision NOT NULL,
+    plan_minflts     bigint NOT NULL,
+    plan_majflts     bigint NOT NULL,
+    plan_nswaps      bigint NOT NULL,
+    plan_msgsnds     bigint NOT NULL,
+    plan_msgrcvs     bigint NOT NULL,
+    plan_nsignals    bigint NOT NULL,
+    plan_nvcsws      bigint NOT NULL,
+    plan_nivcsws     bigint NOT NULL,
+    exec_reads       bigint NOT NULL,
+    exec_writes      bigint NOT NULL,
+    exec_user_time   double precision NOT NULL,
+    exec_system_time double precision NOT NULL,
+    exec_minflts     bigint NOT NULL,
+    exec_majflts     bigint NOT NULL,
+    exec_nswaps      bigint NOT NULL,
+    exec_msgsnds     bigint NOT NULL,
+    exec_msgrcvs     bigint NOT NULL,
+    exec_nsignals    bigint NOT NULL,
+    exec_nvcsws      bigint NOT NULL,
+    exec_nivcsws     bigint NOT NULL
+);
+
+DROP FUNCTION public.powa_kcache_src(integer);
+CREATE OR REPLACE FUNCTION public.powa_kcache_src(IN _srvid integer,
+    OUT ts timestamp with time zone,
+    OUT queryid bigint, OUT top bool, OUT userid oid, OUT dbid oid,
+    OUT plan_reads bigint, OUT plan_writes bigint,
+    OUT plan_user_time double precision, OUT plan_system_time double precision,
+    OUT plan_minflts bigint, OUT plan_majflts bigint,
+    OUT plan_nswaps bigint,
+    OUT plan_msgsnds bigint, OUT plan_msgrcvs bigint,
+    OUT plan_nsignals bigint,
+    OUT plan_nvcsws bigint, OUT plan_nivcsws bigint,
+    OUT exec_reads bigint, OUT exec_writes bigint,
+    OUT exec_user_time double precision, OUT exec_system_time double precision,
+    OUT exec_minflts bigint, OUT exec_majflts bigint,
+    OUT exec_nswaps bigint,
+    OUT exec_msgsnds bigint, OUT exec_msgrcvs bigint,
+    OUT exec_nsignals bigint,
+    OUT exec_nvcsws bigint, OUT exec_nivcsws bigint
+) RETURNS SETOF record STABLE AS $PROC$
+DECLARE
+  is_v2_2 bool;
+BEGIN
+    IF (_srvid = 0) THEN
+        SELECT (
+            (regexp_split_to_array(extversion, '\.')::int[])[1] >= 2 AND
+            (regexp_split_to_array(extversion, '\.')::int[])[2] >= 2
+        ) INTO is_v2_2
+          FROM pg_extension
+          WHERE extname = 'pg_stat_kcache';
+
+        IF (is_v2_2 IS NOT DISTINCT FROM 'true'::bool) THEN
+            RETURN QUERY SELECT now(),
+                k.queryid, k.top, k.userid, k.dbid,
+                k.plan_reads, k.plan_writes,
+                k.plan_user_time, k.plan_system_time,
+                k.plan_minflts, k.plan_majflts, k.plan_nswaps,
+                k.plan_msgsnds, k.plan_msgrcvs, k.plan_nsignals,
+                k.plan_nvcsws, k.plan_nivcsws,
+                k.exec_reads, k.exec_writes,
+                k.exec_user_time, k.exec_system_time,
+                k.exec_minflts, k.exec_majflts, k.exec_nswaps,
+                k.exec_msgsnds, k.exec_msgrcvs, k.exec_nsignals,
+                k.exec_nvcsws, k.exec_nivcsws
+            FROM pg_stat_kcache() k
+            JOIN pg_roles r ON r.oid = k.userid
+            WHERE NOT (r.rolname = ANY (string_to_array(
+                        powa_get_guc('powa.ignored_users', ''),
+                        ',')))
+            AND k.dbid NOT IN (SELECT oid FROM powa_databases WHERE dropped IS NOT NULL);
+        ELSE
+            RETURN QUERY SELECT now(),
+                k.queryid, 'true'::bool as top, k.userid, k.dbid,
+                NULL AS plan_reads, NULL AS plan_writes,
+                NULL AS plan_user_time, NULL AS plan_system_time,
+                NULL AS plan_minflts, NULL AS plan_majflts, NULL AS plan_nswaps,
+                NULL AS plan_msgsnds, NULL AS plan_msgrcvs, NULL AS plan_nsignals,
+                NULL AS plan_nvcsws, NULL AS plan_nivcsws,
+                k.reads AS exec_reads, k.writes AS exec_writes,
+                k.user_time AS exec_user_time, k.system_time AS exec_system_time,
+                k.minflts AS exec_minflts, k.majflts AS exec_majflts,
+                k.nswaps AS exec_nswaps,
+                k.msgsnds AS exec_msgsnds, k.msgrcvs AS exec_msgrcvs,
+                k.nsignals AS exec_nsignals,
+                k.nvcsws AS exec_nvcsws, k.nivcsws AS exec_nivcsws
+            FROM pg_stat_kcache() k
+            JOIN pg_roles r ON r.oid = k.userid
+            WHERE NOT (r.rolname = ANY (string_to_array(
+                        powa_get_guc('powa.ignored_users', ''),
+                        ',')))
+            AND k.dbid NOT IN (SELECT oid FROM powa_databases WHERE dropped IS NOT NULL);
+        END IF;
+    ELSE
+        RETURN QUERY SELECT k.ts,
+            k.queryid, k.top, k.userid, k.dbid,
+            k.plan_reads, k.plan_writes,
+            k.plan_user_time, k.plan_system_time,
+            k.plan_minflts, k.plan_majflts, k.plan_nswaps,
+            k.plan_msgsnds, k.plan_msgrcvs, k.plan_nsignals,
+            k.plan_nvcsws, k.plan_nivcsws,
+            k.exec_reads, k.exec_writes,
+            k.exec_user_time, k.exec_system_time,
+            k.exec_minflts, k.exec_majflts, k.exec_nswaps,
+            k.exec_msgsnds, k.exec_msgrcvs, k.exec_nsignals,
+            k.exec_nvcsws, k.exec_nivcsws
+        FROM powa_kcache_src_tmp k
+        WHERE k.srvid = _srvid;
+    END IF;
+END;
+$PROC$ LANGUAGE plpgsql; /* end of powa_kcache_src */
+
+/*
+ * powa_kcache snapshot collection.
+ */
+CREATE OR REPLACE FUNCTION powa_kcache_snapshot(_srvid integer) RETURNS void as $PROC$
+DECLARE
+  result bool;
+    v_funcname    text := 'powa_kcache_snapshot';
+    v_rowcount    bigint;
+BEGIN
+    PERFORM powa_log(format('running %I', v_funcname));
+
+    PERFORM powa_prevent_concurrent_snapshot(_srvid);
+
+    WITH capture AS (
+        SELECT *
+        FROM powa_kcache_src(_srvid)
+    ),
+
+    by_query AS (
+        INSERT INTO public.powa_kcache_metrics_current (srvid, queryid, top, dbid, userid, metrics)
+            SELECT _srvid, queryid, top, dbid, userid,
+              (ts,
+               plan_reads, plan_writes, plan_user_time, plan_system_time,
+               plan_minflts, plan_majflts, plan_nswaps,
+               plan_msgsnds, plan_msgrcvs, plan_nsignals,
+               plan_nvcsws, plan_nivcsws,
+               exec_reads, exec_writes, exec_user_time, exec_system_time,
+               exec_minflts, exec_majflts, exec_nswaps,
+               exec_msgsnds, exec_msgrcvs, exec_nsignals,
+               exec_nvcsws, exec_nivcsws
+        )::powa_kcache_type
+            FROM capture
+    ),
+
+    by_database AS (
+        INSERT INTO public.powa_kcache_metrics_current_db (srvid, top, dbid, metrics)
+            SELECT _srvid AS srvid, top, dbid,
+              (ts,
+               sum(plan_reads), sum(plan_writes),
+               sum(plan_user_time), sum(plan_system_time),
+               sum(plan_minflts), sum(plan_majflts), sum(plan_nswaps),
+               sum(plan_msgsnds), sum(plan_msgrcvs), sum(plan_nsignals),
+               sum(plan_nvcsws), sum(plan_nivcsws),
+               sum(exec_reads), sum(exec_writes),
+               sum(exec_user_time), sum(exec_system_time),
+               sum(exec_minflts), sum(exec_majflts), sum(exec_nswaps),
+               sum(exec_msgsnds), sum(exec_msgrcvs), sum(exec_nsignals),
+               sum(exec_nvcsws), sum(exec_nivcsws)
+              )::powa_kcache_type
+            FROM capture
+            GROUP BY ts, srvid, top, dbid
+    )
+
+    SELECT COUNT(*) into v_rowcount
+    FROM capture;
+
+    perform powa_log(format('%I - rowcount: %s',
+            v_funcname, v_rowcount));
+
+    IF (_srvid != 0) THEN
+        DELETE FROM powa_kcache_src_tmp WHERE srvid = _srvid;
+    END IF;
+
+    result := true;
+END
+$PROC$ language plpgsql; /* end of powa_kcache_snapshot */
+
+/*
+ * powa_kcache aggregation
+ */
+CREATE OR REPLACE FUNCTION powa_kcache_aggregate(_srvid integer)
+RETURNS void AS $PROC$
+DECLARE
+    result     bool;
+    v_funcname text := 'powa_kcache_aggregate(' || _srvid || ')';
+    v_rowcount bigint;
+BEGIN
+    PERFORM powa_log(format('running %I', v_funcname));
+
+    PERFORM powa_prevent_concurrent_snapshot(_srvid);
+
+    -- aggregate metrics table
+    INSERT INTO public.powa_kcache_metrics (coalesce_range, srvid, queryid,
+                                            top, dbid, userid, metrics,
+                                            mins_in_range, maxs_in_range)
+        SELECT tstzrange(min((metrics).ts), max((metrics).ts),'[]'),
+        srvid, queryid, top, dbid, userid, array_agg(metrics),
+        ROW(min((metrics).ts),
+            min((metrics).plan_reads), min((metrics).plan_writes),
+            min((metrics).plan_user_time), min((metrics).plan_system_time),
+            min((metrics).plan_minflts), min((metrics).plan_majflts),
+            min((metrics).plan_nswaps),
+            min((metrics).plan_msgsnds), min((metrics).plan_msgrcvs),
+            min((metrics).plan_nsignals),
+            min((metrics).plan_nvcsws), min((metrics).plan_nivcsws),
+            min((metrics).exec_reads), min((metrics).exec_writes),
+            min((metrics).exec_user_time), min((metrics).exec_system_time),
+            min((metrics).exec_minflts), min((metrics).exec_majflts),
+            min((metrics).exec_nswaps),
+            min((metrics).exec_msgsnds), min((metrics).exec_msgrcvs),
+            min((metrics).exec_nsignals),
+            min((metrics).exec_nvcsws), min((metrics).exec_nivcsws)
+        )::powa_kcache_type,
+        ROW(max((metrics).ts),
+            max((metrics).plan_reads), max((metrics).plan_writes),
+            max((metrics).plan_user_time), max((metrics).plan_system_time),
+            max((metrics).plan_minflts), max((metrics).plan_majflts),
+            max((metrics).plan_nswaps),
+            max((metrics).plan_msgsnds), max((metrics).plan_msgrcvs),
+            max((metrics).plan_nsignals),
+            max((metrics).plan_nvcsws), max((metrics).plan_nivcsws),
+            max((metrics).exec_reads), max((metrics).exec_writes),
+            max((metrics).exec_user_time), max((metrics).exec_system_time),
+            max((metrics).exec_minflts), max((metrics).exec_majflts),
+            max((metrics).exec_nswaps),
+            max((metrics).exec_msgsnds), max((metrics).exec_msgrcvs),
+            max((metrics).exec_nsignals),
+            max((metrics).exec_nvcsws), max((metrics).exec_nivcsws)
+        )::powa_kcache_type
+        FROM powa_kcache_metrics_current
+        WHERE srvid = _srvid
+        GROUP BY srvid, queryid, top, dbid, userid;
+
+    GET DIAGNOSTICS v_rowcount = ROW_COUNT;
+    perform powa_log(format('%I (powa_kcache_metrics) - rowcount: %s',
+            v_funcname, v_rowcount));
+
+    DELETE FROM powa_kcache_metrics_current WHERE srvid = _srvid;
+
+    -- aggregate metrics_db table
+    INSERT INTO public.powa_kcache_metrics_db (srvid, coalesce_range, dbid,
+                                               top, metrics,
+                                               mins_in_range, maxs_in_range)
+        SELECT srvid, tstzrange(min((metrics).ts), max((metrics).ts),'[]'),
+        dbid, top, array_agg(metrics),
+        ROW(min((metrics).ts),
+            min((metrics).plan_reads), min((metrics).plan_writes),
+            min((metrics).plan_user_time), min((metrics).plan_system_time),
+            min((metrics).plan_minflts), min((metrics).plan_majflts),
+            min((metrics).plan_nswaps),
+            min((metrics).plan_msgsnds), min((metrics).plan_msgrcvs),
+            min((metrics).plan_nsignals),
+            min((metrics).plan_nvcsws), min((metrics).plan_nivcsws),
+            min((metrics).exec_reads), min((metrics).exec_writes),
+            min((metrics).exec_user_time), min((metrics).exec_system_time),
+            min((metrics).exec_minflts), min((metrics).exec_majflts),
+            min((metrics).exec_nswaps),
+            min((metrics).exec_msgsnds), min((metrics).exec_msgrcvs),
+            min((metrics).exec_nsignals),
+            min((metrics).exec_nvcsws), min((metrics).exec_nivcsws)
+        )::powa_kcache_type,
+        ROW(max((metrics).ts),
+            max((metrics).plan_reads), max((metrics).plan_writes),
+            max((metrics).plan_user_time), max((metrics).plan_system_time),
+            max((metrics).plan_minflts), max((metrics).plan_majflts),
+            max((metrics).plan_nswaps),
+            max((metrics).plan_msgsnds), max((metrics).plan_msgrcvs),
+            max((metrics).plan_nsignals),
+            max((metrics).plan_nvcsws), max((metrics).plan_nivcsws),
+            max((metrics).exec_reads), max((metrics).exec_writes),
+            max((metrics).exec_user_time), max((metrics).exec_system_time),
+            max((metrics).exec_minflts), max((metrics).exec_majflts),
+            max((metrics).exec_nswaps),
+            max((metrics).exec_msgsnds), max((metrics).exec_msgrcvs),
+            max((metrics).exec_nsignals),
+            max((metrics).exec_nvcsws), max((metrics).exec_nivcsws)
+        )::powa_kcache_type
+        FROM powa_kcache_metrics_current_db
+        WHERE srvid = _srvid
+        GROUP BY srvid, dbid, top;
+
+    GET DIAGNOSTICS v_rowcount = ROW_COUNT;
+    perform powa_log(format('%I (powa_kcache_metrics_db) - rowcount: %s',
+            v_funcname, v_rowcount));
+
+    DELETE FROM powa_kcache_metrics_current_db WHERE srvid = _srvid;
+END
+$PROC$ language plpgsql; /* end of powa_kcache_aggregate */
