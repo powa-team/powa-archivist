@@ -1,3 +1,19 @@
+## 4.1.0
+
+  - New features:
+    - Add compatibility with pg_stat_statements 1.8 / pg13 (Julien Rouhaud)
+    - Clean up statements that haven't been executed during the configured
+      retention interval (Andriy Bartash)
+    - Store the postgres and external extension versios in PoWA catalog (Julien
+      Rouhaud)
+    - Add compatibility with pg_stat_kcache 2.2 (Julien Rouhaud)
+    - Don't require to load 'powa' anymore (Julien Rouhaud)
+  - Bugfixes
+    - Ignore quals that don't match powa_statements row during snapshot.  This
+      fixes pg_qualstats foreign key errors that can happen during snapshots
+      (Julien Rouhaud)
+    - Fix pg_wait_sampling counters if multiple users run the same queries
+      (Marc Cousin and Julien Rouhaud)
 ## 4.0.1
 
   - Bugfixes
