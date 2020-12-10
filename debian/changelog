@@ -1,6 +1,12 @@
 powa-archivist (4.1.0-1) unstable; urgency=medium
 
+  [ Julien Rouhaud ]
   * New upstream version.
+
+  [ Christoph Berg ]
+  * Upload for PostgreSQL 13.
+  * Use dh --with pgxs_loop.
+  * DH 13.
 
  -- Julien Rouhaud <rjuju123@gmail.com>  Thu, 10 Dec 2020 19:41:20 +0800
 

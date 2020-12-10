@@ -3,17 +3,18 @@ Section: database
 Priority: optional
 Maintainer: Debian PostgreSQL Maintainers <team+postgresql@tracker.debian.org>
 Uploaders: Christoph Berg <myon@debian.org>
-Standards-Version: 4.1.4
-Build-Depends: debhelper (>= 9~),
- postgresql-server-dev-all (>= 141~)
+Standards-Version: 4.5.0
+Rules-Requires-Root: no
+Build-Depends: debhelper-compat (= 13),
+ postgresql-all (>= 217~)
 Homepage: https://powa.readthedocs.io/
 Vcs-Browser: https://github.com/powa-team/powa-archivist
 Vcs-Git: https://github.com/powa-team/powa-archivist.git
 
-Package: postgresql-12-powa
+Package: postgresql-13-powa
 Architecture: any
-Depends: ${misc:Depends}, ${shlibs:Depends}, postgresql-12
-Description: PostgreSQL Workload Analyzer -- PostgreSQL 12 extension
+Depends: ${misc:Depends}, ${shlibs:Depends}, postgresql-13
+Description: PostgreSQL Workload Analyzer -- PostgreSQL 13 extension
  This package contains the core extension of the PoWA project, a PostgreSQL
  Workload Analyzer that gathers performance stats and provides real-time charts
  and graphs to help monitor and tune your PostgreSQL servers.
