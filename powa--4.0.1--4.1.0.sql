@@ -1514,3 +1514,41 @@ BEGIN
     DELETE FROM powa_kcache_metrics_current_db WHERE srvid = _srvid;
 END
 $PROC$ language plpgsql; /* end of powa_kcache_aggregate */
+
+CREATE OR REPLACE FUNCTION powa_wait_sampling_src(IN _srvid integer,
+    OUT ts timestamp with time zone,
+    OUT dbid oid,
+    OUT event_type text,
+    OUT event text,
+    OUT queryid bigint,
+    OUT count numeric
+) RETURNS SETOF RECORD STABLE AS $PROC$
+BEGIN
+    IF (_srvid = 0) THEN
+        RETURN QUERY
+            -- the various background processes report wait events but don't have
+            -- associated queryid.  Gather them all under a fake 0 dbid
+            SELECT now(), COALESCE(pgss.dbid, 0) AS dbid, s.event_type,
+                s.event, s.queryid, sum(s.count) as count
+            FROM pg_wait_sampling_profile s
+            -- pg_wait_sampling doesn't offer a per (userid, dbid, queryid) view,
+            -- only per pid, but pid can be reused for different databases or users
+            -- so we cannot deduce db or user from it.  However, queryid should be
+            -- unique across differet databases, so we retrieve the dbid this way.
+            -- Note that the same queryid can exists for multiple entries if
+            -- multiple users execute the query, so it's critical to retrieve a
+            -- single row from pg_stat_statements per (dbid, queryid)
+            LEFT JOIN (SELECT DISTINCT s2.dbid, s2.queryid
+                FROM pg_stat_statements(false) AS s2
+            ) pgss ON pgss.queryid = s.queryid
+            WHERE s.event_type IS NOT NULL AND s.event IS NOT NULL
+            AND COALESCE(pgss.dbid, 0) NOT IN (SELECT oid FROM powa_databases WHERE dropped IS NOT NULL)
+            GROUP BY pgss.dbid, s.event_type, s.event, s.queryid;
+    ELSE
+        RETURN QUERY
+        SELECT s.ts, s.dbid, s.event_type, s.event, s.queryid, s.count
+        FROM powa_wait_sampling_src_tmp s
+        WHERE s.srvid = _srvid;
+    END IF;
+END;
+$PROC$ LANGUAGE plpgsql; /* end of powa_wait_sampling_src */

@@ -4325,7 +4325,12 @@ BEGIN
             -- only per pid, but pid can be reused for different databases or users
             -- so we cannot deduce db or user from it.  However, queryid should be
             -- unique across differet databases, so we retrieve the dbid this way.
-            LEFT JOIN pg_stat_statements(false) pgss ON pgss.queryid = s.queryid
+            -- Note that the same queryid can exists for multiple entries if
+            -- multiple users execute the query, so it's critical to retrieve a
+            -- single row from pg_stat_statements per (dbid, queryid)
+            LEFT JOIN (SELECT DISTINCT s2.dbid, s2.queryid
+                FROM pg_stat_statements(false) s2
+            ) pgss ON pgss.queryid = s.queryid
             WHERE s.event_type IS NOT NULL AND s.event IS NOT NULL
             AND COALESCE(pgss.dbid, 0) NOT IN (SELECT oid FROM powa_databases WHERE dropped IS NOT NULL)
             GROUP BY pgss.dbid, s.event_type, s.event, s.queryid;
