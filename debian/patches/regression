@@ -1,0 +1,49 @@
+--- a/expected/powa-archivist.out
++++ b/expected/powa-archivist.out
+@@ -6,26 +6,26 @@ CREATE EXTENSION powa;
+ SET powa.coalesce = 5;
+ -- Test created ojects
+ SELECT * FROM powa_functions ORDER BY module, operation;
+- srvid |          module          | operation |         function_name         |      query_source       | query_cleanup | added_manually | enabled | priority 
+--------+--------------------------+-----------+-------------------------------+-------------------------+---------------+----------------+---------+----------
+-     0 | pg_stat_bgwriter         | aggregate | powa_stat_bgwriter_aggregate  |                         |               | f              | t       |       10
+-     0 | pg_stat_bgwriter         | purge     | powa_stat_bgwriter_purge      |                         |               | f              | t       |       10
+-     0 | pg_stat_bgwriter         | reset     | powa_stat_bgwriter_reset      |                         |               | f              | t       |       10
+-     0 | pg_stat_bgwriter         | snapshot  | powa_stat_bgwriter_snapshot   | powa_stat_bgwriter_src  |               | f              | t       |       10
+-     0 | pg_stat_statements       | aggregate | powa_statements_aggregate     |                         |               | f              | t       |       10
+-     0 | pg_stat_statements       | purge     | powa_statements_purge         |                         |               | f              | t       |       10
+-     0 | pg_stat_statements       | purge     | powa_databases_purge          |                         |               | f              | t       |       10
+-     0 | pg_stat_statements       | reset     | powa_statements_reset         |                         |               | f              | t       |       10
+-     0 | pg_stat_statements       | snapshot  | powa_databases_snapshot       | powa_databases_src      |               | f              | t       |       -3
+-     0 | pg_stat_statements       | snapshot  | powa_statements_snapshot      | powa_statements_src     |               | f              | t       |       -2
+-     0 | powa_stat_all_relations  | aggregate | powa_all_relations_aggregate  |                         |               | f              | t       |       10
+-     0 | powa_stat_all_relations  | purge     | powa_all_relations_purge      |                         |               | f              | t       |       10
+-     0 | powa_stat_all_relations  | reset     | powa_all_relations_reset      |                         |               | f              | t       |       10
+-     0 | powa_stat_all_relations  | snapshot  | powa_all_relations_snapshot   | powa_all_relations_src  |               | f              | t       |       10
+-     0 | powa_stat_user_functions | aggregate | powa_user_functions_aggregate |                         |               | f              | t       |       10
+-     0 | powa_stat_user_functions | purge     | powa_user_functions_purge     |                         |               | f              | t       |       10
+-     0 | powa_stat_user_functions | reset     | powa_user_functions_reset     |                         |               | f              | t       |       10
+-     0 | powa_stat_user_functions | snapshot  | powa_user_functions_snapshot  | powa_user_functions_src |               | f              | t       |       10
++ srvid |          module          | operation |         function_name         |      query_source       | query_cleanup | added_manually | enabled | priority |      extname       
++-------+--------------------------+-----------+-------------------------------+-------------------------+---------------+----------------+---------+----------+--------------------
++     0 | pg_stat_bgwriter         | aggregate | powa_stat_bgwriter_aggregate  |                         |               | f              | t       |       10 | 
++     0 | pg_stat_bgwriter         | purge     | powa_stat_bgwriter_purge      |                         |               | f              | t       |       10 | 
++     0 | pg_stat_bgwriter         | reset     | powa_stat_bgwriter_reset      |                         |               | f              | t       |       10 | 
++     0 | pg_stat_bgwriter         | snapshot  | powa_stat_bgwriter_snapshot   | powa_stat_bgwriter_src  |               | f              | t       |       10 | 
++     0 | pg_stat_statements       | aggregate | powa_statements_aggregate     |                         |               | f              | t       |       10 | pg_stat_statements
++     0 | pg_stat_statements       | purge     | powa_statements_purge         |                         |               | f              | t       |       10 | pg_stat_statements
++     0 | pg_stat_statements       | purge     | powa_databases_purge          |                         |               | f              | t       |       10 | pg_stat_statements
++     0 | pg_stat_statements       | reset     | powa_statements_reset         |                         |               | f              | t       |       10 | pg_stat_statements
++     0 | pg_stat_statements       | snapshot  | powa_databases_snapshot       | powa_databases_src      |               | f              | t       |       -3 | pg_stat_statements
++     0 | pg_stat_statements       | snapshot  | powa_statements_snapshot      | powa_statements_src     |               | f              | t       |       -2 | pg_stat_statements
++     0 | powa_stat_all_relations  | aggregate | powa_all_relations_aggregate  |                         |               | f              | t       |       10 | powa
++     0 | powa_stat_all_relations  | purge     | powa_all_relations_purge      |                         |               | f              | t       |       10 | powa
++     0 | powa_stat_all_relations  | reset     | powa_all_relations_reset      |                         |               | f              | t       |       10 | powa
++     0 | powa_stat_all_relations  | snapshot  | powa_all_relations_snapshot   | powa_all_relations_src  |               | f              | t       |       10 | powa
++     0 | powa_stat_user_functions | aggregate | powa_user_functions_aggregate |                         |               | f              | t       |       10 | powa
++     0 | powa_stat_user_functions | purge     | powa_user_functions_purge     |                         |               | f              | t       |       10 | powa
++     0 | powa_stat_user_functions | reset     | powa_user_functions_reset     |                         |               | f              | t       |       10 | powa
++     0 | powa_stat_user_functions | snapshot  | powa_user_functions_snapshot  | powa_user_functions_src |               | f              | t       |       10 | powa
+ (18 rows)
+ 
+ -- test C SRFs
