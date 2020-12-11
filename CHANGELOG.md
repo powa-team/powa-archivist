@@ -1,3 +1,8 @@
+## 4.1.1
+
+  - Bugfixes
+    - Fix regression tests for version 4.1 (Christoph Berg)
+
 ## 4.1.0
 
   - New features:
@@ -14,6 +19,7 @@
       (Julien Rouhaud)
     - Fix pg_wait_sampling counters if multiple users run the same queries
       (Marc Cousin and Julien Rouhaud)
+
 ## 4.0.1
 
   - Bugfixes
