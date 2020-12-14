@@ -979,6 +979,7 @@ CREATE TABLE public.powa_extensions (
     version text,
     PRIMARY KEY (srvid, extname),
     FOREIGN KEY (srvid) REFERENCES public.powa_servers (id)
+      MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
 );
 
 INSERT INTO public.powa_extensions(srvid, extname) VALUES
