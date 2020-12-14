@@ -85,3 +85,22 @@ INSERT INTO powa_qualstats_src_tmp(srvid, ts, uniquequalnodeid, dbid, userid,
 SELECT count(*) FROM powa_qualstats_src_tmp;
 SELECT powa_qualstats_snapshot(1);
 SELECT count(*) FROM powa_qualstats_src_tmp;
+
+-- activate / deactivate extension
+SELECT * FROM public.powa_functions ORDER BY srvid, module, operation, function_name;
+SELECT * FROM public.powa_activate_extension(1, 'pg_stat_kcache');
+SELECT * FROM public.powa_activate_extension(1, 'some_extension');
+SELECT * FROM public.powa_functions ORDER BY srvid, module, operation, function_name;
+SELECT * FROM public.powa_deactivate_extension(1, 'pg_stat_kcache');
+SELECT * FROM public.powa_deactivate_extension(1, 'some_extension');
+SELECT * FROM public.powa_functions ORDER BY srvid, module, operation, function_name;
+
+SELECT alias FROM public.powa_servers WHERE id = 1;
+SELECT * FROM public.powa_configure_server(0, '{"somekey": "someval"}');
+SELECT * FROM public.powa_configure_server(1, '{"somekey": "someval"}');
+SELECT * FROM public.powa_configure_server(1, '{"alias": "test server"}');
+
+SELECT alias FROM public.powa_servers WHERE id = 1;
+
+-- Check remote server removal
+DELETE FROM public.powa_servers WHERE id = 1;
