@@ -4029,7 +4029,7 @@ BEGIN
       WHERE s.srvid = _srvid
       AND q.queryid = s.queryid
       AND q.dbid = s.dbid
-      AND q.userid = s.dbid)
+      AND q.userid = s.userid)
   ),
   missing_quals AS (
       INSERT INTO public.powa_qualstats_quals (srvid, qualid, queryid, dbid, userid, quals)

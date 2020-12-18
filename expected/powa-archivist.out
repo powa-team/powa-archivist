@@ -299,30 +299,73 @@ SELECT hostname FROM powa_servers WHERE id = 1;
 (1 row)
 
 -- Check missing powa_statements FK for pg_qualstats doesn't prevent snapshot
-INSERT INTO powa_qualstats_src_tmp(srvid, ts, uniquequalnodeid, dbid, userid,
+INSERT INTO public.powa_qualstats_src_tmp(srvid, ts, uniquequalnodeid, dbid, userid,
     qualnodeid, occurences, execution_count, nbfiltered,
     mean_err_estimate_ratio, mean_err_estimate_num,
     queryid, constvalues, quals)
     SELECT 1, now(), 1, 1, 1,
         1, 1000, 1, 0,
         0, 0,
-        1, '{}', ARRAY[(1259,1,607,'i')::qual_type];
-SELECT count(*) FROM powa_qualstats_src_tmp;
+        123456789, '{}', ARRAY[(1259,1,607,'i')::qual_type];
+SELECT count(*) FROM public.powa_qualstats_src_tmp;
  count 
 -------
      1
 (1 row)
 
-SELECT powa_qualstats_snapshot(1);
+SELECT public.powa_qualstats_snapshot(1);
  powa_qualstats_snapshot 
 -------------------------
  
 (1 row)
 
-SELECT count(*) FROM powa_qualstats_src_tmp;
+SELECT count(*) FROM public.powa_qualstats_src_tmp;
  count 
 -------
      0
+(1 row)
+
+SELECT count(*) FROM public.powa_qualstats_quals_history_current WHERE srvid = 1;
+ count 
+-------
+     0
+(1 row)
+
+-- Check snapshot of regular quals
+INSERT INTO public.powa_databases(srvid, oid, datname, dropped)
+    VALUES (1, 16384, 'postgres', NULL);
+INSERT INTO public.powa_statements(srvid, queryid, dbid, userid, query)
+    VALUES(1, 123456789, 16384, 10, 'query with qual');
+INSERT INTO public.powa_qualstats_src_tmp(srvid, ts, uniquequalnodeid, dbid, userid,
+    qualnodeid, occurences, execution_count, nbfiltered,
+    mean_err_estimate_ratio, mean_err_estimate_num,
+    queryid, constvalues, quals)
+    SELECT 1, now(), 1, 16384, 10,
+        1, 1000, 1, 0,
+        0, 0,
+        123456789, '{}', ARRAY[(1259,1,607,'i')::qual_type];
+SELECT count(*) FROM public.powa_qualstats_src_tmp;
+ count 
+-------
+     1
+(1 row)
+
+SELECT public.powa_qualstats_snapshot(1);
+ powa_qualstats_snapshot 
+-------------------------
+ 
+(1 row)
+
+SELECT count(*) FROM public.powa_qualstats_src_tmp;
+ count 
+-------
+     0
+(1 row)
+
+SELECT count(*) FROM public.powa_qualstats_quals_history_current WHERE srvid = 1;
+ count 
+-------
+     1
 (1 row)
 
 -- activate / deactivate extension
