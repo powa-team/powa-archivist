@@ -121,5 +121,8 @@ SELECT * FROM public.powa_configure_server(1, '{"alias": "test server"}');
 
 SELECT alias FROM public.powa_servers WHERE id = 1;
 
+-- Test reset function
+SELECT * from powa_reset(1);
+
 -- Check remote server removal
 DELETE FROM public.powa_servers WHERE id = 1;
