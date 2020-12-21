@@ -18,7 +18,7 @@ release-zip: all
 	rm ./powa-$(EXTVERSION)/reindent.sh
 	sed -i -e "s/__VERSION__/$(EXTVERSION)/g"  ./powa-$(EXTVERSION)/META.json
 	zip -r ./powa-$(EXTVERSION).zip ./powa-$(EXTVERSION)/
-	rm ./powa-$(EXTVERSION) -rf
+	rm -rf ./powa-$(EXTVERSION)
 
 DATA = $(wildcard *--*.sql)
 
