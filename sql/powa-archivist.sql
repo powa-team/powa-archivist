@@ -1,3 +1,6 @@
+-- General setup
+\set SHOW_CONTEXT never
+
 --Setup extension
 CREATE EXTENSION pg_stat_statements;
 CREATE EXTENSION btree_gist;

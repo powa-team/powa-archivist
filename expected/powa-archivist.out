@@ -1,3 +1,5 @@
+-- General setup
+\set SHOW_CONTEXT never
 --Setup extension
 CREATE EXTENSION pg_stat_statements;
 CREATE EXTENSION btree_gist;
@@ -549,10 +551,8 @@ SELECT alias FROM public.powa_servers WHERE id = 1;
 
 SELECT * FROM public.powa_configure_server(0, '{"somekey": "someval"}');
 ERROR:  Local server cannot be configured
-CONTEXT:  PL/pgSQL function powa_configure_server(integer,json) line 9 at RAISE
 SELECT * FROM public.powa_configure_server(1, '{"somekey": "someval"}');
 ERROR:  Unknown field: somekey
-CONTEXT:  PL/pgSQL function powa_configure_server(integer,json) line 24 at RAISE
 SELECT * FROM public.powa_configure_server(1, '{"alias": "test server"}');
  powa_configure_server 
 -----------------------
