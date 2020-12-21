@@ -1,3 +1,16 @@
+## 4.1.2
+
+  - Bugfixes
+    - Fix remote server removal by adding ON UPDATE / ON DELETE CASCADE clause
+      for the powa_extensions foreign keys.  Thanks to Andriy Bartash for the
+      report.
+    - Fix pg_qualstats snapshot.  Thanks to github user alepaes1975 for the
+      report.
+    - Clear `*_src_tmp` tables on reset operation.  Those tables are supposed
+      to be empty, but if anything goes wrong and those tables contains
+      problematic data, it could prevent users from cleaning up the situation.
+      Thanks to Marc Cousin for the report.
+
 ## 4.1.1
 
   - Bugfixes
