@@ -31,3 +31,4 @@ Contributors to PoWA :
   * Andriy Bartash
   * TezkaRabota
   * github user alepaes1975
+  * Denis Laxalde
