@@ -3888,7 +3888,7 @@ LATERAL (
     FROM consts
     WHERE consts.qualid = groups.qualid AND consts.queryid = groups.queryid
     AND consts.dbid = groups.dbid AND consts.userid = groups.userid
-    ORDER BY CASE WHEN execution_count = 0 THEN 0 ELSE nbfiltered / execution_count::numeric END DESC
+    ORDER BY CASE WHEN execution_count = 0 THEN 0 ELSE nbfiltered / execution_count::numeric END ASC
     LIMIT 20
   ) s
 ) as lf,
@@ -3906,7 +3906,7 @@ LATERAL (
   ) s
 ) as me,
 LATERAL (
-  SELECT array_agg(constvalues) as me
+  SELECT array_agg(constvalues) as mer
   FROM (
     SELECT (constvalues, occurences, execution_count, nbfiltered,
       mean_err_estimate_ratio, mean_err_estimate_num
@@ -3919,7 +3919,7 @@ LATERAL (
   ) s
 ) as mer,
 LATERAL (
-  SELECT array_agg(constvalues) as me
+  SELECT array_agg(constvalues) as men
   FROM (
     SELECT (constvalues, occurences, execution_count, nbfiltered,
       mean_err_estimate_ratio, mean_err_estimate_num
