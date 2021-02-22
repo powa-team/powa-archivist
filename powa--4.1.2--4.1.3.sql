@@ -54,105 +54,45 @@ CREATE OR REPLACE FUNCTION powa_qualstats_aggregate_constvalues_current(
     OUT mer qual_values[],
     OUT men qual_values[])
 RETURNS SETOF record STABLE AS $_$
-WITH consts AS (
-  SELECT q.srvid, q.qualid, q.queryid, q.dbid, q.userid,
-    min(q.ts) as mints, max(q.ts) as maxts,
-    sum(q.occurences) as occurences,
-    sum(q.nbfiltered) as nbfiltered,
-    sum(q.execution_count) as execution_count,
-    avg(q.mean_err_estimate_ratio) as mean_err_estimate_ratio,
-    avg(q.mean_err_estimate_num) as mean_err_estimate_num,
-    q.constvalues
-  FROM powa_qualstats_constvalues_history_current q
-  WHERE q.srvid = _srvid
-  AND q.ts >= _ts_from AND q.ts <= _ts_to
-  GROUP BY q.srvid, q.qualid, q.queryid, q.dbid, q.userid, q.constvalues
-),
-groups AS (
-  SELECT c.srvid, c.qualid, c.queryid, c.dbid, c.userid,
-    tstzrange(min(c.mints), max(c.maxts),'[]')
-  FROM consts c
-  GROUP BY c.srvid, c.qualid, c.queryid, c.dbid, c.userid
-)
-SELECT *
-FROM groups,
-LATERAL (
-  SELECT array_agg(constvalues) as mu
-  FROM (
-    SELECT (constvalues, occurences, execution_count, nbfiltered,
-      mean_err_estimate_ratio, mean_err_estimate_num
-    )::qual_values AS constvalues
-    FROM consts
-    WHERE consts.qualid = groups.qualid AND consts.queryid = groups.queryid
-    AND consts.dbid = groups.dbid AND consts.userid = groups.userid
-    ORDER BY occurences desc
-    LIMIT 20
-  ) s
-) as mu,
-LATERAL (
-  SELECT array_agg(constvalues) as mf
-  FROM (
-    SELECT (constvalues, occurences, execution_count, nbfiltered,
-      mean_err_estimate_ratio, mean_err_estimate_num
-    )::qual_values AS constvalues
-    FROM consts
-    WHERE consts.qualid = groups.qualid AND consts.queryid = groups.queryid
-    AND consts.dbid = groups.dbid AND consts.userid = groups.userid
-    ORDER BY CASE WHEN execution_count = 0 THEN 0 ELSE nbfiltered / execution_count::numeric END DESC
-    LIMIT 20
-  ) s
-) as mf,
-LATERAL (
-  SELECT array_agg(constvalues) as lf
-  FROM (
-    SELECT (constvalues, occurences, execution_count, nbfiltered,
-      mean_err_estimate_ratio, mean_err_estimate_num
-    )::qual_values AS constvalues
-    FROM consts
-    WHERE consts.qualid = groups.qualid AND consts.queryid = groups.queryid
-    AND consts.dbid = groups.dbid AND consts.userid = groups.userid
-    ORDER BY CASE WHEN execution_count = 0 THEN 0 ELSE nbfiltered / execution_count::numeric END ASC
-    LIMIT 20
-  ) s
-) as lf,
-LATERAL (
-  SELECT array_agg(constvalues) as me
-  FROM (
-    SELECT (constvalues, occurences, execution_count, nbfiltered,
-      mean_err_estimate_ratio, mean_err_estimate_num
-    )::qual_values AS constvalues
-    FROM consts
-    WHERE consts.qualid = groups.qualid AND consts.queryid = groups.queryid
-    AND consts.dbid = groups.dbid AND consts.userid = groups.userid
-    ORDER BY execution_count desc
-    LIMIT 20
-  ) s
-) as me,
-LATERAL (
-  SELECT array_agg(constvalues) as mer
-  FROM (
-    SELECT (constvalues, occurences, execution_count, nbfiltered,
-      mean_err_estimate_ratio, mean_err_estimate_num
-    )::qual_values AS constvalues
-    FROM consts
-    WHERE consts.qualid = groups.qualid AND consts.queryid = groups.queryid
-    AND consts.dbid = groups.dbid AND consts.userid = groups.userid
-    ORDER BY mean_err_estimate_ratio desc
-    LIMIT 20
-  ) s
-) as mer,
-LATERAL (
-  SELECT array_agg(constvalues) as men
-  FROM (
-    SELECT (constvalues, occurences, execution_count, nbfiltered,
-      mean_err_estimate_ratio, mean_err_estimate_num
-    )::qual_values AS constvalues
-    FROM consts
-    WHERE consts.qualid = groups.qualid AND consts.queryid = groups.queryid
-    AND consts.dbid = groups.dbid AND consts.userid = groups.userid
-    ORDER BY mean_err_estimate_num desc
-    LIMIT 20
-  ) s
-) as men;
+SELECT
+    -- Ordered aggregate of top 20 metrics for each kind of stats (most executed, most filetered, least filtered...)
+    srvid, qualid, queryid, dbid, userid,
+    tstzrange(min(min_constvalues_ts) , max(max_constvalues_ts) ,'[]') ,
+    array_agg((constvalues, sum_occurences, sum_execution_count, sum_nbfiltered, avg_mean_err_estimate_ratio, avg_mean_err_estimate_num)::qual_values ORDER BY occurences_rank ASC) FILTER (WHERE occurences_rank <=20)  mu,
+    array_agg((constvalues, sum_occurences, sum_execution_count, sum_nbfiltered, avg_mean_err_estimate_ratio, avg_mean_err_estimate_num)::qual_values ORDER BY filtered_rank ASC) FILTER (WHERE filtered_rank <=20)  mf,
+    array_agg((constvalues, sum_occurences, sum_execution_count, sum_nbfiltered, avg_mean_err_estimate_ratio, avg_mean_err_estimate_num)::qual_values ORDER BY filtered_rank DESC) FILTER (WHERE filtered_rank >= nb_lines - 20)  lf, -- Keep last 20 lines from the same window function
+    array_agg((constvalues, sum_occurences, sum_execution_count, sum_nbfiltered, avg_mean_err_estimate_ratio, avg_mean_err_estimate_num)::qual_values ORDER BY execution_rank ASC) FILTER (WHERE execution_rank <=20)  me,
+    array_agg((constvalues, sum_occurences, sum_execution_count, sum_nbfiltered, avg_mean_err_estimate_ratio, avg_mean_err_estimate_num)::qual_values ORDER BY err_estimate_ratio_rank ASC) FILTER (WHERE err_estimate_ratio_rank <=20)  mer,
+    array_agg((constvalues, sum_occurences, sum_execution_count, sum_nbfiltered, avg_mean_err_estimate_ratio, avg_mean_err_estimate_num)::qual_values ORDER BY err_estimate_num_rank ASC) FILTER (WHERE err_estimate_num_rank <=20)  men
+FROM (
+    -- Establish rank for different stats (occurences, execution...) of each constvalues
+    SELECT srvid, qualid, queryid, dbid, userid,
+        min(mints) OVER (W) min_constvalues_ts, max(maxts) OVER (W) max_constvalues_ts,
+        constvalues, sum_occurences, sum_execution_count, sum_nbfiltered, avg_mean_err_estimate_ratio, avg_mean_err_estimate_num,
+        row_number() OVER (W ORDER BY sum_occurences DESC) occurences_rank,
+        row_number() OVER (W ORDER BY CASE WHEN sum_execution_count = 0 THEN 0 ELSE sum_nbfiltered / sum_execution_count::numeric END DESC) filtered_rank,
+        row_number() OVER (W ORDER BY sum_execution_count DESC) execution_rank,
+        row_number() OVER (W ORDER BY avg_mean_err_estimate_ratio DESC) err_estimate_ratio_rank,
+        row_number() OVER (W ORDER BY avg_mean_err_estimate_num DESC) err_estimate_num_rank,
+        sum(1) OVER (W) nb_lines
+
+    FROM (
+        -- We group by constvalues and perform some aggregate to have stats on distinct constvalues
+        SELECT srvid, qualid, queryid, dbid, userid,constvalues,
+            min(ts) mints, max(ts) maxts ,
+            sum(occurences) as sum_occurences,
+            sum(nbfiltered) as sum_nbfiltered,
+            sum(execution_count) as sum_execution_count,
+            avg(mean_err_estimate_ratio) as avg_mean_err_estimate_ratio,
+            avg(mean_err_estimate_num) as avg_mean_err_estimate_num
+        FROM powa_qualstats_constvalues_history_current
+        WHERE srvid = _srvid
+          AND ts >= _ts_from AND ts <= _ts_to
+        GROUP BY srvid, qualid, queryid, dbid, userid,constvalues
+        ) distinct_constvalues
+    WINDOW W AS (PARTITION BY srvid, qualid, queryid, dbid, userid)
+    ) ranked_constvalues
+GROUP BY srvid, qualid, queryid, dbid, userid
+;
 $_$ LANGUAGE sql; /* end of powa_qualstats_aggregate_constvalues_current */
 
