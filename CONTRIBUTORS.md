@@ -34,3 +34,4 @@ Contributors to PoWA :
   * Denis Laxalde
   * Gowtham Raj Elangovan
   * Mickaël Guérin
+  * github user hrawulwa
