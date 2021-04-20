@@ -4275,11 +4275,13 @@ language plpgsql; /* end of powa_wait_sampling_register */
 /*
  * unregister pg_wait_sampling extension
  */
-CREATE OR REPLACE function public.powa_wait_sampling_unregister() RETURNS bool AS
-$_$
+CREATE OR REPLACE FUNCTION public.powa_wait_sampling_unregister(_srvid integer = 0)
+RETURNS bool AS $_$
 BEGIN
     PERFORM powa_log('unregistering pg_wait_sampling');
-    DELETE FROM public.powa_functions WHERE module = 'pg_wait_sampling';
+    DELETE FROM public.powa_functions
+    WHERE module = 'pg_wait_sampling'
+    AND srvid = _srvid;
     RETURN true;
 END;
 $_$

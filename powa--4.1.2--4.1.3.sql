@@ -187,3 +187,20 @@ BEGIN
     END IF;
 END;
 $PROC$ LANGUAGE plpgsql; /* end of powa_kcache_src */
+
+-- previous powa version created an incorrect version of that function
+DROP FUNCTION IF EXISTS powa_wait_sampling_unregister();
+/*
+ * unregister pg_wait_sampling extension
+ */
+CREATE OR REPLACE FUNCTION public.powa_wait_sampling_unregister(_srvid integer = 0)
+RETURNS bool AS $_$
+BEGIN
+    PERFORM powa_log('unregistering pg_wait_sampling');
+    DELETE FROM public.powa_functions
+    WHERE module = 'pg_wait_sampling'
+    AND srvid = _srvid;
+    RETURN true;
+END;
+$_$
+language plpgsql;
