@@ -1,3 +1,10 @@
+powa-archivist (4.1.2-3) UNRELEASED; urgency=medium
+
+  * Provides: postgresql-powa.
+  * Suggests: powa-web, powa-collector.
+
+ -- Christoph Berg <myon@debian.org>  Mon, 25 Oct 2021 17:42:08 +0200
+
 powa-archivist (4.1.2-2) unstable; urgency=medium
 
   * Upload for PostgreSQL 14.
