@@ -13,12 +13,15 @@ Vcs-Git: https://github.com/powa-team/powa-archivist.git
 
 Package: postgresql-PGVERSION-powa
 Architecture: any
-Suggests: powa-web
 Depends: ${misc:Depends}, ${shlibs:Depends}, postgresql-PGVERSION
+Provides: postgresql-powa
+Suggests: powa-web, powa-collector
 Description: PostgreSQL Workload Analyzer -- PostgreSQL PGVERSION extension
  PoWA is a PostgreSQL Workload Analyzer that gathers performance stats and
  provides real-time charts and graphs to help monitor and tune your PostgreSQL
- servers.
+ servers. This package contains the core extension of the PoWA project, the
+ archivist.
  .
- This package contains the core extension of the PoWA project, the archivist.
- The web interface is contained in the powa-web package.
+ Related packages:
+  * powa-web: web frontend
+  * powa-collector: collector daemon for remote snapshots
