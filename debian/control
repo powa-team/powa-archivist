@@ -17,9 +17,10 @@ Depends: ${misc:Depends}, ${shlibs:Depends}, postgresql-14
 Provides: postgresql-powa
 Suggests: powa-web, powa-collector
 Description: PostgreSQL Workload Analyzer -- PostgreSQL 14 extension
- This package contains the core extension of the PoWA project, a PostgreSQL
- Workload Analyzer that gathers performance stats and provides real-time charts
- and graphs to help monitor and tune your PostgreSQL servers.
+ PoWA is a PostgreSQL Workload Analyzer that gathers performance stats and
+ provides real-time charts and graphs to help monitor and tune your PostgreSQL
+ servers. This package contains the core extension of the PoWA project, the
+ archivist.
  .
  Related packages:
   * powa-web: web frontend
