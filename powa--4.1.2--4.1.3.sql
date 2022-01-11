@@ -204,3 +204,89 @@ BEGIN
 END;
 $_$
 language plpgsql;
+
+CREATE OR REPLACE FUNCTION powa_statements_snapshot(_srvid integer) RETURNS void AS $PROC$
+DECLARE
+    result boolean;
+    v_funcname    text := 'powa_statements_snapshot';
+    v_rowcount    bigint;
+BEGIN
+    -- In this function, we capture statements, and also aggregate counters by database
+    -- so that the first screens of powa stay reactive even though there may be thousands
+    -- of different statements
+    -- We only capture databases that are still there
+    PERFORM powa_log(format('running %I', v_funcname));
+
+    PERFORM powa_prevent_concurrent_snapshot(_srvid);
+
+    WITH capture AS(
+        SELECT *
+        FROM powa_statements_src(_srvid)
+    ),
+    mru as (UPDATE powa_statements set last_present_ts = now()
+            FROM capture
+            WHERE powa_statements.queryid = capture.queryid
+              AND powa_statements.dbid = capture.dbid
+              AND powa_statements.userid = capture.userid
+              AND powa_statements.srvid = _srvid
+    ),
+    missing_statements AS(
+        INSERT INTO public.powa_statements (srvid, queryid, dbid, userid, query)
+            SELECT _srvid, queryid, dbid, userid, min(query)
+            FROM capture c
+            WHERE NOT EXISTS (SELECT 1
+                              FROM powa_statements ps
+                              WHERE ps.queryid = c.queryid
+                              AND ps.dbid = c.dbid
+                              AND ps.userid = c.userid
+                              AND ps.srvid = _srvid
+            )
+            GROUP BY queryid, dbid, userid
+    ),
+
+    by_query AS (
+        INSERT INTO public.powa_statements_history_current
+            SELECT _srvid, queryid, dbid, userid,
+            ROW(
+                ts, calls, total_exec_time, rows,
+                shared_blks_hit, shared_blks_read, shared_blks_dirtied,
+                shared_blks_written, local_blks_hit, local_blks_read,
+                local_blks_dirtied, local_blks_written, temp_blks_read,
+                temp_blks_written, blk_read_time, blk_write_time,
+                plans, total_plan_time,
+                wal_records, wal_fpi, wal_bytes
+            )::powa_statements_history_record AS record
+            FROM capture
+    ),
+
+    by_database AS (
+        INSERT INTO public.powa_statements_history_current_db
+            SELECT _srvid, dbid,
+            ROW(
+                ts, sum(calls),
+                sum(total_exec_time), sum(rows), sum(shared_blks_hit),
+                sum(shared_blks_read), sum(shared_blks_dirtied),
+                sum(shared_blks_written), sum(local_blks_hit),
+                sum(local_blks_read), sum(local_blks_dirtied),
+                sum(local_blks_written), sum(temp_blks_read),
+                sum(temp_blks_written), sum(blk_read_time), sum(blk_write_time),
+                sum(plans), sum(total_plan_time),
+                sum(wal_records), sum(wal_fpi), sum(wal_bytes)
+            )::powa_statements_history_record AS record
+            FROM capture
+            GROUP BY dbid, ts
+    )
+
+    SELECT count(*) INTO v_rowcount
+    FROM capture;
+
+    perform powa_log(format('%I - rowcount: %s',
+            v_funcname, v_rowcount));
+
+    IF (_srvid != 0) THEN
+        DELETE FROM powa_statements_src_tmp WHERE srvid = _srvid;
+    END IF;
+
+    result := true; -- For now we don't care. What could we do on error except crash anyway?
+END;
+$PROC$ language plpgsql; /* end of powa_statements_snapshot */

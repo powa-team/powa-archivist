@@ -2536,7 +2536,7 @@ BEGIN
     ),
     missing_statements AS(
         INSERT INTO public.powa_statements (srvid, queryid, dbid, userid, query)
-            SELECT DISTINCT _srvid, queryid, dbid, userid, query
+            SELECT _srvid, queryid, dbid, userid, min(query)
             FROM capture c
             WHERE NOT EXISTS (SELECT 1
                               FROM powa_statements ps
@@ -2545,6 +2545,7 @@ BEGIN
                               AND ps.userid = c.userid
                               AND ps.srvid = _srvid
             )
+            GROUP BY queryid, dbid, userid
     ),
 
     by_query AS (
