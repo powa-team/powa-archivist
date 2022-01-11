@@ -1,3 +1,10 @@
+powa-archivist (4.1.2-4) unstable; urgency=medium
+
+  * Fix GitHub watch file.
+  * Update contributors list.
+
+ -- Christoph Berg <myon@debian.org>  Tue, 11 Jan 2022 14:32:35 +0100
+
 powa-archivist (4.1.2-3) unstable; urgency=medium
 
   * Provides: postgresql-powa.
