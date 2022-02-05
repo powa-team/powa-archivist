@@ -1,12 +1,12 @@
 -- complain if script is sourced in psql, rather than via CREATE EXTENSION
 --\echo Use "CREATE EXTENSION powa" to load this file. \quit
 
-SET statement_timeout = 0;
-SET client_encoding = 'UTF8';
-SET standard_conforming_strings = on;
-SET client_min_messages = warning;
-SET escape_string_warning = off;
-SET search_path = public, pg_catalog;
+SET LOCAL statement_timeout = 0;
+SET LOCAL client_encoding = 'UTF8';
+SET LOCAL standard_conforming_strings = on;
+SET LOCAL client_min_messages = warning;
+SET LOCAL escape_string_warning = off;
+SET LOCAL search_path = public, pg_catalog;
 
 CREATE TABLE powa_servers(
     id serial PRIMARY KEY,
