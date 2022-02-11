@@ -13,7 +13,7 @@ Vcs-Git: https://github.com/powa-team/powa-archivist.git
 
 Package: postgresql-PGVERSION-powa
 Architecture: any
-Depends: ${misc:Depends}, ${shlibs:Depends}, postgresql-PGVERSION
+Depends: ${misc:Depends}, ${shlibs:Depends}, postgresql-PGVERSION, postgresql-contrib-PGVERSION
 Provides: postgresql-powa
 Suggests: powa-web, powa-collector
 Description: PostgreSQL Workload Analyzer -- PostgreSQL PGVERSION extension

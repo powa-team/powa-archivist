@@ -1,3 +1,9 @@
+powa-archivist (4.1.2-5) unstable; urgency=medium
+
+  * Add dependency on postgresql-contrib-PGVERSION.
+
+ -- Christoph Berg <myon@debian.org>  Fri, 11 Feb 2022 14:10:12 +0100
+
 powa-archivist (4.1.2-4) unstable; urgency=medium
 
   * Fix GitHub watch file.
