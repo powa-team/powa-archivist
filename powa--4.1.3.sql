@@ -1036,7 +1036,7 @@ DECLARE
     v_extname text;
 BEGIN
     SELECT COUNT(*) > 0 INTO v_ext_registered
-    FROM powa_functions
+    FROM public.powa_functions
     WHERE module = _module
     AND srvid = _srvid;
 
@@ -1052,7 +1052,7 @@ BEGIN
     -- so enabled it everywhere it's disabled.  We don't check for other cases,
     -- for instance if part of the needed rows were deleted.
     IF (v_ext_registered) THEN
-        UPDATE powa_functions
+        UPDATE public.powa_functions
         SET enabled = true
         WHERE enabled = false
         AND srvid = _srvid
@@ -1114,13 +1114,13 @@ BEGIN
         (_srvid, NULL, 'pg_stat_bgwriter',  'purge',     'powa_stat_bgwriter_purge',      NULL,                      v_manually, true, default),
         (_srvid, NULL, 'pg_stat_bgwriter',  'reset',     'powa_stat_bgwriter_reset',      NULL,                      v_manually, true, default);
     ELSIF (_module = 'pg_stat_kcache') THEN
-        RETURN powa_kcache_register(_srvid);
+        RETURN public.powa_kcache_register(_srvid);
     ELSIF (_module = 'pg_qualstats') THEN
-        RETURN powa_qualstats_register(_srvid);
+        RETURN public.powa_qualstats_register(_srvid);
     ELSIF (_module = 'pg_wait_sampling') THEN
-        RETURN powa_wait_sampling_register(_srvid);
+        RETURN public.powa_wait_sampling_register(_srvid);
     ELSIF (_module = 'pg_track_settings') THEN
-        RETURN powa_track_settings_register(_srvid);
+        RETURN public.powa_track_settings_register(_srvid);
     ELSE
         -- remove the previously added row in powa_extensions
         IF (v_extname IS NOT NULL) THEN
@@ -1138,7 +1138,7 @@ $_$ LANGUAGE plpgsql; /* end of powa_activate_extension */
 CREATE FUNCTION powa_deactivate_extension(_srvid integer, _module text) RETURNS boolean
 AS $_$
 BEGIN
-    UPDATE powa_functions
+    UPDATE public.powa_functions
     SET enabled = false
     WHERE module = _module
     AND srvid = _srvid;
@@ -2064,14 +2064,14 @@ BEGIN
         WHERE d.object_type = 'extension'
     )
     SELECT function_name INTO funcname
-    FROM powa_functions f
+    FROM public.powa_functions f
     JOIN ext ON f.module = ext.object_name
     WHERE operation = 'unregister'
     ORDER BY module;
 
     IF ( funcname IS NOT NULL ) THEN
         BEGIN
-            PERFORM powa_log(format('running %I', funcname));
+            PERFORM public.powa_log(format('running %I', funcname));
             EXECUTE 'SELECT ' || quote_ident(funcname) || '(0)';
         EXCEPTION
           WHEN OTHERS THEN

@@ -296,3 +296,170 @@ BEGIN
     result := true; -- For now we don't care. What could we do on error except crash anyway?
 END;
 $PROC$ language plpgsql; /* end of powa_statements_snapshot */
+
+CREATE OR REPLACE FUNCTION public.powa_activate_extension(_srvid integer, _module text) RETURNS boolean
+AS $_$
+DECLARE
+    v_ext_registered boolean;
+    v_manually boolean;
+    v_found boolean;
+    v_extname text;
+BEGIN
+    SELECT COUNT(*) > 0 INTO v_ext_registered
+    FROM public.powa_functions
+    WHERE module = _module
+    AND srvid = _srvid;
+
+    IF (_module LIKE 'powa%') THEN
+        v_extname = 'powa';
+    ELSIF (_module = 'pg_stat_bgwriter') THEN
+        v_extname = NULL;
+    ELSE
+        v_extname = _module;
+    END IF;
+
+    -- the rows may already be present, but the enabled flag could be off,
+    -- so enabled it everywhere it's disabled.  We don't check for other cases,
+    -- for instance if part of the needed rows were deleted.
+    IF (v_ext_registered) THEN
+        UPDATE public.powa_functions
+        SET enabled = true
+        WHERE enabled = false
+        AND srvid = _srvid
+        AND module = _module;
+
+        RETURN true;
+    END IF;
+
+    -- Add the row in powa_extensions if needed.  Note that since we add the
+    -- row before knowing if it's a supported extension, we may have to remove
+    -- it later.
+    IF (v_extname IS NOT NULL) THEN
+        SELECT COUNT(*) = 1 INTO v_found
+        FROM public.powa_extensions
+        WHERE srvid = _srvid
+        AND extname = v_extname;
+
+        IF NOT v_found THEN
+            INSERT INTO public.powa_extensions (srvid, extname)
+            VALUES (_srvid, v_extname);
+        END IF;
+    END IF;
+
+    -- default extensions for non-local server have to be dumped
+    SELECT _srvid != 0 INTO v_manually;
+
+    IF (_module = 'pg_stat_statements') THEN
+        INSERT INTO public.powa_functions(srvid, extname, module, operation, function_name,
+            query_source, added_manually, enabled, priority)
+        VALUES
+        (_srvid, 'pg_stat_statements', 'pg_stat_statements', 'snapshot',  'powa_databases_snapshot',   'powa_databases_src',  v_manually, true, -1),
+        (_srvid, 'pg_stat_statements', 'pg_stat_statements', 'snapshot',  'powa_statements_snapshot',  'powa_statements_src', v_manually, true, default),
+        (_srvid, 'pg_stat_statements', 'pg_stat_statements', 'aggregate', 'powa_statements_aggregate', NULL,                  v_manually, true, default),
+        (_srvid, 'pg_stat_statements', 'pg_stat_statements', 'purge',     'powa_statements_purge',     NULL,                  v_manually, true, default),
+        (_srvid, 'pg_stat_statements', 'pg_stat_statements', 'purge',     'powa_databases_purge',      NULL,                  v_manually, true, default),
+        (_srvid, 'pg_stat_statements', 'pg_stat_statements', 'reset',     'powa_statements_reset',     NULL,                  v_manually, true, default);
+    ELSIF (_module = 'powa_stat_user_functions') THEN
+        INSERT INTO public.powa_functions(srvid, extname, module, operation, function_name,
+            query_source, added_manually, enabled, priority)
+        VALUES
+         (_srvid, 'powa', 'powa_stat_user_functions', 'snapshot',  'powa_user_functions_snapshot',  'powa_user_functions_src', v_manually, true, default),
+         (_srvid, 'powa', 'powa_stat_user_functions', 'aggregate', 'powa_user_functions_aggregate', NULL,                      v_manually, true, default),
+         (_srvid, 'powa', 'powa_stat_user_functions', 'purge',     'powa_user_functions_purge',     NULL,                      v_manually, true, default),
+         (_srvid, 'powa', 'powa_stat_user_functions', 'reset',     'powa_user_functions_reset',     NULL,                      v_manually, true, default);
+    ELSIF (_module = 'powa_stat_all_relations') THEN
+        INSERT INTO public.powa_functions(srvid, extname, module, operation, function_name,
+            query_source, added_manually, enabled, priority)
+        VALUES
+        (_srvid, 'powa', 'powa_stat_all_relations',  'snapshot',  'powa_all_relations_snapshot',   'powa_all_relations_src',  v_manually, true, default),
+        (_srvid, 'powa', 'powa_stat_all_relations',  'aggregate', 'powa_all_relations_aggregate',  NULL,                      v_manually, true, default),
+        (_srvid, 'powa', 'powa_stat_all_relations',  'purge',     'powa_all_relations_purge',      NULL,                      v_manually, true, default),
+        (_srvid, 'powa', 'powa_stat_all_relations',  'reset',     'powa_all_relations_reset',      NULL,                      v_manually, true, default);
+    ELSIF (_module = 'pg_stat_bgwriter') THEN
+        INSERT INTO public.powa_functions(srvid, extname, module, operation, function_name,
+            query_source, added_manually, enabled, priority)
+        VALUES
+        (_srvid, NULL, 'pg_stat_bgwriter',  'snapshot',  'powa_stat_bgwriter_snapshot',   'powa_stat_bgwriter_src',  v_manually, true, default),
+        (_srvid, NULL, 'pg_stat_bgwriter',  'aggregate', 'powa_stat_bgwriter_aggregate',  NULL,                      v_manually, true, default),
+        (_srvid, NULL, 'pg_stat_bgwriter',  'purge',     'powa_stat_bgwriter_purge',      NULL,                      v_manually, true, default),
+        (_srvid, NULL, 'pg_stat_bgwriter',  'reset',     'powa_stat_bgwriter_reset',      NULL,                      v_manually, true, default);
+    ELSIF (_module = 'pg_stat_kcache') THEN
+        RETURN public.powa_kcache_register(_srvid);
+    ELSIF (_module = 'pg_qualstats') THEN
+        RETURN public.powa_qualstats_register(_srvid);
+    ELSIF (_module = 'pg_wait_sampling') THEN
+        RETURN public.powa_wait_sampling_register(_srvid);
+    ELSIF (_module = 'pg_track_settings') THEN
+        RETURN public.powa_track_settings_register(_srvid);
+    ELSE
+        -- remove the previously added row in powa_extensions
+        IF (v_extname IS NOT NULL) THEN
+            DELETE FROM public.powa_extensions
+                WHERE srvid = _srvid AND extname = v_extname;
+        END IF;
+
+        RETURN false;
+    END IF;
+
+    return true;
+END;
+$_$ LANGUAGE plpgsql; /* end of powa_activate_extension */
+
+CREATE OR REPLACE FUNCTION powa_deactivate_extension(_srvid integer, _module text) RETURNS boolean
+AS $_$
+BEGIN
+    UPDATE public.powa_functions
+    SET enabled = false
+    WHERE module = _module
+    AND srvid = _srvid;
+
+    return true;
+END;
+$_$ LANGUAGE plpgsql; /* end of powa_deactivate_extension */
+
+CREATE OR REPLACE FUNCTION public.powa_check_dropped_extensions()
+RETURNS event_trigger
+LANGUAGE plpgsql
+AS $_$
+DECLARE
+    funcname text;
+    v_state   text;
+    v_msg     text;
+    v_detail  text;
+    v_hint    text;
+    v_context text;
+BEGIN
+    -- We unregister extensions regardless the "enabled" field
+    WITH ext AS (
+        SELECT object_name
+        FROM pg_event_trigger_dropped_objects() d
+        WHERE d.object_type = 'extension'
+    )
+    SELECT function_name INTO funcname
+    FROM public.powa_functions f
+    JOIN ext ON f.module = ext.object_name
+    WHERE operation = 'unregister'
+    ORDER BY module;
+
+    IF ( funcname IS NOT NULL ) THEN
+        BEGIN
+            PERFORM public.powa_log(format('running %I', funcname));
+            EXECUTE 'SELECT ' || quote_ident(funcname) || '(0)';
+        EXCEPTION
+          WHEN OTHERS THEN
+            GET STACKED DIAGNOSTICS
+                v_state   = RETURNED_SQLSTATE,
+                v_msg     = MESSAGE_TEXT,
+                v_detail  = PG_EXCEPTION_DETAIL,
+                v_hint    = PG_EXCEPTION_HINT,
+                v_context = PG_EXCEPTION_CONTEXT;
+            RAISE WARNING 'powa_check_dropped_extensions(): function "%" failed:
+                state  : %
+                message: %
+                detail : %
+                hint   : %
+                context: %', funcname, v_state, v_msg, v_detail, v_hint, v_context;
+        END;
+    END IF;
+END;
+$_$; /* end of powa_check_dropped_extensions */
