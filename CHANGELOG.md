@@ -1,3 +1,23 @@
+## 4.1.3
+
+  - Bugfixes
+    - Handle possibly duplicated query in powa_statements_src (Julien Rouhaud,
+      per report from github user gjedeer)
+    - Fix column name and ORDER BY in
+      powa_qualstats_aggregate_constvalues_current function (Adrien Nayrat)
+    - Fix powa_kcache_src compatibility with pgsk 2.1- (Julien Rouhaud, per
+      report from github user hrawulwa)
+    - Fix powa_wait_sampling_unregister() to accept a server id (Julien
+      Rouhaud)
+  - Performance improvement
+    - Rewrite powa_qualstats_aggregate_constvalues_current with Window
+      Function, making those at least twice as fast (Adrien Nayrat)
+  - Misc
+    - Narrow the error condition in powa_prevent_concurrent_snapshot() (Denis
+      Laxalde)
+    - Make sure that GUC won't leak the extension script (Julien Rouhaud)
+    - Don't rely on public being in search_path in event trigger code (Julien
+      Rouhaud)
 ## 4.1.2
 
   - Bugfixes
