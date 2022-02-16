@@ -2,7 +2,9 @@ Source: powa-archivist
 Section: database
 Priority: optional
 Maintainer: Debian PostgreSQL Maintainers <team+postgresql@tracker.debian.org>
-Uploaders: Christoph Berg <myon@debian.org>
+Uploaders:
+ Christoph Berg <myon@debian.org>,
+ Julien Rouhaud <rjuju123@gmail.com>,
 Standards-Version: 4.5.0
 Rules-Requires-Root: no
 Build-Depends: debhelper-compat (= 13),
