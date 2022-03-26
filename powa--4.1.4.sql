@@ -2448,7 +2448,7 @@ DECLARE
     v_pgss integer[];
 BEGIN
     IF (_srvid = 0) THEN
-        SELECT regexp_split_to_array(extversion, '\.') INTO STRICT v_pgss
+        SELECT regexp_split_to_array(extversion, E'\\.') INTO STRICT v_pgss
         FROM pg_extension
         WHERE extname = 'pg_stat_statements';
 
@@ -3457,8 +3457,8 @@ DECLARE
 BEGIN
     IF (_srvid = 0) THEN
         SELECT (
-            (regexp_split_to_array(extversion, '\.')::int[])[1] >= 2 AND
-            (regexp_split_to_array(extversion, '\.')::int[])[2] >= 2
+            (regexp_split_to_array(extversion, E'\\.')::int[])[1] >= 2 AND
+            (regexp_split_to_array(extversion, E'\\.')::int[])[2] >= 2
         ) INTO is_v2_2
           FROM pg_extension
           WHERE extname = 'pg_stat_kcache';

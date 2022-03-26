@@ -38,3 +38,4 @@ Contributors to PoWA :
   * Magnus Hagander
   * Adrien Nayrat
   * github user gjedeer
+  * github user arnobnq
