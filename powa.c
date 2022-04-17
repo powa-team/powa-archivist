@@ -482,15 +482,17 @@ powa_stat_all_rel(PG_FUNCTION_ARGS)
 static Datum
 powa_stat_common(PG_FUNCTION_ARGS, PowaStatKind kind)
 {
-	Oid			dbid = PG_GETARG_OID(0);
-	Oid			backend_dbid;
 	ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
 	MemoryContext per_query_ctx;
 	MemoryContext oldcontext;
 	TupleDesc	tupdesc;
 	Tuplestorestate *tupstore;
+#if PG_VERSION_NUM < 150000
+	Oid			dbid = PG_GETARG_OID(0);
+	Oid			backend_dbid;
 	PgStat_StatDBEntry *dbentry;
 	HASH_SEQ_STATUS hash_seq;
+#endif
 
 	/* check to see if caller supports us returning a tuplestore */
 	if (rsinfo == NULL || !IsA(rsinfo, ReturnSetInfo))
@@ -517,6 +519,7 @@ powa_stat_common(PG_FUNCTION_ARGS, PowaStatKind kind)
 
 	MemoryContextSwitchTo(oldcontext);
 
+#if PG_VERSION_NUM < 150000
 	/* -----------------------------------------------------
 	 * Force deep statistics retrieval of specified database.
 	 *
@@ -680,7 +683,7 @@ powa_stat_common(PG_FUNCTION_ARGS, PowaStatKind kind)
 	 * just fetched
 	 */
 	pgstat_clear_snapshot();
-
+#endif
 
 	/* clean up and return the tuplestore */
 	tuplestore_donestoring(tupstore);
