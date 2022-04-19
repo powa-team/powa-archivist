@@ -1010,22 +1010,22 @@ CREATE TABLE public.powa_functions (
 INSERT INTO public.powa_functions (srvid, extname, module, operation, function_name, query_source, added_manually, enabled, priority) VALUES
     (0, 'pg_stat_statements', 'pg_stat_statements',       'snapshot',  'powa_databases_snapshot',       'powa_databases_src',      false, true, -3),
     (0, 'pg_stat_statements', 'pg_stat_statements',       'snapshot',  'powa_statements_snapshot',      'powa_statements_src',     false, true, -2),
-    (0, 'powa', 'powa_stat_user_functions', 'snapshot',  'powa_user_functions_snapshot',  'powa_user_functions_src', false, true, default),
-    (0, 'powa', 'powa_stat_all_relations',  'snapshot',  'powa_all_relations_snapshot',   'powa_all_relations_src',  false, true, default),
-    (0, NULL, 'pg_stat_bgwriter',         'snapshot',  'powa_stat_bgwriter_snapshot',   'powa_stat_bgwriter_src',  false, true, default),
+    (0, 'powa',               'powa_stat_user_functions', 'snapshot',  'powa_user_functions_snapshot',  'powa_user_functions_src', false, true, default),
+    (0, 'powa',               'powa_stat_all_relations',  'snapshot',  'powa_all_relations_snapshot',   'powa_all_relations_src',  false, true, default),
+    (0, NULL,                 'pg_stat_bgwriter',         'snapshot',  'powa_stat_bgwriter_snapshot',   'powa_stat_bgwriter_src',  false, true, default),
     (0, 'pg_stat_statements', 'pg_stat_statements',       'aggregate', 'powa_statements_aggregate',     NULL,                      false, true, default),
-    (0, 'powa', 'powa_stat_user_functions', 'aggregate', 'powa_user_functions_aggregate', NULL,                      false, true, default),
-    (0, 'powa', 'powa_stat_all_relations',  'aggregate', 'powa_all_relations_aggregate',  NULL,                      false, true, default),
-    (0, NULL, 'pg_stat_bgwriter',         'aggregate', 'powa_stat_bgwriter_aggregate',  NULL,                      false, true, default),
+    (0, 'powa',               'powa_stat_user_functions', 'aggregate', 'powa_user_functions_aggregate', NULL,                      false, true, default),
+    (0, 'powa',               'powa_stat_all_relations',  'aggregate', 'powa_all_relations_aggregate',  NULL,                      false, true, default),
+    (0, NULL,                 'pg_stat_bgwriter',         'aggregate', 'powa_stat_bgwriter_aggregate',  NULL,                      false, true, default),
     (0, 'pg_stat_statements', 'pg_stat_statements',       'purge',     'powa_statements_purge',         NULL,                      false, true, default),
     (0, 'pg_stat_statements', 'pg_stat_statements',       'purge',     'powa_databases_purge',          NULL,                      false, true, default),
-    (0, 'powa', 'powa_stat_user_functions', 'purge',     'powa_user_functions_purge',     NULL,                      false, true, default),
-    (0, 'powa', 'powa_stat_all_relations',  'purge',     'powa_all_relations_purge',      NULL,                      false, true, default),
-    (0, NULL, 'pg_stat_bgwriter',         'purge',     'powa_stat_bgwriter_purge',      NULL,                      false, true, default),
+    (0, 'powa',               'powa_stat_user_functions', 'purge',     'powa_user_functions_purge',     NULL,                      false, true, default),
+    (0, 'powa',               'powa_stat_all_relations',  'purge',     'powa_all_relations_purge',      NULL,                      false, true, default),
+    (0, NULL,                 'pg_stat_bgwriter',         'purge',     'powa_stat_bgwriter_purge',      NULL,                      false, true, default),
     (0, 'pg_stat_statements', 'pg_stat_statements',       'reset',     'powa_statements_reset',         NULL,                      false, true, default),
-    (0, 'powa', 'powa_stat_user_functions', 'reset',     'powa_user_functions_reset',     NULL,                      false, true, default),
-    (0, 'powa', 'powa_stat_all_relations',  'reset',     'powa_all_relations_reset',      NULL,                      false, true, default),
-    (0, NULL, 'pg_stat_bgwriter',         'reset',     'powa_stat_bgwriter_reset',      NULL,                      false, true, default);
+    (0, 'powa',               'powa_stat_user_functions', 'reset',     'powa_user_functions_reset',     NULL,                      false, true, default),
+    (0, 'powa',               'powa_stat_all_relations',  'reset',     'powa_all_relations_reset',      NULL,                      false, true, default),
+    (0, NULL,                 'pg_stat_bgwriter',         'reset',     'powa_stat_bgwriter_reset',      NULL,                      false, true, default);
 
 -- Register the module if needed, and set the enabled flag to on.  This
 -- function should only be called by powa_register_server.
@@ -1111,10 +1111,10 @@ BEGIN
         INSERT INTO public.powa_functions(srvid, extname, module, operation, function_name,
             query_source, added_manually, enabled, priority)
         VALUES
-        (_srvid, NULL, 'pg_stat_bgwriter',  'snapshot',  'powa_stat_bgwriter_snapshot',   'powa_stat_bgwriter_src',  v_manually, true, default),
-        (_srvid, NULL, 'pg_stat_bgwriter',  'aggregate', 'powa_stat_bgwriter_aggregate',  NULL,                      v_manually, true, default),
-        (_srvid, NULL, 'pg_stat_bgwriter',  'purge',     'powa_stat_bgwriter_purge',      NULL,                      v_manually, true, default),
-        (_srvid, NULL, 'pg_stat_bgwriter',  'reset',     'powa_stat_bgwriter_reset',      NULL,                      v_manually, true, default);
+        (_srvid, NULL, 'pg_stat_bgwriter', 'snapshot',  'powa_stat_bgwriter_snapshot',  'powa_stat_bgwriter_src', v_manually, true, default),
+        (_srvid, NULL, 'pg_stat_bgwriter', 'aggregate', 'powa_stat_bgwriter_aggregate', NULL,                     v_manually, true, default),
+        (_srvid, NULL, 'pg_stat_bgwriter', 'purge',     'powa_stat_bgwriter_purge',     NULL,                     v_manually, true, default),
+        (_srvid, NULL, 'pg_stat_bgwriter', 'reset',     'powa_stat_bgwriter_reset',     NULL,                     v_manually, true, default);
     ELSIF (_module = 'pg_stat_kcache') THEN
         RETURN public.powa_kcache_register(_srvid);
     ELSIF (_module = 'pg_qualstats') THEN
