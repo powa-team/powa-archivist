@@ -17,7 +17,9 @@ FROM pg_database,
 LATERAL powa_stat_user_functions(oid) f
 WHERE datname = current_database();
 
-SELECT COUNT(*) > 10
+-- on pg15+ the function is a no-op, and this function will be deprecated soon
+-- anyway
+SELECT COUNT(*) >= 0
 FROM pg_database,
 LATERAL powa_stat_all_rel(oid)
 WHERE datname = current_database();
@@ -35,7 +37,7 @@ SELECT 1, COUNT(*) = 0 FROM powa_statements_history;
 SELECT powa_take_snapshot();
 
 SELECT 2, COUNT(*) >= 0 FROM powa_user_functions_history_current;
-SELECT 2, COUNT(*) > 0 FROM powa_all_relations_history_current;
+SELECT 2, COUNT(*) >= 0 FROM powa_all_relations_history_current;
 SELECT 2, COUNT(*) > 0 FROM powa_statements_history_current;
 SELECT 2, COUNT(*) > 0 FROM powa_statements_history_current_db;
 SELECT 2, COUNT(*) >= 0 FROM powa_user_functions_history;
@@ -50,11 +52,11 @@ SELECT powa_take_snapshot();
 SELECT powa_take_snapshot();
 
 SELECT 3, COUNT(*) >= 0 FROM powa_user_functions_history_current;
-SELECT 3, COUNT(*) > 0 FROM powa_all_relations_history_current;
+SELECT 3, COUNT(*) >= 0 FROM powa_all_relations_history_current;
 SELECT 3, COUNT(*) > 0 FROM powa_statements_history_current;
 SELECT 3, COUNT(*) > 0 FROM powa_statements_history_current_db;
 SELECT 3, COUNT(*) >= 0 FROM powa_user_functions_history;
-SELECT 3, COUNT(*) > 0 FROM powa_all_relations_history;
+SELECT 3, COUNT(*) >= 0 FROM powa_all_relations_history;
 SELECT 3, COUNT(*) > 0 FROM powa_statements_history;
 SELECT 3, COUNT(*) > 0 FROM powa_statements_history;
 

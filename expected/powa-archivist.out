@@ -40,7 +40,9 @@ WHERE datname = current_database();
  t
 (1 row)
 
-SELECT COUNT(*) > 10
+-- on pg15+ the function is a no-op, and this function will be deprecated soon
+-- anyway
+SELECT COUNT(*) >= 0
 FROM pg_database,
 LATERAL powa_stat_all_rel(oid)
 WHERE datname = current_database();
@@ -110,7 +112,7 @@ SELECT 2, COUNT(*) >= 0 FROM powa_user_functions_history_current;
         2 | t
 (1 row)
 
-SELECT 2, COUNT(*) > 0 FROM powa_all_relations_history_current;
+SELECT 2, COUNT(*) >= 0 FROM powa_all_relations_history_current;
  ?column? | ?column? 
 ----------+----------
         2 | t
@@ -183,7 +185,7 @@ SELECT 3, COUNT(*) >= 0 FROM powa_user_functions_history_current;
         3 | t
 (1 row)
 
-SELECT 3, COUNT(*) > 0 FROM powa_all_relations_history_current;
+SELECT 3, COUNT(*) >= 0 FROM powa_all_relations_history_current;
  ?column? | ?column? 
 ----------+----------
         3 | t
@@ -207,7 +209,7 @@ SELECT 3, COUNT(*) >= 0 FROM powa_user_functions_history;
         3 | t
 (1 row)
 
-SELECT 3, COUNT(*) > 0 FROM powa_all_relations_history;
+SELECT 3, COUNT(*) >= 0 FROM powa_all_relations_history;
  ?column? | ?column? 
 ----------+----------
         3 | t
