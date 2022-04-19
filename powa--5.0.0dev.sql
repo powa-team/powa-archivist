@@ -992,6 +992,7 @@ CREATE TABLE @extschema@.powa_functions (
     srvid integer NOT NULL,
     module text NOT NULL,
     operation text NOT NULL,
+    external bool NOT NULL default false,
     function_name text NOT NULL,
     query_source text default NULL,
     query_cleanup text default NULL,
@@ -1082,8 +1083,9 @@ BEGIN
     SELECT _srvid != 0 INTO v_manually;
 
     IF (_module = 'pg_stat_statements') THEN
-        INSERT INTO @extschema@.powa_functions(srvid, extname, module, operation, function_name,
-            query_source, added_manually, enabled, priority)
+        INSERT INTO @extschema@.powa_functions(srvid, extname, module,
+            operation, function_name, query_source, added_manually, enabled,
+            priority)
         VALUES
         (_srvid, 'pg_stat_statements', 'pg_stat_statements', 'snapshot',  'powa_databases_snapshot',   'powa_databases_src',  v_manually, true, -1),
         (_srvid, 'pg_stat_statements', 'pg_stat_statements', 'snapshot',  'powa_statements_snapshot',  'powa_statements_src', v_manually, true, default),
@@ -1092,24 +1094,27 @@ BEGIN
         (_srvid, 'pg_stat_statements', 'pg_stat_statements', 'purge',     'powa_databases_purge',      NULL,                  v_manually, true, default),
         (_srvid, 'pg_stat_statements', 'pg_stat_statements', 'reset',     'powa_statements_reset',     NULL,                  v_manually, true, default);
     ELSIF (_module = 'powa_stat_user_functions') THEN
-        INSERT INTO @extschema@.powa_functions(srvid, extname, module, operation, function_name,
-            query_source, added_manually, enabled, priority)
+        INSERT INTO @extschema@.powa_functions(srvid, extname, module,
+            operation, function_name, query_source, added_manually, enabled,
+            priority)
         VALUES
          (_srvid, 'powa', 'powa_stat_user_functions', 'snapshot',  'powa_user_functions_snapshot',  'powa_user_functions_src', v_manually, true, default),
          (_srvid, 'powa', 'powa_stat_user_functions', 'aggregate', 'powa_user_functions_aggregate', NULL,                      v_manually, true, default),
          (_srvid, 'powa', 'powa_stat_user_functions', 'purge',     'powa_user_functions_purge',     NULL,                      v_manually, true, default),
          (_srvid, 'powa', 'powa_stat_user_functions', 'reset',     'powa_user_functions_reset',     NULL,                      v_manually, true, default);
     ELSIF (_module = 'powa_stat_all_relations') THEN
-        INSERT INTO @extschema@.powa_functions(srvid, extname, module, operation, function_name,
-            query_source, added_manually, enabled, priority)
+        INSERT INTO @extschema@.powa_functions(srvid, extname, module,
+            operation, function_name, query_source, added_manually, enabled,
+            priority)
         VALUES
         (_srvid, 'powa', 'powa_stat_all_relations',  'snapshot',  'powa_all_relations_snapshot',   'powa_all_relations_src',  v_manually, true, default),
         (_srvid, 'powa', 'powa_stat_all_relations',  'aggregate', 'powa_all_relations_aggregate',  NULL,                      v_manually, true, default),
         (_srvid, 'powa', 'powa_stat_all_relations',  'purge',     'powa_all_relations_purge',      NULL,                      v_manually, true, default),
         (_srvid, 'powa', 'powa_stat_all_relations',  'reset',     'powa_all_relations_reset',      NULL,                      v_manually, true, default);
     ELSIF (_module = 'pg_stat_bgwriter') THEN
-        INSERT INTO @extschema@.powa_functions(srvid, extname, module, operation, function_name,
-            query_source, added_manually, enabled, priority)
+        INSERT INTO @extschema@.powa_functions(srvid, extname, module,
+            operation, function_name, query_source, added_manually, enabled,
+            priority)
         VALUES
         (_srvid, NULL, 'pg_stat_bgwriter', 'snapshot',  'powa_stat_bgwriter_snapshot',  'powa_stat_bgwriter_src', v_manually, true, default),
         (_srvid, NULL, 'pg_stat_bgwriter', 'aggregate', 'powa_stat_bgwriter_aggregate', NULL,                     v_manually, true, default),
@@ -2052,7 +2057,7 @@ RETURNS event_trigger
 LANGUAGE plpgsql
 AS $_$
 DECLARE
-    funcname text;
+    r         record;
     v_state   text;
     v_msg     text;
     v_detail  text;
@@ -2060,21 +2065,27 @@ DECLARE
     v_context text;
 BEGIN
     -- We unregister extensions regardless the "enabled" field
-    WITH ext AS (
+    WITH src AS (
         SELECT object_name
         FROM pg_event_trigger_dropped_objects() d
         WHERE d.object_type = 'extension'
     )
-    SELECT function_name INTO funcname
-    FROM @extschema@.powa_functions f
-    JOIN ext ON f.module = ext.object_name
+    SELECT CASE external
+        WHEN true THEN quote_ident(nsp.nspname)
+        ELSE '@extschema@'
+        END AS schema, function_name AS funcname INTO r
+    FROM @extschema@.powa_functions AS pf
+    JOIN src ON pf.module = src.object_name
+    JOIN pg_extension AS ext ON ext.extname = pf.module
+    JOIN pg_namespace AS nsp ON nsp.oid = ext.extnamespace
     WHERE operation = 'unregister'
     ORDER BY module;
 
-    IF ( funcname IS NOT NULL ) THEN
+    IF ( r.funcname IS NOT NULL ) THEN
         BEGIN
-            PERFORM @extschema@.powa_log(format('running %I', funcname));
-            EXECUTE 'SELECT @extschema@.' || quote_ident(funcname) || '(0)';
+            PERFORM @extschema@.powa_log(format('running %s.%I',
+                    r.schema, r.funcname));
+            EXECUTE format('SELECT %s.%I(0)', r.schema, r.funcname);
         EXCEPTION
           WHEN OTHERS THEN
             GET STACKED DIAGNOSTICS
@@ -2083,12 +2094,13 @@ BEGIN
                 v_detail  = PG_EXCEPTION_DETAIL,
                 v_hint    = PG_EXCEPTION_HINT,
                 v_context = PG_EXCEPTION_CONTEXT;
-            RAISE WARNING 'powa_check_dropped_extensions(): function "%" failed:
+            RAISE WARNING '@extschema@.powa_check_dropped_extensions(): function %.% failed:
                 state  : %
                 message: %
                 detail : %
                 hint   : %
-                context: %', funcname, v_state, v_msg, v_detail, v_hint, v_context;
+                context: %', r.schema, quote_ident(r.funcname), v_state, v_msg,
+                             v_detail, v_hint, v_context;
         END;
     END IF;
 END;
@@ -2140,7 +2152,7 @@ AS $PROC$
 DECLARE
   purgets timestamp with time zone;
   purge_seq  bigint;
-  funcname   text;
+  r          record;
   v_state    text;
   v_msg      text;
   v_detail   text;
@@ -2150,13 +2162,13 @@ DECLARE
   v_rowcount bigint;
   v_nb_err int = 0;
   v_errs     text[] = '{}';
-  v_pattern  text = 'powa_take_snapshot(%s): function "%s" failed:
+  v_pattern  text = '@extschema@.powa_take_snapshot(%s): function %s.%I failed:
               state  : %s
               message: %s
               detail : %s
               hint   : %s
               context: %s';
-  v_pattern_simple text = 'powa_take_snapshot(%s): function "%s" failed: %s';
+  v_pattern_simple text = '@extschema@.powa_take_snapshot(%s): function %s.%I failed: %s';
   v_coalesce bigint;
 BEGIN
     PERFORM set_config('application_name',
@@ -2185,20 +2197,26 @@ BEGIN
     END IF;
 
     -- For all enabled snapshot functions in the powa_functions table, execute
-    FOR funcname IN SELECT function_name
-                 FROM @extschema@.powa_functions
-                 WHERE operation='snapshot'
-                 AND enabled
-                 AND srvid = _srvid
-                 ORDER BY priority, module
+    FOR r IN SELECT CASE external
+                WHEN true THEN quote_ident(nsp.nspname)
+                ELSE '@extschema@'
+             END AS schema, function_name AS funcname
+             FROM @extschema@.powa_functions AS pf
+             JOIN pg_extension AS ext ON ext.extname = pf.module
+             JOIN pg_namespace AS nsp ON nsp.oid = ext.extnamespace
+             WHERE operation='snapshot'
+             AND enabled
+             AND srvid = _srvid
+             ORDER BY priority, module
     LOOP
       -- Call all of them, for the current srvid
       BEGIN
-        PERFORM @extschema@.powa_log(format('calling snapshot function: %I', funcname));
+        PERFORM @extschema@.powa_log(format('calling snapshot function: %s.%I',
+                                     r.schema, r.funcname));
         PERFORM set_config('application_name',
-            v_title || quote_ident(funcname) || '(' || _srvid || ')', false);
+            v_title || quote_ident(r.funcname) || '(' || _srvid || ')', false);
 
-        EXECUTE format('SELECT @extschema@.%I(%s)', funcname, _srvid);
+        EXECUTE format('SELECT %s.%I(%s)', r.schema, r.funcname, _srvid);
       EXCEPTION
         WHEN OTHERS THEN
           GET STACKED DIAGNOSTICS
@@ -2208,11 +2226,11 @@ BEGIN
               v_hint    = PG_EXCEPTION_HINT,
               v_context = PG_EXCEPTION_CONTEXT;
 
-          RAISE warning '%', format(v_pattern, _srvid, funcname, v_state, v_msg,
-            v_detail, v_hint, v_context);
+          RAISE warning '%', format(v_pattern, _srvid, r.schema, r.funcname,
+            v_state, v_msg, v_detail, v_hint, v_context);
 
           v_errs := array_append(v_errs, format(v_pattern_simple, _srvid,
-                funcname, v_msg));
+                r.schema, r.funcname, v_msg));
 
           v_nb_err = v_nb_err + 1;
       END;
@@ -2225,22 +2243,28 @@ BEGIN
         format('coalesce needed, srvid: %s - seq: %s - coalesce seq: %s',
         _srvid, purge_seq, v_coalesce ));
 
-      FOR funcname IN SELECT function_name
-                   FROM @extschema@.powa_functions
-                   WHERE operation='aggregate'
-                   AND enabled
-                   AND srvid = _srvid
-                   ORDER BY module
+      FOR r IN SELECT CASE external
+                  WHEN true THEN quote_ident(nsp.nspname)
+                  ELSE '@extschema@'
+               END AS schema, function_name AS funcname
+               FROM @extschema@.powa_functions AS pf
+               JOIN pg_extension AS ext ON ext.extname = pf.module
+               JOIN pg_namespace AS nsp ON nsp.oid = ext.extnamespace
+               WHERE operation='aggregate'
+               AND enabled
+               AND srvid = _srvid
+               ORDER BY module
       LOOP
         -- Call all of them, for the current srvid
         BEGIN
-          PERFORM @extschema@.powa_log(format('calling aggregate function: %I(%s)',
-                funcname, _srvid));
+          PERFORM @extschema@.powa_log(format('calling aggregate function: %s.%I(%s)',
+                r.schema, r.funcname, _srvid));
 
           PERFORM set_config('application_name',
-              v_title || quote_ident(funcname) || '(' || _srvid || ')', false);
+              v_title || quote_ident(r.funcname) || '(' || _srvid || ')',
+              false);
 
-          EXECUTE format('SELECT @extschema@.%I(%s)', funcname, _srvid);
+          EXECUTE format('SELECT %s.%I(%s)', r.schema, r.funcname, _srvid);
         EXCEPTION
           WHEN OTHERS THEN
             GET STACKED DIAGNOSTICS
@@ -2250,11 +2274,11 @@ BEGIN
                 v_hint    = PG_EXCEPTION_HINT,
                 v_context = PG_EXCEPTION_CONTEXT;
 
-            RAISE warning '%', format(v_pattern, _srvid, funcname, v_state, v_msg,
-              v_detail, v_hint, v_context);
+            RAISE warning '%', format(v_pattern, _srvid, r.schema, r.funcname,
+                v_state, v_msg, v_detail, v_hint, v_context);
 
             v_errs := array_append(v_errs, format(v_pattern_simple, _srvid,
-                  funcname, v_msg));
+                    r.schema, r.funcname, v_msg));
 
             v_nb_err = v_nb_err + 1;
         END;
@@ -2275,22 +2299,27 @@ BEGIN
         format('purge needed, srvid: %s - seq: %s coalesce seq: %s',
         _srvid, purge_seq, v_coalesce));
 
-      FOR funcname IN SELECT function_name
-                   FROM @extschema@.powa_functions
-                   WHERE operation='purge'
-                   AND enabled
-                   AND srvid = _srvid
-                   ORDER BY module
+      FOR r IN SELECT CASE external
+                    WHEN true THEN quote_ident(nsp.nspname)
+                    ELSE '@extschema@'
+               END AS schema, function_name AS funcname
+               FROM @extschema@.powa_functions AS pf
+               JOIN pg_extension AS ext ON ext.extname = pf.module
+               JOIN pg_namespace AS nsp ON nsp.oid = ext.extnamespace
+               WHERE operation='purge'
+               AND enabled
+               AND srvid = _srvid
+               ORDER BY module
       LOOP
         -- Call all of them, for the current srvid
         BEGIN
-          PERFORM @extschema@.powa_log(format('calling purge function: %I(%s)',
-                funcname, _srvid));
+          PERFORM @extschema@.powa_log(format('calling purge function: %s.%I(%s)',
+                r.schema, r.funcname, _srvid));
           PERFORM set_config('application_name',
-              v_title || quote_ident(funcname) || '(' || _srvid || ')',
+              v_title || quote_ident(r.funcname) || '(' || _srvid || ')',
               false);
 
-          EXECUTE format('SELECT @extschema@.%I(%s)', funcname, _srvid);
+          EXECUTE format('SELECT %s.%I(%s)', r.schema, r.funcname, _srvid);
         EXCEPTION
           WHEN OTHERS THEN
             GET STACKED DIAGNOSTICS
@@ -2300,11 +2329,11 @@ BEGIN
                 v_hint    = PG_EXCEPTION_HINT,
                 v_context = PG_EXCEPTION_CONTEXT;
 
-            RAISE warning '%', format(v_pattern, _srvid, funcname, v_state, v_msg,
-              v_detail, v_hint, v_context);
+            RAISE warning '%', format(v_pattern, _srvid, r.schema, r.funcname,
+                v_state, v_msg, v_detail, v_hint, v_context);
 
             v_errs := array_append(v_errs, format(v_pattern_simple, _srvid,
-                  funcname, v_msg));
+                  r.schema, r.funcname, v_msg));
 
             v_nb_err = v_nb_err + 1;
         END;
@@ -2783,7 +2812,7 @@ BEGIN
             FROM rel
             GROUP BY srvid, dbid, ts
     )
- 
+
     SELECT COUNT(*) into v_rowcount
     FROM rel;
 
@@ -3287,7 +3316,7 @@ CREATE OR REPLACE FUNCTION @extschema@.powa_reset(_srvid integer)
  LANGUAGE plpgsql
 AS $function$
 DECLARE
-  funcname text;
+  r         record;
   v_state   text;
   v_msg     text;
   v_detail  text;
@@ -3296,14 +3325,19 @@ DECLARE
 BEGIN
     -- Find reset function for every supported datasource, including pgss
     -- Also call reset function even if they're not enabled
-    FOR funcname IN SELECT function_name
-                 FROM @extschema@.powa_functions
-                 WHERE operation='reset'
-                 AND srvid = _srvid
-                 ORDER BY module LOOP
+    FOR r IN SELECT CASE external
+                WHEN true THEN quote_ident(nsp.nspname)
+                ELSE '@extschema@'
+            END AS schema, function_name AS funcname
+            FROM @extschema@.powa_functions AS pf
+            JOIN pg_extension AS ext ON ext.extname = pf.module
+            JOIN pg_namespace AS nsp ON nsp.oid = ext.extnamespace
+            WHERE operation='reset'
+            AND srvid = _srvid
+            ORDER BY module LOOP
       -- Call all of them, for the current srvid
       BEGIN
-          EXECUTE format('SELECT @extschema@.%I(%s)', funcname, _srvid);
+          EXECUTE format('SELECT %s.%I(%s)', r.schema, r.funcname, _srvid);
       EXCEPTION
         WHEN OTHERS THEN
           GET STACKED DIAGNOSTICS
@@ -3312,13 +3346,14 @@ BEGIN
               v_detail  = PG_EXCEPTION_DETAIL,
               v_hint    = PG_EXCEPTION_HINT,
               v_context = PG_EXCEPTION_CONTEXT;
-          RAISE warning 'powa_reset(): function "@extschema@.%(%)" failed:
+          RAISE warning 'powa_reset(): function "%.%(%)" failed:
               state  : %
               message: %
               detail : %
               hint   : %
               context: %',
-              funcname, _srvid, v_state, v_msg, v_detail, v_hint, v_context;
+              r.schema, quote_ident(r.funcname), _srvid, v_state, v_msg,
+              v_detail, v_hint, v_context;
 
       END;
     END LOOP;
@@ -4242,13 +4277,14 @@ BEGIN
             PERFORM @extschema@.powa_log('registering pg_track_settings');
 
             -- This extension handles its own storage, just add its snapshot,
-            -- reset and an unregister function.
-            INSERT INTO @extschema@.powa_functions (srvid, extname, module, operation, function_name, query_source, added_manually, enabled)
-            VALUES (_srvid, 'pg_track_settings', 'pg_track_settings', 'snapshot',   'pg_track_settings_snapshot_settings', 'pg_track_settings_settings_src', true, true),
-                   (_srvid, 'pg_track_settings', 'pg_track_settings', 'snapshot',   'pg_track_settings_snapshot_rds',      'pg_track_settings_rds_src',      true, true),
-                   (_srvid, 'pg_track_settings', 'pg_track_settings', 'snapshot',   'pg_track_settings_snapshot_reboot',   'pg_track_settings_reboot_src',   true, true),
-                   (_srvid, 'pg_track_settings', 'pg_track_settings', 'reset',      'pg_track_settings_reset',             NULL,                             true, true),
-                   (_srvid, 'pg_track_settings', 'pg_track_settings', 'unregister', 'powa_track_settings_unregister',      NULL,                             true, true);
+            -- query_source and reset functions as external, and our unregister
+            -- function.
+            INSERT INTO @extschema@.powa_functions (srvid, extname, module, operation, external, function_name, query_source, added_manually, enabled)
+            VALUES (_srvid, 'pg_track_settings', 'pg_track_settings', 'snapshot',   true,  'pg_track_settings_snapshot_settings', 'pg_track_settings_settings_src', true, true),
+                   (_srvid, 'pg_track_settings', 'pg_track_settings', 'snapshot',   true,  'pg_track_settings_snapshot_rds',      'pg_track_settings_rds_src',      true, true),
+                   (_srvid, 'pg_track_settings', 'pg_track_settings', 'snapshot',   true,  'pg_track_settings_snapshot_reboot',   'pg_track_settings_reboot_src',   true, true),
+                   (_srvid, 'pg_track_settings', 'pg_track_settings', 'reset',      true,  'pg_track_settings_reset',             NULL,                             true, true),
+                   (_srvid, 'pg_track_settings', 'pg_track_settings', 'unregister', false, 'powa_track_settings_unregister',      NULL,                             true, true);
         END IF;
     END IF;
 
