@@ -5,9 +5,9 @@ SET LOCAL statement_timeout = 0;
 SET LOCAL client_encoding = 'UTF8';
 SET LOCAL standard_conforming_strings = on;
 SET LOCAL client_min_messages = warning;
-SET LOCAL search_path = public, pg_catalog;
+SET LOCAL search_path = pg_catalog;
 
-CREATE TABLE powa_servers(
+CREATE TABLE @extschema@.powa_servers (
     id serial PRIMARY KEY,
     hostname text NOT NULL,
     alias text,
@@ -23,51 +23,51 @@ CREATE TABLE powa_servers(
     UNIQUE (hostname, port),
     UNIQUE(alias)
 );
-INSERT INTO public.powa_servers VALUES (0, '', '<local>', 0, '', NULL, '', -1, 100, '0 second');
+INSERT INTO @extschema@.powa_servers VALUES (0, '', '<local>', 0, '', NULL, '', -1, 100, '0 second');
 
-CREATE TABLE powa_snapshot_metas(
+CREATE TABLE @extschema@.powa_snapshot_metas(
     srvid integer PRIMARY KEY,
     coalesce_seq bigint NOT NULL default (1),
     snapts timestamp with time zone NOT NULL default '-infinity'::timestamptz,
     aggts timestamp with time zone NOT NULL default '-infinity'::timestamptz,
     purgets timestamp with time zone NOT NULL default '-infinity'::timestamptz,
     errors text[],
-    FOREIGN KEY (srvid) REFERENCES powa_servers(id)
+    FOREIGN KEY (srvid) REFERENCES @extschema@.powa_servers(id)
       MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
 );
-INSERT INTO public.powa_snapshot_metas (srvid) VALUES (0);
+INSERT INTO @extschema@.powa_snapshot_metas (srvid) VALUES (0);
 
-CREATE TABLE powa_databases(
+CREATE TABLE @extschema@.powa_databases (
     srvid   integer NOT NULL,
     oid     oid,
     datname name,
     dropped timestamp with time zone,
     PRIMARY KEY (srvid, oid),
-    FOREIGN KEY (srvid) REFERENCES powa_servers(id)
+    FOREIGN KEY (srvid) REFERENCES @extschema@.powa_servers(id)
       MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
 );
 
-CREATE TABLE powa_statements (
+CREATE TABLE @extschema@.powa_statements (
     srvid integer NOT NULL,
     queryid bigint NOT NULL,
     dbid oid NOT NULL,
     userid oid NOT NULL,
     query text NOT NULL,
     last_present_ts timestamptz NULL DEFAULT now(),
-    FOREIGN KEY (srvid) REFERENCES powa_servers(id)
+    FOREIGN KEY (srvid) REFERENCES @extschema@.powa_servers(id)
       MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE,
-    FOREIGN KEY (srvid, dbid) REFERENCES powa_databases(srvid, oid)
+    FOREIGN KEY (srvid, dbid) REFERENCES @extschema@.powa_databases(srvid, oid)
       MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
 );
 
-ALTER TABLE ONLY powa_statements
+ALTER TABLE ONLY @extschema@.powa_statements
     ADD CONSTRAINT powa_statements_pkey PRIMARY KEY (srvid, queryid, dbid, userid);
 
-CREATE INDEX powa_statements_dbid_idx ON powa_statements(srvid, dbid);
-CREATE INDEX powa_statements_userid_idx ON powa_statements(userid);
-CREATE INDEX powa_statements_mru_idx ON powa_statements (last_present_ts);
+CREATE INDEX powa_statements_dbid_idx ON @extschema@.powa_statements(srvid, dbid);
+CREATE INDEX powa_statements_userid_idx ON @extschema@.powa_statements(userid);
+CREATE INDEX powa_statements_mru_idx ON @extschema@.powa_statements (last_present_ts);
 
-CREATE FUNCTION powa_stat_user_functions(IN dbid oid, OUT funcid oid,
+CREATE FUNCTION @extschema@.powa_stat_user_functions(IN dbid oid, OUT funcid oid,
     OUT calls bigint,
     OUT total_time double precision,
     OUT self_time double precision)
@@ -75,7 +75,7 @@ CREATE FUNCTION powa_stat_user_functions(IN dbid oid, OUT funcid oid,
     LANGUAGE c COST 100
 AS '$libdir/powa', 'powa_stat_user_functions';
 
-CREATE FUNCTION powa_stat_all_rel(IN dbid oid,
+CREATE FUNCTION @extschema@.powa_stat_all_rel(IN dbid oid,
     OUT relid oid,
     OUT numscan bigint,
     OUT tup_returned bigint,
@@ -101,7 +101,7 @@ CREATE FUNCTION powa_stat_all_rel(IN dbid oid,
     LANGUAGE c COST 100
 AS '$libdir/powa', 'powa_stat_all_rel';
 
-CREATE TYPE powa_statements_history_record AS (
+CREATE TYPE @extschema@.powa_statements_history_record AS (
     ts timestamp with time zone,
     calls bigint,
     total_exec_time double precision,
@@ -126,7 +126,7 @@ CREATE TYPE powa_statements_history_record AS (
 );
 
 /* pg_stat_statements operator support */
-CREATE TYPE powa_statements_history_diff AS (
+CREATE TYPE @extschema@.powa_statements_history_diff AS (
     intvl interval,
     calls bigint,
     total_exec_time double precision,
@@ -150,13 +150,13 @@ CREATE TYPE powa_statements_history_diff AS (
     wal_bytes numeric
 );
 
-CREATE OR REPLACE FUNCTION powa_statements_history_mi(
-    a powa_statements_history_record,
-    b powa_statements_history_record)
-RETURNS powa_statements_history_diff AS
+CREATE OR REPLACE FUNCTION @extschema@.powa_statements_history_mi(
+    a @extschema@.powa_statements_history_record,
+    b @extschema@.powa_statements_history_record)
+RETURNS @extschema@.powa_statements_history_diff AS
 $_$
 DECLARE
-    res powa_statements_history_diff;
+    res @extschema@.powa_statements_history_diff;
 BEGIN
     res.intvl = a.ts - b.ts;
     res.calls = a.calls - b.calls;
@@ -185,13 +185,13 @@ END;
 $_$
 LANGUAGE plpgsql IMMUTABLE STRICT;
 
-CREATE OPERATOR - (
-    PROCEDURE = powa_statements_history_mi,
-    LEFTARG = powa_statements_history_record,
-    RIGHTARG = powa_statements_history_record
+CREATE OPERATOR @extschema@.- (
+    PROCEDURE = @extschema@.powa_statements_history_mi,
+    LEFTARG = @extschema@.powa_statements_history_record,
+    RIGHTARG = @extschema@.powa_statements_history_record
 );
 
-CREATE TYPE powa_statements_history_rate AS (
+CREATE TYPE @extschema@.powa_statements_history_rate AS (
     sec integer,
     calls_per_sec double precision,
     runtime_per_sec double precision,
@@ -215,13 +215,13 @@ CREATE TYPE powa_statements_history_rate AS (
     wal_bytes_per_sec numeric
 );
 
-CREATE OR REPLACE FUNCTION powa_statements_history_div(
-    a powa_statements_history_record,
-    b powa_statements_history_record)
-RETURNS powa_statements_history_rate AS
+CREATE OR REPLACE FUNCTION @extschema@.powa_statements_history_div(
+    a @extschema@.powa_statements_history_record,
+    b @extschema@.powa_statements_history_record)
+RETURNS @extschema@.powa_statements_history_rate AS
 $_$
 DECLARE
-    res powa_statements_history_rate;
+    res @extschema@.powa_statements_history_rate;
     sec integer;
 BEGIN
     res.sec = extract(EPOCH FROM (a.ts - b.ts));
@@ -256,14 +256,14 @@ END;
 $_$
 LANGUAGE plpgsql IMMUTABLE STRICT;
 
-CREATE OPERATOR / (
-    PROCEDURE = powa_statements_history_div,
-    LEFTARG = powa_statements_history_record,
-    RIGHTARG = powa_statements_history_record
+CREATE OPERATOR @extschema@./ (
+    PROCEDURE = @extschema@.powa_statements_history_div,
+    LEFTARG = @extschema@.powa_statements_history_record,
+    RIGHTARG = @extschema@.powa_statements_history_record
 );
 /* end of pg_stat_statements operator support */
 
-CREATE TYPE powa_user_functions_history_record AS (
+CREATE TYPE @extschema@.powa_user_functions_history_record AS (
     ts timestamp with time zone,
     calls bigint,
     total_time double precision,
@@ -271,7 +271,7 @@ CREATE TYPE powa_user_functions_history_record AS (
 );
 
 /* pg_stat_user_functions operator support */
-CREATE TYPE powa_user_functions_history_diff AS (
+CREATE TYPE @extschema@.powa_user_functions_history_diff AS (
     intvl interval,
     calls bigint,
     total_time double precision,
@@ -279,13 +279,13 @@ CREATE TYPE powa_user_functions_history_diff AS (
 
 );
 
-CREATE OR REPLACE FUNCTION powa_user_functions_history_mi(
-    a powa_user_functions_history_record,
-    b powa_user_functions_history_record)
-RETURNS powa_user_functions_history_diff AS
+CREATE OR REPLACE FUNCTION @extschema@.powa_user_functions_history_mi(
+    a @extschema@.powa_user_functions_history_record,
+    b @extschema@.powa_user_functions_history_record)
+RETURNS @extschema@.powa_user_functions_history_diff AS
 $_$
 DECLARE
-    res powa_user_functions_history_diff;
+    res @extschema@.powa_user_functions_history_diff;
 BEGIN
     res.intvl = a.ts - b.ts;
     res.calls = a.calls - b.calls;
@@ -297,26 +297,26 @@ END;
 $_$
 LANGUAGE plpgsql IMMUTABLE STRICT;
 
-CREATE OPERATOR - (
-    PROCEDURE = powa_user_functions_history_mi,
-    LEFTARG = powa_user_functions_history_record,
-    RIGHTARG = powa_user_functions_history_record
+CREATE OPERATOR @extschema@.- (
+    PROCEDURE = @extschema@.powa_user_functions_history_mi,
+    LEFTARG = @extschema@.powa_user_functions_history_record,
+    RIGHTARG = @extschema@.powa_user_functions_history_record
 );
 
-CREATE TYPE powa_user_functions_history_rate AS (
+CREATE TYPE @extschema@.powa_user_functions_history_rate AS (
     sec integer,
     calls_per_sec double precision,
     total_time_per_sec double precision,
     self_time_per_sec double precision
 );
 
-CREATE OR REPLACE FUNCTION powa_user_functions_history_div(
-    a powa_user_functions_history_record,
-    b powa_user_functions_history_record)
-RETURNS powa_user_functions_history_rate AS
+CREATE OR REPLACE FUNCTION @extschema@.powa_user_functions_history_div(
+    a @extschema@.powa_user_functions_history_record,
+    b @extschema@.powa_user_functions_history_record)
+RETURNS @extschema@.powa_user_functions_history_rate AS
 $_$
 DECLARE
-    res powa_user_functions_history_rate;
+    res @extschema@.powa_user_functions_history_rate;
     sec integer;
 BEGIN
     res.sec = extract(EPOCH FROM (a.ts - b.ts));
@@ -334,14 +334,14 @@ END;
 $_$
 LANGUAGE plpgsql IMMUTABLE STRICT;
 
-CREATE OPERATOR / (
-    PROCEDURE = powa_user_functions_history_div,
-    LEFTARG = powa_user_functions_history_record,
-    RIGHTARG = powa_user_functions_history_record
+CREATE OPERATOR @extschema@./ (
+    PROCEDURE = @extschema@.powa_user_functions_history_div,
+    LEFTARG = @extschema@.powa_user_functions_history_record,
+    RIGHTARG = @extschema@.powa_user_functions_history_record
 );
 /* end of pg_stat_user_functions operator support */
 
-CREATE TYPE powa_all_relations_history_record AS (
+CREATE TYPE @extschema@.powa_all_relations_history_record AS (
     ts timestamp with time zone,
     numscan bigint,
     tup_returned bigint,
@@ -366,7 +366,7 @@ CREATE TYPE powa_all_relations_history_record AS (
 );
 
 /* pg_stat_all_relations operator support */
-CREATE TYPE powa_all_relations_history_diff AS (
+CREATE TYPE @extschema@.powa_all_relations_history_diff AS (
     intvl interval,
     numscan bigint,
     tup_returned bigint,
@@ -386,13 +386,13 @@ CREATE TYPE powa_all_relations_history_diff AS (
     autoanalyze_count bigint
 );
 
-CREATE OR REPLACE FUNCTION powa_all_relations_history_mi(
-    a powa_all_relations_history_record,
-    b powa_all_relations_history_record)
-RETURNS powa_all_relations_history_diff AS
+CREATE OR REPLACE FUNCTION @extschema@.powa_all_relations_history_mi(
+    a @extschema@.powa_all_relations_history_record,
+    b @extschema@.powa_all_relations_history_record)
+RETURNS @extschema@.powa_all_relations_history_diff AS
 $_$
 DECLARE
-    res powa_all_relations_history_diff;
+    res @extschema@.powa_all_relations_history_diff;
 BEGIN
     res.intvl = a.ts - b.ts;
     res.numscan = a.numscan - b.numscan;
@@ -417,13 +417,13 @@ END;
 $_$
 LANGUAGE plpgsql IMMUTABLE STRICT;
 
-CREATE OPERATOR - (
-    PROCEDURE = powa_all_relations_history_mi,
-    LEFTARG = powa_all_relations_history_record,
-    RIGHTARG = powa_all_relations_history_record
+CREATE OPERATOR @extschema@.- (
+    PROCEDURE = @extschema@.powa_all_relations_history_mi,
+    LEFTARG = @extschema@.powa_all_relations_history_record,
+    RIGHTARG = @extschema@.powa_all_relations_history_record
 );
 
-CREATE TYPE powa_all_relations_history_rate AS (
+CREATE TYPE @extschema@.powa_all_relations_history_rate AS (
     sec integer,
     numscan_per_sec double precision,
     tup_returned_per_sec double precision,
@@ -443,13 +443,13 @@ CREATE TYPE powa_all_relations_history_rate AS (
     autoanalyze_count_per_sec double precision
 );
 
-CREATE OR REPLACE FUNCTION powa_all_relations_history_div(
-    a powa_all_relations_history_record,
-    b powa_all_relations_history_record)
-RETURNS powa_all_relations_history_rate AS
+CREATE OR REPLACE FUNCTION @extschema@.powa_all_relations_history_div(
+    a @extschema@.powa_all_relations_history_record,
+    b @extschema@.powa_all_relations_history_record)
+RETURNS @extschema@.powa_all_relations_history_rate AS
 $_$
 DECLARE
-    res powa_all_relations_history_rate;
+    res @extschema@.powa_all_relations_history_rate;
     sec integer;
 BEGIN
     res.sec = extract(EPOCH FROM (a.ts - b.ts));
@@ -480,14 +480,14 @@ END;
 $_$
 LANGUAGE plpgsql IMMUTABLE STRICT;
 
-CREATE OPERATOR / (
-    PROCEDURE = powa_all_relations_history_div,
-    LEFTARG = powa_all_relations_history_record,
-    RIGHTARG = powa_all_relations_history_record
+CREATE OPERATOR @extschema@./ (
+    PROCEDURE = @extschema@.powa_all_relations_history_div,
+    LEFTARG = @extschema@.powa_all_relations_history_record,
+    RIGHTARG = @extschema@.powa_all_relations_history_record
 );
 /* end of pg_stat_all_relations operator support */
 
-CREATE TYPE powa_all_relations_history_db_record AS (
+CREATE TYPE @extschema@.powa_all_relations_history_db_record AS (
     ts timestamp with time zone,
     seq_scan bigint,
     idx_scan bigint,
@@ -509,7 +509,7 @@ CREATE TYPE powa_all_relations_history_db_record AS (
 );
 
 /* pg_stat_all_relations_db operator support */
-CREATE TYPE powa_all_relations_history_db_diff AS (
+CREATE TYPE @extschema@.powa_all_relations_history_db_diff AS (
     intvl interval,
     seq_scan bigint,
     idx_scan bigint,
@@ -530,13 +530,13 @@ CREATE TYPE powa_all_relations_history_db_diff AS (
     autoanalyze_count bigint
 );
 
-CREATE OR REPLACE FUNCTION powa_all_relations_history_db_mi(
-    a powa_all_relations_history_db_record,
-    b powa_all_relations_history_db_record)
-RETURNS powa_all_relations_history_db_diff AS
+CREATE OR REPLACE FUNCTION @extschema@.powa_all_relations_history_db_mi(
+    a @extschema@.powa_all_relations_history_db_record,
+    b @extschema@.powa_all_relations_history_db_record)
+RETURNS @extschema@.powa_all_relations_history_db_diff AS
 $_$
 DECLARE
-    res powa_all_relations_history_db_diff;
+    res @extschema@.powa_all_relations_history_db_diff;
 BEGIN
     res.intvl = a.ts - b.ts;
     res.seq_scan = a.seq_scan - b.seq_scan;
@@ -562,13 +562,13 @@ END;
 $_$
 LANGUAGE plpgsql IMMUTABLE STRICT;
 
-CREATE OPERATOR - (
-    PROCEDURE = powa_all_relations_history_db_mi,
-    LEFTARG = powa_all_relations_history_db_record,
-    RIGHTARG = powa_all_relations_history_db_record
+CREATE OPERATOR @extschema@.- (
+    PROCEDURE = @extschema@.powa_all_relations_history_db_mi,
+    LEFTARG = @extschema@.powa_all_relations_history_db_record,
+    RIGHTARG = @extschema@.powa_all_relations_history_db_record
 );
 
-CREATE TYPE powa_all_relations_history_db_rate AS (
+CREATE TYPE @extschema@.powa_all_relations_history_db_rate AS (
     sec integer,
     seq_scan_per_sec double precision,
     idx_scan_per_sec double precision,
@@ -589,13 +589,13 @@ CREATE TYPE powa_all_relations_history_db_rate AS (
     autoanalyze_count_per_sec double precision
 );
 
-CREATE OR REPLACE FUNCTION powa_all_relations_history_db_div(
-    a powa_all_relations_history_db_record,
-    b powa_all_relations_history_db_record)
-RETURNS powa_all_relations_history_db_rate AS
+CREATE OR REPLACE FUNCTION @extschema@.powa_all_relations_history_db_div(
+    a @extschema@.powa_all_relations_history_db_record,
+    b @extschema@.powa_all_relations_history_db_record)
+RETURNS @extschema@.powa_all_relations_history_db_rate AS
 $_$
 DECLARE
-    res powa_all_relations_history_db_rate;
+    res @extschema@.powa_all_relations_history_db_rate;
     sec integer;
 BEGIN
     res.sec = extract(EPOCH FROM (a.ts - b.ts));
@@ -627,14 +627,14 @@ END;
 $_$
 LANGUAGE plpgsql IMMUTABLE STRICT;
 
-CREATE OPERATOR / (
-    PROCEDURE = powa_all_relations_history_db_div,
-    LEFTARG = powa_all_relations_history_db_record,
-    RIGHTARG = powa_all_relations_history_db_record
+CREATE OPERATOR @extschema@./ (
+    PROCEDURE = @extschema@.powa_all_relations_history_db_div,
+    LEFTARG = @extschema@.powa_all_relations_history_db_record,
+    RIGHTARG = @extschema@.powa_all_relations_history_db_record
 );
 /* end of pg_stat_all_relations_db operator support */
 
-CREATE TYPE powa_stat_bgwriter_history_record AS (
+CREATE TYPE @extschema@.powa_stat_bgwriter_history_record AS (
     ts timestamp with time zone,
     checkpoints_timed bigint,
     checkpoints_req bigint,
@@ -649,7 +649,7 @@ CREATE TYPE powa_stat_bgwriter_history_record AS (
 );
 
 /*pg_stat_bgwriter operator support */
-CREATE TYPE powa_stat_bgwriter_history_diff AS (
+CREATE TYPE @extschema@.powa_stat_bgwriter_history_diff AS (
     intvl interval,
     checkpoints_timed bigint,
     checkpoints_req bigint,
@@ -663,13 +663,13 @@ CREATE TYPE powa_stat_bgwriter_history_diff AS (
     buffers_alloc bigint
 );
 
-CREATE OR REPLACE FUNCTION powa_stat_bgwriter_history_mi(
-    a powa_stat_bgwriter_history_record,
-    b powa_stat_bgwriter_history_record)
-RETURNS powa_stat_bgwriter_history_diff AS
+CREATE OR REPLACE FUNCTION @extschema@.powa_stat_bgwriter_history_mi(
+    a @extschema@.powa_stat_bgwriter_history_record,
+    b @extschema@.powa_stat_bgwriter_history_record)
+RETURNS @extschema@.powa_stat_bgwriter_history_diff AS
 $_$
 DECLARE
-    res powa_stat_bgwriter_history_diff;
+    res @extschema@.powa_stat_bgwriter_history_diff;
 BEGIN
     res.intvl = a.ts - b.ts;
     res.checkpoints_timed = a.checkpoints_timed - b.checkpoints_timed;
@@ -688,13 +688,13 @@ END;
 $_$
 LANGUAGE plpgsql IMMUTABLE STRICT;
 
-CREATE OPERATOR - (
-    PROCEDURE = powa_stat_bgwriter_history_mi,
-    LEFTARG = powa_stat_bgwriter_history_record,
-    RIGHTARG = powa_stat_bgwriter_history_record
+CREATE OPERATOR @extschema@.- (
+    PROCEDURE = @extschema@.powa_stat_bgwriter_history_mi,
+    LEFTARG = @extschema@.powa_stat_bgwriter_history_record,
+    RIGHTARG = @extschema@.powa_stat_bgwriter_history_record
 );
 
-CREATE TYPE powa_stat_bgwriter_history_rate AS (
+CREATE TYPE @extschema@.powa_stat_bgwriter_history_rate AS (
     sec integer,
     checkpoints_timed_per_sec double precision,
     checkpoints_req_per_sec double precision,
@@ -708,13 +708,13 @@ CREATE TYPE powa_stat_bgwriter_history_rate AS (
     buffers_alloc_per_sec double precision
 );
 
-CREATE OR REPLACE FUNCTION powa_stat_bgwriter_history_div(
-    a powa_stat_bgwriter_history_record,
-    b powa_stat_bgwriter_history_record)
-RETURNS powa_stat_bgwriter_history_rate AS
+CREATE OR REPLACE FUNCTION @extschema@.powa_stat_bgwriter_history_div(
+    a @extschema@.powa_stat_bgwriter_history_record,
+    b @extschema@.powa_stat_bgwriter_history_record)
+RETURNS @extschema@.powa_stat_bgwriter_history_rate AS
 $_$
 DECLARE
-    res powa_stat_bgwriter_history_rate;
+    res @extschema@.powa_stat_bgwriter_history_rate;
     sec integer;
 BEGIN
     res.sec = extract(EPOCH FROM (a.ts - b.ts));
@@ -739,21 +739,21 @@ END;
 $_$
 LANGUAGE plpgsql IMMUTABLE STRICT;
 
-CREATE OPERATOR / (
-    PROCEDURE = powa_stat_bgwriter_history_div,
-    LEFTARG = powa_stat_bgwriter_history_record,
-    RIGHTARG = powa_stat_bgwriter_history_record
+CREATE OPERATOR @extschema@./ (
+    PROCEDURE = @extschema@.powa_stat_bgwriter_history_div,
+    LEFTARG = @extschema@.powa_stat_bgwriter_history_record,
+    RIGHTARG = @extschema@.powa_stat_bgwriter_history_record
 );
 /* end of pg_stat_bgwriter operator support */
 
 
-CREATE UNLOGGED TABLE public.powa_databases_src_tmp(
+CREATE UNLOGGED TABLE @extschema@.powa_databases_src_tmp(
     srvid integer NOT NULL,
     oid oid NOT NULL,
     datname name NOT NULL
 );
 
-CREATE UNLOGGED TABLE public.powa_statements_src_tmp (
+CREATE UNLOGGED TABLE @extschema@.powa_statements_src_tmp (
     srvid integer NOT NULL,
     ts  timestamp with time zone NOT NULL,
     userid oid NOT NULL,
@@ -783,7 +783,7 @@ CREATE UNLOGGED TABLE public.powa_statements_src_tmp (
     wal_bytes numeric NOT NULL
 );
 
-CREATE UNLOGGED TABLE public.powa_user_functions_src_tmp(
+CREATE UNLOGGED TABLE @extschema@.powa_user_functions_src_tmp(
     srvid integer NOT NULL,
     ts  timestamp with time zone NOT NULL,
     dbid oid NOT NULL,
@@ -793,7 +793,7 @@ CREATE UNLOGGED TABLE public.powa_user_functions_src_tmp(
     self_time double precision NOT NULL
 );
 
-CREATE UNLOGGED TABLE public.powa_all_relations_src_tmp(
+CREATE UNLOGGED TABLE @extschema@.powa_all_relations_src_tmp(
     srvid integer NOT NULL,
     ts  timestamp with time zone NOT NULL,
     dbid oid NOT NULL,
@@ -820,7 +820,7 @@ CREATE UNLOGGED TABLE public.powa_all_relations_src_tmp(
     autoanalyze_count bigint NOT NULL
 );
 
-CREATE UNLOGGED TABLE public.powa_stat_bgwriter_src_tmp(
+CREATE UNLOGGED TABLE @extschema@.powa_stat_bgwriter_src_tmp(
     srvid integer NOT NULL,
     ts timestamp with time zone NOT NULL,
     checkpoints_timed bigint NOT NULL,
@@ -835,160 +835,160 @@ CREATE UNLOGGED TABLE public.powa_stat_bgwriter_src_tmp(
     buffers_alloc bigint NOT NULL
 );
 
-CREATE TABLE powa_statements_history (
+CREATE TABLE @extschema@.powa_statements_history (
     srvid integer NOT NULL,
     queryid bigint NOT NULL,
     dbid oid NOT NULL,
     toplevel boolean NOT NULL,
     userid oid NOT NULL,
     coalesce_range tstzrange NOT NULL,
-    records powa_statements_history_record[] NOT NULL,
-    mins_in_range powa_statements_history_record NOT NULL,
-    maxs_in_range powa_statements_history_record NOT NULL,
-    FOREIGN KEY (srvid) REFERENCES powa_servers(id)
+    records @extschema@.powa_statements_history_record[] NOT NULL,
+    mins_in_range @extschema@.powa_statements_history_record NOT NULL,
+    maxs_in_range @extschema@.powa_statements_history_record NOT NULL,
+    FOREIGN KEY (srvid) REFERENCES @extschema@.powa_servers(id)
       MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
 );
 
-CREATE INDEX powa_statements_history_query_ts ON powa_statements_history USING gist (srvid, queryid, coalesce_range);
+CREATE INDEX powa_statements_history_query_ts ON @extschema@.powa_statements_history USING gist (srvid, queryid, coalesce_range);
 
-CREATE TABLE powa_statements_history_db (
+CREATE TABLE @extschema@.powa_statements_history_db (
     srvid integer NOT NULL,
     dbid oid NOT NULL,
     coalesce_range tstzrange NOT NULL,
-    records powa_statements_history_record[] NOT NULL,
-    mins_in_range powa_statements_history_record NOT NULL,
-    maxs_in_range powa_statements_history_record NOT NULL,
-    FOREIGN KEY (srvid) REFERENCES powa_servers(id)
+    records @extschema@.powa_statements_history_record[] NOT NULL,
+    mins_in_range @extschema@.powa_statements_history_record NOT NULL,
+    maxs_in_range @extschema@.powa_statements_history_record NOT NULL,
+    FOREIGN KEY (srvid) REFERENCES @extschema@.powa_servers(id)
       MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
 );
 
-CREATE INDEX powa_statements_history_db_ts ON powa_statements_history_db USING gist (srvid, dbid, coalesce_range);
+CREATE INDEX powa_statements_history_db_ts ON @extschema@.powa_statements_history_db USING gist (srvid, dbid, coalesce_range);
 
-CREATE TABLE powa_statements_history_current (
+CREATE TABLE @extschema@.powa_statements_history_current (
     srvid integer NOT NULL,
     queryid bigint NOT NULL,
     dbid oid NOT NULL,
     toplevel boolean NOT NULL,
     userid oid NOT NULL,
-    record powa_statements_history_record NOT NULL,
-    FOREIGN KEY (srvid) REFERENCES powa_servers(id)
+    record @extschema@.powa_statements_history_record NOT NULL,
+    FOREIGN KEY (srvid) REFERENCES @extschema@.powa_servers(id)
       MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
 );
-CREATE INDEX ON powa_statements_history_current(srvid);
+CREATE INDEX ON @extschema@.powa_statements_history_current(srvid);
 
-CREATE TABLE powa_statements_history_current_db (
+CREATE TABLE @extschema@.powa_statements_history_current_db (
     srvid integer NOT NULL,
     dbid oid NOT NULL,
-    record powa_statements_history_record NOT NULL,
-    FOREIGN KEY (srvid) REFERENCES powa_servers(id)
+    record @extschema@.powa_statements_history_record NOT NULL,
+    FOREIGN KEY (srvid) REFERENCES @extschema@.powa_servers(id)
       MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
 );
-CREATE INDEX ON powa_statements_history_current_db(srvid);
+CREATE INDEX ON @extschema@.powa_statements_history_current_db(srvid);
 
-CREATE TABLE powa_user_functions_history (
+CREATE TABLE @extschema@.powa_user_functions_history (
     srvid integer NOT NULL,
     dbid oid NOT NULL,
     funcid oid NOT NULL,
     coalesce_range tstzrange NOT NULL,
-    records powa_user_functions_history_record[] NOT NULL,
-    mins_in_range powa_user_functions_history_record NOT NULL,
-    maxs_in_range powa_user_functions_history_record NOT NULL,
-    FOREIGN KEY (srvid) REFERENCES powa_servers(id)
+    records @extschema@.powa_user_functions_history_record[] NOT NULL,
+    mins_in_range @extschema@.powa_user_functions_history_record NOT NULL,
+    maxs_in_range @extschema@.powa_user_functions_history_record NOT NULL,
+    FOREIGN KEY (srvid) REFERENCES @extschema@.powa_servers(id)
       MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
 );
 
-CREATE INDEX powa_user_functions_history_funcid_ts ON powa_user_functions_history USING gist (srvid, funcid, coalesce_range);
+CREATE INDEX powa_user_functions_history_funcid_ts ON @extschema@.powa_user_functions_history USING gist (srvid, funcid, coalesce_range);
 
-CREATE TABLE powa_user_functions_history_current (
+CREATE TABLE @extschema@.powa_user_functions_history_current (
     srvid integer NOT NULL,
     dbid oid NOT NULL,
     funcid oid NOT NULL,
-    record powa_user_functions_history_record NOT NULL,
-    FOREIGN KEY (srvid) REFERENCES powa_servers(id)
+    record @extschema@.powa_user_functions_history_record NOT NULL,
+    FOREIGN KEY (srvid) REFERENCES @extschema@.powa_servers(id)
       MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
 );
-CREATE INDEX ON powa_user_functions_history_current(srvid);
+CREATE INDEX ON @extschema@.powa_user_functions_history_current(srvid);
 
-CREATE TABLE powa_all_relations_history (
+CREATE TABLE @extschema@.powa_all_relations_history (
     srvid integer NOT NULL,
     dbid oid NOT NULL,
     relid oid NOT NULL,
     coalesce_range tstzrange NOT NULL,
-    records powa_all_relations_history_record[] NOT NULL,
-    mins_in_range powa_all_relations_history_record NOT NULL,
-    maxs_in_range powa_all_relations_history_record NOT NULL,
-    FOREIGN KEY (srvid) REFERENCES powa_servers(id)
+    records @extschema@.powa_all_relations_history_record[] NOT NULL,
+    mins_in_range @extschema@.powa_all_relations_history_record NOT NULL,
+    maxs_in_range @extschema@.powa_all_relations_history_record NOT NULL,
+    FOREIGN KEY (srvid) REFERENCES @extschema@.powa_servers(id)
       MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
 );
 
-CREATE INDEX powa_all_relations_history_relid_ts ON powa_all_relations_history USING gist (srvid, relid, coalesce_range);
+CREATE INDEX powa_all_relations_history_relid_ts ON @extschema@.powa_all_relations_history USING gist (srvid, relid, coalesce_range);
 
-CREATE TABLE powa_all_relations_history_db (
+CREATE TABLE @extschema@.powa_all_relations_history_db (
     srvid integer NOT NULL,
     dbid oid NOT NULL,
     coalesce_range tstzrange NOT NULL,
-    records powa_all_relations_history_db_record[] NOT NULL,
-    mins_in_range powa_all_relations_history_db_record NOT NULL,
-    maxs_in_range powa_all_relations_history_db_record NOT NULL,
-    FOREIGN KEY (srvid) REFERENCES powa_servers(id)
+    records @extschema@.powa_all_relations_history_db_record[] NOT NULL,
+    mins_in_range @extschema@.powa_all_relations_history_db_record NOT NULL,
+    maxs_in_range @extschema@.powa_all_relations_history_db_record NOT NULL,
+    FOREIGN KEY (srvid) REFERENCES @extschema@.powa_servers(id)
       MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
 );
 
-CREATE INDEX powa_all_relations_history_db_dbid_ts ON powa_all_relations_history_db USING gist (srvid, dbid, coalesce_range);
+CREATE INDEX powa_all_relations_history_db_dbid_ts ON @extschema@.powa_all_relations_history_db USING gist (srvid, dbid, coalesce_range);
 
-CREATE TABLE powa_all_relations_history_current (
+CREATE TABLE @extschema@.powa_all_relations_history_current (
     srvid integer NOT NULL,
     dbid oid NOT NULL,
     relid oid NOT NULL,
-    record powa_all_relations_history_record NOT NULL,
-    FOREIGN KEY (srvid) REFERENCES powa_servers(id)
+    record @extschema@.powa_all_relations_history_record NOT NULL,
+    FOREIGN KEY (srvid) REFERENCES @extschema@.powa_servers(id)
       MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
 );
-CREATE INDEX ON powa_all_relations_history_current(srvid);
+CREATE INDEX ON @extschema@.powa_all_relations_history_current(srvid);
 
-CREATE TABLE powa_all_relations_history_current_db (
+CREATE TABLE @extschema@.powa_all_relations_history_current_db (
     srvid integer NOT NULL,
     dbid oid NOT NULL,
-    record powa_all_relations_history_db_record NOT NULL,
-    FOREIGN KEY (srvid) REFERENCES powa_servers(id)
+    record @extschema@.powa_all_relations_history_db_record NOT NULL,
+    FOREIGN KEY (srvid) REFERENCES @extschema@.powa_servers(id)
       MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
 );
-CREATE INDEX ON powa_all_relations_history_current_db(srvid);
+CREATE INDEX ON @extschema@.powa_all_relations_history_current_db(srvid);
 
-CREATE TABLE powa_stat_bgwriter_history (
+CREATE TABLE @extschema@.powa_stat_bgwriter_history (
     srvid integer NOT NULL,
     coalesce_range tstzrange NOT NULL,
-    records powa_stat_bgwriter_history_record[] NOT NULL,
-    mins_in_range powa_stat_bgwriter_history_record NOT NULL,
-    maxs_in_range powa_stat_bgwriter_history_record NOT NULL,
-    FOREIGN KEY (srvid) REFERENCES powa_servers(id)
+    records @extschema@.powa_stat_bgwriter_history_record[] NOT NULL,
+    mins_in_range @extschema@.powa_stat_bgwriter_history_record NOT NULL,
+    maxs_in_range @extschema@.powa_stat_bgwriter_history_record NOT NULL,
+    FOREIGN KEY (srvid) REFERENCES @extschema@.powa_servers(id)
       MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
 );
-CREATE INDEX powa_stat_bgwriter_history_ts ON powa_stat_bgwriter_history USING gist (srvid, coalesce_range);
+CREATE INDEX powa_stat_bgwriter_history_ts ON @extschema@.powa_stat_bgwriter_history USING gist (srvid, coalesce_range);
 
-CREATE TABLE powa_stat_bgwriter_history_current(
+CREATE TABLE @extschema@.powa_stat_bgwriter_history_current (
     srvid integer NOT NULL,
-    record powa_stat_bgwriter_history_record NOT NULL,
-    FOREIGN KEY (srvid) REFERENCES powa_servers(id)
+    record @extschema@.powa_stat_bgwriter_history_record NOT NULL,
+    FOREIGN KEY (srvid) REFERENCES @extschema@.powa_servers(id)
       MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
 );
-CREATE INDEX ON powa_stat_bgwriter_history_current(srvid);
+CREATE INDEX ON @extschema@.powa_stat_bgwriter_history_current(srvid);
 
 
-CREATE TABLE public.powa_extensions (
+CREATE TABLE @extschema@.powa_extensions (
     srvid integer,
     extname text,
     version text,
     PRIMARY KEY (srvid, extname),
-    FOREIGN KEY (srvid) REFERENCES public.powa_servers (id)
+    FOREIGN KEY (srvid) REFERENCES @extschema@.powa_servers (id)
       MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
 );
 
-INSERT INTO public.powa_extensions(srvid, extname) VALUES
+INSERT INTO @extschema@.powa_extensions(srvid, extname) VALUES
     (0, 'pg_stat_statements'),
     (0, 'powa');
 
-CREATE TABLE public.powa_functions (
+CREATE TABLE @extschema@.powa_functions (
     srvid integer NOT NULL,
     module text NOT NULL,
     operation text NOT NULL,
@@ -1000,14 +1000,14 @@ CREATE TABLE public.powa_functions (
     priority numeric NOT NULL default 10,
     extname text,
     CHECK (operation IN ('snapshot','aggregate','purge','unregister','reset')),
-    FOREIGN KEY (srvid) REFERENCES powa_servers(id)
+    FOREIGN KEY (srvid) REFERENCES @extschema@.powa_servers(id)
       MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE,
     FOREIGN KEY (srvid, extname)
-      REFERENCES public.powa_extensions (srvid, extname)
+      REFERENCES @extschema@.powa_extensions (srvid, extname)
       ON UPDATE CASCADE ON DELETE CASCADE
 );
 
-INSERT INTO public.powa_functions (srvid, extname, module, operation, function_name, query_source, added_manually, enabled, priority) VALUES
+INSERT INTO @extschema@.powa_functions (srvid, extname, module, operation, function_name, query_source, added_manually, enabled, priority) VALUES
     (0, 'pg_stat_statements', 'pg_stat_statements',       'snapshot',  'powa_databases_snapshot',       'powa_databases_src',      false, true, -3),
     (0, 'pg_stat_statements', 'pg_stat_statements',       'snapshot',  'powa_statements_snapshot',      'powa_statements_src',     false, true, -2),
     (0, 'powa',               'powa_stat_user_functions', 'snapshot',  'powa_user_functions_snapshot',  'powa_user_functions_src', false, true, default),
@@ -1029,7 +1029,7 @@ INSERT INTO public.powa_functions (srvid, extname, module, operation, function_n
 
 -- Register the module if needed, and set the enabled flag to on.  This
 -- function should only be called by powa_register_server.
-CREATE FUNCTION public.powa_activate_extension(_srvid integer, _module text) RETURNS boolean
+CREATE FUNCTION @extschema@.powa_activate_extension(_srvid integer, _module text) RETURNS boolean
 AS $_$
 DECLARE
     v_ext_registered boolean;
@@ -1038,7 +1038,7 @@ DECLARE
     v_extname text;
 BEGIN
     SELECT COUNT(*) > 0 INTO v_ext_registered
-    FROM public.powa_functions
+    FROM @extschema@.powa_functions
     WHERE module = _module
     AND srvid = _srvid;
 
@@ -1054,7 +1054,7 @@ BEGIN
     -- so enabled it everywhere it's disabled.  We don't check for other cases,
     -- for instance if part of the needed rows were deleted.
     IF (v_ext_registered) THEN
-        UPDATE public.powa_functions
+        UPDATE @extschema@.powa_functions
         SET enabled = true
         WHERE enabled = false
         AND srvid = _srvid
@@ -1068,12 +1068,12 @@ BEGIN
     -- it later.
     IF (v_extname IS NOT NULL) THEN
         SELECT COUNT(*) = 1 INTO v_found
-        FROM public.powa_extensions
+        FROM @extschema@.powa_extensions
         WHERE srvid = _srvid
         AND extname = v_extname;
 
         IF NOT v_found THEN
-            INSERT INTO public.powa_extensions (srvid, extname)
+            INSERT INTO @extschema@.powa_extensions (srvid, extname)
             VALUES (_srvid, v_extname);
         END IF;
     END IF;
@@ -1082,7 +1082,7 @@ BEGIN
     SELECT _srvid != 0 INTO v_manually;
 
     IF (_module = 'pg_stat_statements') THEN
-        INSERT INTO public.powa_functions(srvid, extname, module, operation, function_name,
+        INSERT INTO @extschema@.powa_functions(srvid, extname, module, operation, function_name,
             query_source, added_manually, enabled, priority)
         VALUES
         (_srvid, 'pg_stat_statements', 'pg_stat_statements', 'snapshot',  'powa_databases_snapshot',   'powa_databases_src',  v_manually, true, -1),
@@ -1092,7 +1092,7 @@ BEGIN
         (_srvid, 'pg_stat_statements', 'pg_stat_statements', 'purge',     'powa_databases_purge',      NULL,                  v_manually, true, default),
         (_srvid, 'pg_stat_statements', 'pg_stat_statements', 'reset',     'powa_statements_reset',     NULL,                  v_manually, true, default);
     ELSIF (_module = 'powa_stat_user_functions') THEN
-        INSERT INTO public.powa_functions(srvid, extname, module, operation, function_name,
+        INSERT INTO @extschema@.powa_functions(srvid, extname, module, operation, function_name,
             query_source, added_manually, enabled, priority)
         VALUES
          (_srvid, 'powa', 'powa_stat_user_functions', 'snapshot',  'powa_user_functions_snapshot',  'powa_user_functions_src', v_manually, true, default),
@@ -1100,7 +1100,7 @@ BEGIN
          (_srvid, 'powa', 'powa_stat_user_functions', 'purge',     'powa_user_functions_purge',     NULL,                      v_manually, true, default),
          (_srvid, 'powa', 'powa_stat_user_functions', 'reset',     'powa_user_functions_reset',     NULL,                      v_manually, true, default);
     ELSIF (_module = 'powa_stat_all_relations') THEN
-        INSERT INTO public.powa_functions(srvid, extname, module, operation, function_name,
+        INSERT INTO @extschema@.powa_functions(srvid, extname, module, operation, function_name,
             query_source, added_manually, enabled, priority)
         VALUES
         (_srvid, 'powa', 'powa_stat_all_relations',  'snapshot',  'powa_all_relations_snapshot',   'powa_all_relations_src',  v_manually, true, default),
@@ -1108,7 +1108,7 @@ BEGIN
         (_srvid, 'powa', 'powa_stat_all_relations',  'purge',     'powa_all_relations_purge',      NULL,                      v_manually, true, default),
         (_srvid, 'powa', 'powa_stat_all_relations',  'reset',     'powa_all_relations_reset',      NULL,                      v_manually, true, default);
     ELSIF (_module = 'pg_stat_bgwriter') THEN
-        INSERT INTO public.powa_functions(srvid, extname, module, operation, function_name,
+        INSERT INTO @extschema@.powa_functions(srvid, extname, module, operation, function_name,
             query_source, added_manually, enabled, priority)
         VALUES
         (_srvid, NULL, 'pg_stat_bgwriter', 'snapshot',  'powa_stat_bgwriter_snapshot',  'powa_stat_bgwriter_src', v_manually, true, default),
@@ -1116,17 +1116,17 @@ BEGIN
         (_srvid, NULL, 'pg_stat_bgwriter', 'purge',     'powa_stat_bgwriter_purge',     NULL,                     v_manually, true, default),
         (_srvid, NULL, 'pg_stat_bgwriter', 'reset',     'powa_stat_bgwriter_reset',     NULL,                     v_manually, true, default);
     ELSIF (_module = 'pg_stat_kcache') THEN
-        RETURN public.powa_kcache_register(_srvid);
+        RETURN @extschema@.powa_kcache_register(_srvid);
     ELSIF (_module = 'pg_qualstats') THEN
-        RETURN public.powa_qualstats_register(_srvid);
+        RETURN @extschema@.powa_qualstats_register(_srvid);
     ELSIF (_module = 'pg_wait_sampling') THEN
-        RETURN public.powa_wait_sampling_register(_srvid);
+        RETURN @extschema@.powa_wait_sampling_register(_srvid);
     ELSIF (_module = 'pg_track_settings') THEN
-        RETURN public.powa_track_settings_register(_srvid);
+        RETURN @extschema@.powa_track_settings_register(_srvid);
     ELSE
         -- remove the previously added row in powa_extensions
         IF (v_extname IS NOT NULL) THEN
-            DELETE FROM public.powa_extensions
+            DELETE FROM @extschema@.powa_extensions
                 WHERE srvid = _srvid AND extname = v_extname;
         END IF;
 
@@ -1137,10 +1137,10 @@ BEGIN
 END;
 $_$ LANGUAGE plpgsql; /* end of powa_activate_extension */
 
-CREATE FUNCTION powa_deactivate_extension(_srvid integer, _module text) RETURNS boolean
+CREATE FUNCTION @extschema@.powa_deactivate_extension(_srvid integer, _module text) RETURNS boolean
 AS $_$
 BEGIN
-    UPDATE public.powa_functions
+    UPDATE @extschema@.powa_functions
     SET enabled = false
     WHERE module = _module
     AND srvid = _srvid;
@@ -1149,7 +1149,7 @@ BEGIN
 END;
 $_$ LANGUAGE plpgsql; /* end of powa_deactivate_extension */
 
-CREATE FUNCTION powa_register_server(hostname text,
+CREATE FUNCTION @extschema@.powa_register_server(hostname text,
     port integer DEFAULT 5432,
     alias text DEFAULT NULL,
     username text DEFAULT 'powa',
@@ -1173,29 +1173,29 @@ BEGIN
         coalesce(allow_ui_connection, true)
     INTO port, username, dbname, frequency, powa_coalesce, retention, allow_ui_connection;
 
-    INSERT INTO public.powa_servers
+    INSERT INTO @extschema@.powa_servers
         (alias, hostname, port, username, password, dbname, frequency, powa_coalesce, retention, allow_ui_connection)
     VALUES
         (alias, hostname, port, username, password, dbname, frequency, powa_coalesce, retention, allow_ui_connection)
     RETURNING id INTO v_srvid;
 
-    INSERT INTO public.powa_snapshot_metas(srvid) VALUES (v_srvid);
+    INSERT INTO @extschema@.powa_snapshot_metas(srvid) VALUES (v_srvid);
 
     -- always register pgss, as it's mandatory
-    SELECT powa_activate_extension(v_srvid, 'pg_stat_statements') INTO v_ok;
+    SELECT @extschema@.powa_activate_extension(v_srvid, 'pg_stat_statements') INTO v_ok;
     IF (NOT v_ok) THEN
         RAISE EXCEPTION 'Could not activate pg_stat_statements';
     END IF;
     -- and also the powa stats functions
-    SELECT powa_activate_extension(v_srvid, 'powa_stat_user_functions') INTO v_ok;
+    SELECT @extschema@.powa_activate_extension(v_srvid, 'powa_stat_user_functions') INTO v_ok;
     IF (NOT v_ok) THEN
         RAISE EXCEPTION 'Could not activate pg_stat_statements';
     END IF;
-    SELECT powa_activate_extension(v_srvid, 'powa_stat_all_relations') INTO v_ok;
+    SELECT @extschema@.powa_activate_extension(v_srvid, 'powa_stat_all_relations') INTO v_ok;
     IF (NOT v_ok) THEN
         RAISE EXCEPTION 'Could not activate pg_stat_statements';
     END IF;
-    SELECT powa_activate_extension(v_srvid, 'pg_stat_bgwriter') INTO v_ok;
+    SELECT @extschema@.powa_activate_extension(v_srvid, 'pg_stat_bgwriter') INTO v_ok;
     IF (NOT v_ok) THEN
         RAISE EXCEPTION 'Could not activate pg_stat_statements';
     END IF;
@@ -1208,7 +1208,7 @@ BEGIN
     FOREACH v_extname IN ARRAY extensions
     LOOP
         IF (v_extname != 'pg_stat_statements') THEN
-            SELECT powa_activate_extension(v_srvid, v_extname) INTO v_ok;
+            SELECT @extschema@.powa_activate_extension(v_srvid, v_extname) INTO v_ok;
 
             IF (NOT v_ok) THEN
                 RAISE WARNING 'Could not activate extension % on server %:%',
@@ -1220,7 +1220,7 @@ BEGIN
 END;
 $_$ LANGUAGE plpgsql; /* end of powa_register_server */
 
-CREATE FUNCTION powa_configure_server(_srvid integer, data json) RETURNS boolean
+CREATE FUNCTION @extschema@.powa_configure_server(_srvid integer, data json) RETURNS boolean
 AS $_$
 DECLARE
     v_rowcount bigint;
@@ -1253,7 +1253,7 @@ BEGIN
         v_query := v_query || format('%I = %L', k, v);
     END LOOP;
 
-    v_query := 'UPDATE public.powa_servers SET '
+    v_query := 'UPDATE @extschema@.powa_servers SET '
         || v_query
         || format(' WHERE id = %s', _srvid);
 
@@ -1265,7 +1265,7 @@ BEGIN
 END;
 $_$ LANGUAGE plpgsql; /* powa_config_server */
 
-CREATE FUNCTION powa_deactivate_server(_srvid integer) RETURNS boolean
+CREATE FUNCTION @extschema@.powa_deactivate_server(_srvid integer) RETURNS boolean
 AS $_$
 DECLARE
     v_rowcount bigint;
@@ -1274,7 +1274,7 @@ BEGIN
         RAISE EXCEPTION 'Local server cannot be updated';
     END IF;
 
-    UPDATE public.powa_servers SET frequency = -1 WHERE id = _srvid;
+    UPDATE @extschema@.powa_servers SET frequency = -1 WHERE id = _srvid;
 
     GET DIAGNOSTICS v_rowcount = ROW_COUNT;
 
@@ -1282,7 +1282,7 @@ BEGIN
 END;
 $_$ LANGUAGE plpgsql; /* powa_deactivate_server */
 
-CREATE FUNCTION powa_delete_and_purge_server(_srvid integer) RETURNS boolean
+CREATE FUNCTION @extschema@.powa_delete_and_purge_server(_srvid integer) RETURNS boolean
 AS $_$
 DECLARE
     v_rowcount bigint;
@@ -1291,7 +1291,7 @@ BEGIN
         RAISE EXCEPTION 'Local server cannot be deleted';
     END IF;
 
-    DELETE FROM public.powa_servers WHERE id = _srvid;
+    DELETE FROM @extschema@.powa_servers WHERE id = _srvid;
 
     GET DIAGNOSTICS v_rowcount = ROW_COUNT;
 
@@ -1316,7 +1316,7 @@ $_$ LANGUAGE plpgsql; /* powa_deactivate_server */
 DO $anon$
 BEGIN
     IF current_setting('server_version_num')::int < 90600 THEN
-        CREATE FUNCTION public.powa_get_guc (guc text, def text DEFAULT NULL) RETURNS text
+        CREATE FUNCTION @extschema@.powa_get_guc (guc text, def text DEFAULT NULL) RETURNS text
         LANGUAGE plpgsql
         AS $_$
         DECLARE
@@ -1332,7 +1332,7 @@ BEGIN
         END;
         $_$;
     ELSE
-        CREATE FUNCTION public.powa_get_guc (guc text, def text DEFAULT NULL) RETURNS text
+        CREATE FUNCTION @extschema@.powa_get_guc (guc text, def text DEFAULT NULL) RETURNS text
         LANGUAGE plpgsql
         AS $_$
         BEGIN
@@ -1343,11 +1343,11 @@ BEGIN
 END;
 $anon$;
 
-CREATE FUNCTION public.powa_log (msg text) RETURNS void
+CREATE FUNCTION @extschema@.powa_log (msg text) RETURNS void
 LANGUAGE plpgsql
 AS $_$
 BEGIN
-    IF powa_get_guc('powa.debug', 'false')::bool THEN
+    IF @extschema@.powa_get_guc('powa.debug', 'false')::bool THEN
         RAISE WARNING '%', msg;
     ELSE
         RAISE DEBUG '%', msg;
@@ -1355,7 +1355,7 @@ BEGIN
 END;
 $_$;
 
-CREATE FUNCTION powa_get_server_retention(_srvid integer)
+CREATE FUNCTION @extschema@.powa_get_server_retention(_srvid integer)
 RETURNS interval AS $_$
 DECLARE
     v_ret interval = NULL;
@@ -1364,7 +1364,7 @@ BEGIN
         v_ret := current_setting('powa.retention')::interval;
     ELSE
         SELECT retention INTO v_ret
-        FROM powa_servers
+        FROM @extschema@.powa_servers
         WHERE id = _srvid;
     END IF;
 
@@ -1378,7 +1378,7 @@ $_$ LANGUAGE plpgsql; /* end of powa_get_server_retention */
 
 /* pg_stat_kcache integration - part 1 */
 
-CREATE UNLOGGED TABLE public.powa_kcache_src_tmp(
+CREATE UNLOGGED TABLE @extschema@.powa_kcache_src_tmp(
     srvid            integer NOT NULL,
     ts               timestamp with time zone NOT NULL,
     queryid          bigint NOT NULL,
@@ -1411,7 +1411,7 @@ CREATE UNLOGGED TABLE public.powa_kcache_src_tmp(
     exec_nivcsws     bigint
 );
 
-CREATE TYPE public.powa_kcache_type AS (
+CREATE TYPE @extschema@.powa_kcache_type AS (
     ts timestamptz,
     plan_reads       bigint,             /* total reads, in bytes */
     plan_writes      bigint,             /* total writes, in bytes */
@@ -1440,7 +1440,7 @@ CREATE TYPE public.powa_kcache_type AS (
 );
 
 /* pg_stat_kcache operator support */
-CREATE TYPE powa_kcache_diff AS (
+CREATE TYPE @extschema@.powa_kcache_diff AS (
     intvl interval,
     plan_reads       bigint,
     plan_writes      bigint,
@@ -1468,13 +1468,13 @@ CREATE TYPE powa_kcache_diff AS (
     exec_nivcsws     bigint
 );
 
-CREATE OR REPLACE FUNCTION public.powa_kcache_mi(
-    a powa_kcache_type,
-    b powa_kcache_type)
-RETURNS powa_kcache_diff AS
+CREATE OR REPLACE FUNCTION @extschema@.powa_kcache_mi(
+    a @extschema@.powa_kcache_type,
+    b @extschema@.powa_kcache_type)
+RETURNS @extschema@.powa_kcache_diff AS
 $_$
 DECLARE
-    res powa_kcache_diff;
+    res @extschema@.powa_kcache_diff;
 BEGIN
     res.intvl = a.ts - b.ts;
     res.plan_reads = a.plan_reads - b.plan_reads;
@@ -1507,13 +1507,13 @@ END;
 $_$
 LANGUAGE plpgsql IMMUTABLE STRICT;
 
-CREATE OPERATOR - (
-    PROCEDURE = powa_kcache_mi,
-    LEFTARG = powa_kcache_type,
-    RIGHTARG = powa_kcache_type
+CREATE OPERATOR @extschema@.- (
+    PROCEDURE = @extschema@.powa_kcache_mi,
+    LEFTARG = @extschema@.powa_kcache_type,
+    RIGHTARG = @extschema@.powa_kcache_type
 );
 
-CREATE TYPE powa_kcache_rate AS (
+CREATE TYPE @extschema@.powa_kcache_rate AS (
     sec integer,
     plan_reads_per_sec       double precision,
     plan_writes_per_sec      double precision,
@@ -1541,13 +1541,13 @@ CREATE TYPE powa_kcache_rate AS (
     exec_nivcsws_per_sec     double precision
 );
 
-CREATE OR REPLACE FUNCTION public.powa_kcache_div(
-    a powa_kcache_type,
-    b powa_kcache_type)
-RETURNS powa_kcache_rate AS
+CREATE OR REPLACE FUNCTION @extschema@.powa_kcache_div(
+    a @extschema@.powa_kcache_type,
+    b @extschema@.powa_kcache_type)
+RETURNS @extschema@.powa_kcache_rate AS
 $_$
 DECLARE
-    res powa_kcache_rate;
+    res @extschema@.powa_kcache_rate;
     sec integer;
 BEGIN
     res.sec = extract(EPOCH FROM (a.ts - b.ts));
@@ -1586,77 +1586,77 @@ END;
 $_$
 LANGUAGE plpgsql IMMUTABLE STRICT;
 
-CREATE OPERATOR / (
-    PROCEDURE = powa_kcache_div,
-    LEFTARG = powa_kcache_type,
-    RIGHTARG = powa_kcache_type
+CREATE OPERATOR @extschema@./ (
+    PROCEDURE = @extschema@.powa_kcache_div,
+    LEFTARG = @extschema@.powa_kcache_type,
+    RIGHTARG = @extschema@.powa_kcache_type
 );
 
 /* end of pg_stat_kcache operator support */
 
-CREATE TABLE public.powa_kcache_metrics (
+CREATE TABLE @extschema@.powa_kcache_metrics (
     srvid integer NOT NULL,
     coalesce_range tstzrange NOT NULL,
     queryid bigint NOT NULL,
     dbid oid NOT NULL,
     userid oid NOT NULL,
-    metrics public.powa_kcache_type[] NOT NULL,
-    mins_in_range public.powa_kcache_type NOT NULL,
-    maxs_in_range public.powa_kcache_type NOT NULL,
+    metrics @extschema@.powa_kcache_type[] NOT NULL,
+    mins_in_range @extschema@.powa_kcache_type NOT NULL,
+    maxs_in_range @extschema@.powa_kcache_type NOT NULL,
     top boolean NOT NULL,
     PRIMARY KEY (srvid, coalesce_range, queryid, dbid, userid, top),
-    FOREIGN KEY (srvid) REFERENCES powa_servers(id)
+    FOREIGN KEY (srvid) REFERENCES @extschema@.powa_servers(id)
       MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
 );
 
-CREATE INDEX ON public.powa_kcache_metrics (srvid, queryid);
+CREATE INDEX ON @extschema@.powa_kcache_metrics (srvid, queryid);
 
-CREATE TABLE public.powa_kcache_metrics_db (
+CREATE TABLE @extschema@.powa_kcache_metrics_db (
     srvid integer NOT NULL,
     coalesce_range tstzrange NOT NULL,
     dbid oid NOT NULL,
-    metrics public.powa_kcache_type[] NOT NULL,
-    mins_in_range public.powa_kcache_type NOT NULL,
-    maxs_in_range public.powa_kcache_type NOT NULL,
+    metrics @extschema@.powa_kcache_type[] NOT NULL,
+    mins_in_range @extschema@.powa_kcache_type NOT NULL,
+    maxs_in_range @extschema@.powa_kcache_type NOT NULL,
     top boolean NOT NULL,
     PRIMARY KEY (srvid, coalesce_range, dbid, top),
-    FOREIGN KEY (srvid) REFERENCES powa_servers(id)
+    FOREIGN KEY (srvid) REFERENCES @extschema@.powa_servers(id)
       MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
 );
 
-CREATE TABLE public.powa_kcache_metrics_current ( srvid integer NOT NULL,
+CREATE TABLE @extschema@.powa_kcache_metrics_current ( srvid integer NOT NULL,
     queryid bigint NOT NULL,
     dbid oid NOT NULL,
     userid oid NOT NULL,
-    metrics powa_kcache_type NULL NULL,
+    metrics @extschema@.powa_kcache_type NULL NULL,
     top boolean NOT NULL,
-    FOREIGN KEY (srvid) REFERENCES powa_servers(id)
+    FOREIGN KEY (srvid) REFERENCES @extschema@.powa_servers(id)
       MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
 );
-CREATE INDEX ON powa_kcache_metrics_current(srvid);
+CREATE INDEX ON @extschema@.powa_kcache_metrics_current(srvid);
 
-CREATE TABLE public.powa_kcache_metrics_current_db (
+CREATE TABLE @extschema@.powa_kcache_metrics_current_db (
     srvid integer NOT NULL,
     dbid oid NOT NULL,
-    metrics powa_kcache_type NULL NULL,
+    metrics @extschema@.powa_kcache_type NULL NULL,
     top boolean NOT NULL,
-    FOREIGN KEY (srvid) REFERENCES powa_servers(id)
+    FOREIGN KEY (srvid) REFERENCES @extschema@.powa_servers(id)
       MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
 );
-CREATE INDEX ON powa_kcache_metrics_current_db(srvid);
+CREATE INDEX ON @extschema@.powa_kcache_metrics_current_db(srvid);
 
 /* end of pg_stat_kcache integration - part 1 */
 
 /* pg_qualstats integration - part 1 */
 
-CREATE TYPE public.qual_type AS (
+CREATE TYPE @extschema@.qual_type AS (
     relid oid,
     attnum integer,
     opno oid,
     eval_type "char"
 );
 
-CREATE TYPE public.qual_values AS (
+CREATE TYPE @extschema@.qual_values AS (
     constants text[],
     occurences bigint,
     execution_count bigint,
@@ -1665,7 +1665,7 @@ CREATE TYPE public.qual_values AS (
     mean_err_estimate_num double precision
 );
 
-CREATE TYPE powa_qualstats_history_item AS (
+CREATE TYPE @extschema@.powa_qualstats_history_item AS (
   ts timestamptz,
   occurences bigint,
   execution_count bigint,
@@ -1674,7 +1674,7 @@ CREATE TYPE powa_qualstats_history_item AS (
   mean_err_estimate_num double precision
 );
 
-CREATE UNLOGGED TABLE public.powa_qualstats_src_tmp(
+CREATE UNLOGGED TABLE @extschema@.powa_qualstats_src_tmp(
     srvid integer NOT NULL,
     ts timestamp with time zone NOT NULL,
     uniquequalnodeid bigint NOT NULL,
@@ -1688,11 +1688,11 @@ CREATE UNLOGGED TABLE public.powa_qualstats_src_tmp(
     mean_err_estimate_num double precision,
     queryid bigint NOT NULL,
     constvalues varchar[] NOT NULL,
-    quals qual_type[] NOT NULL
+    quals @extschema@.qual_type[] NOT NULL
 );
 
 /* pg_qualstats operator support */
-CREATE TYPE powa_qualstats_history_diff AS (
+CREATE TYPE @extschema@.powa_qualstats_history_diff AS (
     intvl interval,
     occurences bigint,
     execution_count bigint,
@@ -1701,13 +1701,13 @@ CREATE TYPE powa_qualstats_history_diff AS (
     mean_err_estimate_num double precision
 );
 
-CREATE OR REPLACE FUNCTION powa_qualstats_history_mi(
-    a powa_qualstats_history_item,
-    b powa_qualstats_history_item)
-RETURNS powa_qualstats_history_diff AS
+CREATE OR REPLACE FUNCTION @extschema@.powa_qualstats_history_mi(
+    a @extschema@.powa_qualstats_history_item,
+    b @extschema@.powa_qualstats_history_item)
+RETURNS @extschema@.powa_qualstats_history_diff AS
 $_$
 DECLARE
-    res powa_qualstats_history_diff;
+    res @extschema@.powa_qualstats_history_diff;
 BEGIN
     res.intvl = a.ts - b.ts;
     res.occurences = a.occurences - b.occurences;
@@ -1721,13 +1721,13 @@ END;
 $_$
 LANGUAGE plpgsql IMMUTABLE STRICT;
 
-CREATE OPERATOR - (
-    PROCEDURE = powa_qualstats_history_mi,
-    LEFTARG = powa_qualstats_history_item,
-    RIGHTARG = powa_qualstats_history_item
+CREATE OPERATOR @extschema@.- (
+    PROCEDURE = @extschema@.powa_qualstats_history_mi,
+    LEFTARG = @extschema@.powa_qualstats_history_item,
+    RIGHTARG = @extschema@.powa_qualstats_history_item
 );
 
-CREATE TYPE powa_qualstats_history_rate AS (
+CREATE TYPE @extschema@.powa_qualstats_history_rate AS (
     sec integer,
     occurences_per_sec double precision,
     execution_count_per_sec double precision,
@@ -1736,13 +1736,13 @@ CREATE TYPE powa_qualstats_history_rate AS (
     mean_err_estimate_num double precision
 );
 
-CREATE OR REPLACE FUNCTION powa_qualstats_history_div(
-    a powa_qualstats_history_item,
-    b powa_qualstats_history_item)
-RETURNS powa_qualstats_history_rate AS
+CREATE OR REPLACE FUNCTION @extschema@.powa_qualstats_history_div(
+    a @extschema@.powa_qualstats_history_item,
+    b @extschema@.powa_qualstats_history_item)
+RETURNS @extschema@.powa_qualstats_history_rate AS
 $_$
 DECLARE
-    res powa_qualstats_history_rate;
+    res @extschema@.powa_qualstats_history_rate;
     sec integer;
 BEGIN
     res.sec = extract(EPOCH FROM (a.ts - b.ts));
@@ -1762,42 +1762,42 @@ END;
 $_$
 LANGUAGE plpgsql IMMUTABLE STRICT;
 
-CREATE OPERATOR / (
-    PROCEDURE = powa_qualstats_history_div,
-    LEFTARG = powa_qualstats_history_item,
-    RIGHTARG = powa_qualstats_history_item
+CREATE OPERATOR @extschema@./ (
+    PROCEDURE = @extschema@.powa_qualstats_history_div,
+    LEFTARG = @extschema@.powa_qualstats_history_item,
+    RIGHTARG = @extschema@.powa_qualstats_history_item
 );
 /* end of pg_qualstats operator support */
 
-CREATE TABLE public.powa_qualstats_quals (
+CREATE TABLE @extschema@.powa_qualstats_quals (
     srvid integer NOT NULL,
     qualid bigint,
     queryid bigint,
     dbid oid,
     userid oid,
-    quals public.qual_type[],
+    quals @extschema@.qual_type[],
     PRIMARY KEY (srvid, qualid, queryid, dbid, userid),
-    FOREIGN KEY (srvid, queryid, dbid, userid) REFERENCES powa_statements(srvid, queryid, dbid, userid)
+    FOREIGN KEY (srvid, queryid, dbid, userid) REFERENCES @extschema@.powa_statements(srvid, queryid, dbid, userid)
       MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
 );
-CREATE INDEX ON powa_qualstats_quals(srvid, queryid);
+CREATE INDEX ON @extschema@.powa_qualstats_quals(srvid, queryid);
 
-CREATE TABLE public.powa_qualstats_quals_history (
+CREATE TABLE @extschema@.powa_qualstats_quals_history (
     srvid integer NOT NULL,
     qualid bigint,
     queryid bigint,
     dbid oid,
     userid oid,
     coalesce_range tstzrange,
-    records powa_qualstats_history_item[],
-    mins_in_range powa_qualstats_history_item,
-    maxs_in_range powa_qualstats_history_item,
-    FOREIGN KEY (srvid, qualid, queryid, dbid, userid) REFERENCES public.powa_qualstats_quals (srvid, qualid, queryid, dbid, userid) MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
+    records @extschema@.powa_qualstats_history_item[],
+    mins_in_range @extschema@.powa_qualstats_history_item,
+    maxs_in_range @extschema@.powa_qualstats_history_item,
+    FOREIGN KEY (srvid, qualid, queryid, dbid, userid) REFERENCES @extschema@.powa_qualstats_quals (srvid, qualid, queryid, dbid, userid) MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
 );
 
-CREATE INDEX powa_qualstats_quals_history_query_ts ON powa_qualstats_quals_history USING gist (srvid, queryid, coalesce_range);
+CREATE INDEX powa_qualstats_quals_history_query_ts ON @extschema@.powa_qualstats_quals_history USING gist (srvid, queryid, coalesce_range);
 
-CREATE TABLE public.powa_qualstats_quals_history_current (
+CREATE TABLE @extschema@.powa_qualstats_quals_history_current (
     srvid integer NOT NULL,
     qualid bigint,
     queryid bigint,
@@ -1809,30 +1809,30 @@ CREATE TABLE public.powa_qualstats_quals_history_current (
     nbfiltered bigint,
     mean_err_estimate_ratio double precision,
     mean_err_estimate_num double precision,
-    FOREIGN KEY (srvid, qualid, queryid, dbid, userid) REFERENCES powa_qualstats_quals(srvid, qualid, queryid, dbid, userid)
+    FOREIGN KEY (srvid, qualid, queryid, dbid, userid) REFERENCES @extschema@.powa_qualstats_quals(srvid, qualid, queryid, dbid, userid)
       MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
 );
-CREATE INDEX ON powa_qualstats_quals_history_current(srvid);
+CREATE INDEX ON @extschema@.powa_qualstats_quals_history_current(srvid);
 
-CREATE TABLE public.powa_qualstats_constvalues_history (
+CREATE TABLE @extschema@.powa_qualstats_constvalues_history (
     srvid integer NOT NULL,
     qualid bigint,
     queryid bigint,
     dbid oid,
     userid oid,
     coalesce_range tstzrange,
-    most_used qual_values[],
-    most_filtering qual_values[],
-    least_filtering qual_values[],
-    most_executed qual_values[],
-    most_errestim_ratio qual_values[],
-    most_errestim_num qual_values[],
-    FOREIGN KEY (srvid, qualid, queryid, dbid, userid) REFERENCES public.powa_qualstats_quals (srvid, qualid, queryid, dbid, userid) MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
+    most_used @extschema@.qual_values[],
+    most_filtering @extschema@.qual_values[],
+    least_filtering @extschema@.qual_values[],
+    most_executed @extschema@.qual_values[],
+    most_errestim_ratio @extschema@.qual_values[],
+    most_errestim_num @extschema@.qual_values[],
+    FOREIGN KEY (srvid, qualid, queryid, dbid, userid) REFERENCES @extschema@.powa_qualstats_quals (srvid, qualid, queryid, dbid, userid) MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
 );
-CREATE INDEX ON powa_qualstats_constvalues_history USING gist (srvid, queryid, qualid, coalesce_range);
-CREATE INDEX ON powa_qualstats_constvalues_history (srvid, qualid, queryid);
+CREATE INDEX ON @extschema@.powa_qualstats_constvalues_history USING gist (srvid, queryid, qualid, coalesce_range);
+CREATE INDEX ON @extschema@.powa_qualstats_constvalues_history (srvid, qualid, queryid);
 
-CREATE TABLE public.powa_qualstats_constvalues_history_current (
+CREATE TABLE @extschema@.powa_qualstats_constvalues_history_current (
     srvid integer NOT NULL,
     qualid bigint,
     queryid bigint,
@@ -1845,16 +1845,16 @@ CREATE TABLE public.powa_qualstats_constvalues_history_current (
     nbfiltered bigint,
     mean_err_estimate_ratio double precision,
     mean_err_estimate_num double precision,
-    FOREIGN KEY (srvid, qualid, queryid, dbid, userid) REFERENCES public.powa_qualstats_quals (srvid, qualid, queryid, dbid, userid) MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
+    FOREIGN KEY (srvid, qualid, queryid, dbid, userid) REFERENCES @extschema@.powa_qualstats_quals (srvid, qualid, queryid, dbid, userid) MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
 );
-CREATE INDEX ON powa_qualstats_constvalues_history_current(srvid);
+CREATE INDEX ON @extschema@.powa_qualstats_constvalues_history_current(srvid);
 
 
 /* end of pg_qualstats_integration - part 1 */
 
 /* pg_wait_sampling integration - part 1 */
 
-CREATE UNLOGGED TABLE public.powa_wait_sampling_src_tmp(
+CREATE UNLOGGED TABLE @extschema@.powa_wait_sampling_src_tmp(
     srvid integer NOT NULL,
     ts timestamp with time zone NOT NULL,
     dbid oid NOT NULL,
@@ -1864,24 +1864,24 @@ CREATE UNLOGGED TABLE public.powa_wait_sampling_src_tmp(
     count numeric NOT NULL
 );
 
-CREATE TYPE public.wait_sampling_type AS (
+CREATE TYPE @extschema@.wait_sampling_type AS (
     ts timestamptz,
     count bigint
 );
 
 /* pg_wait_sampling operator support */
-CREATE TYPE wait_sampling_diff AS (
+CREATE TYPE @extschema@.wait_sampling_diff AS (
     intvl interval,
     count bigint
 );
 
-CREATE OR REPLACE FUNCTION wait_sampling_mi(
-    a wait_sampling_type,
-    b wait_sampling_type)
-RETURNS wait_sampling_diff AS
+CREATE OR REPLACE FUNCTION @extschema@.wait_sampling_mi(
+    a @extschema@.wait_sampling_type,
+    b @extschema@.wait_sampling_type)
+RETURNS @extschema@.wait_sampling_diff AS
 $_$
 DECLARE
-    res wait_sampling_diff;
+    res @extschema@.wait_sampling_diff;
 BEGIN
     res.intvl = a.ts - b.ts;
     res.count = a.count - b.count;
@@ -1891,24 +1891,24 @@ END;
 $_$
 LANGUAGE plpgsql IMMUTABLE STRICT;
 
-CREATE OPERATOR - (
-    PROCEDURE = wait_sampling_mi,
-    LEFTARG = wait_sampling_type,
-    RIGHTARG = wait_sampling_type
+CREATE OPERATOR @extschema@.- (
+    PROCEDURE = @extschema@.wait_sampling_mi,
+    LEFTARG = @extschema@.wait_sampling_type,
+    RIGHTARG = @extschema@.wait_sampling_type
 );
 
-CREATE TYPE wait_sampling_rate AS (
+CREATE TYPE @extschema@.wait_sampling_rate AS (
     sec integer,
     count_per_sec double precision
 );
 
-CREATE OR REPLACE FUNCTION wait_sampling_div(
-    a wait_sampling_type,
-    b wait_sampling_type)
-RETURNS wait_sampling_rate AS
+CREATE OR REPLACE FUNCTION @extschema@.wait_sampling_div(
+    a @extschema@.wait_sampling_type,
+    b @extschema@.wait_sampling_type)
+RETURNS @extschema@.wait_sampling_rate AS
 $_$
 DECLARE
-    res wait_sampling_rate;
+    res @extschema@.wait_sampling_rate;
     sec integer;
 BEGIN
     res.sec = extract(EPOCH FROM (a.ts - b.ts));
@@ -1924,103 +1924,103 @@ END;
 $_$
 LANGUAGE plpgsql IMMUTABLE STRICT;
 
-CREATE OPERATOR / (
-    PROCEDURE = wait_sampling_div,
-    LEFTARG = wait_sampling_type,
-    RIGHTARG = wait_sampling_type
+CREATE OPERATOR @extschema@./ (
+    PROCEDURE = @extschema@.wait_sampling_div,
+    LEFTARG = @extschema@.wait_sampling_type,
+    RIGHTARG = @extschema@.wait_sampling_type
 );
 
 /* end of pg_wait_sampling operator support */
 
-CREATE TABLE public.powa_wait_sampling_history (
-    srvid integer NOT NULL REFERENCES powa_servers(id)
+CREATE TABLE @extschema@.powa_wait_sampling_history (
+    srvid integer NOT NULL REFERENCES @extschema@.powa_servers(id)
       MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE,
     coalesce_range tstzrange NOT NULL,
     queryid bigint NOT NULL,
     dbid oid NOT NULL,
     event_type text NOT NULL,
     event text NOT NULL,
-    records public.wait_sampling_type[] NOT NULL,
-    mins_in_range public.wait_sampling_type NOT NULL,
-    maxs_in_range public.wait_sampling_type NOT NULL,
+    records @extschema@.wait_sampling_type[] NOT NULL,
+    mins_in_range @extschema@.wait_sampling_type NOT NULL,
+    maxs_in_range @extschema@.wait_sampling_type NOT NULL,
     PRIMARY KEY (srvid, coalesce_range, queryid, dbid, event_type, event)
 );
 
-CREATE INDEX powa_wait_sampling_history_query_ts ON public.powa_wait_sampling_history USING gist (srvid, queryid, coalesce_range);
+CREATE INDEX powa_wait_sampling_history_query_ts ON @extschema@.powa_wait_sampling_history USING gist (srvid, queryid, coalesce_range);
 
-CREATE TABLE public.powa_wait_sampling_history_db (
-    srvid integer NOT NULL REFERENCES powa_servers(id)
+CREATE TABLE @extschema@.powa_wait_sampling_history_db (
+    srvid integer NOT NULL REFERENCES @extschema@.powa_servers(id)
       MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE,
     coalesce_range tstzrange NOT NULL,
     dbid oid NOT NULL,
     event_type text NOT NULL,
     event text NOT NULL,
-    records public.wait_sampling_type[] NOT NULL,
-    mins_in_range public.wait_sampling_type NOT NULL,
-    maxs_in_range public.wait_sampling_type NOT NULL,
+    records @extschema@.wait_sampling_type[] NOT NULL,
+    mins_in_range @extschema@.wait_sampling_type NOT NULL,
+    maxs_in_range @extschema@.wait_sampling_type NOT NULL,
     PRIMARY KEY (srvid, coalesce_range, dbid, event_type, event)
 );
 
-CREATE INDEX powa_wait_sampling_history_db_ts ON powa_wait_sampling_history_db USING gist (srvid, dbid, coalesce_range);
+CREATE INDEX powa_wait_sampling_history_db_ts ON @extschema@.powa_wait_sampling_history_db USING gist (srvid, dbid, coalesce_range);
 
-CREATE TABLE public.powa_wait_sampling_history_current (
-    srvid integer NOT NULL REFERENCES powa_servers(id)
+CREATE TABLE @extschema@.powa_wait_sampling_history_current (
+    srvid integer NOT NULL REFERENCES @extschema@.powa_servers(id)
       MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE,
     queryid bigint NOT NULL,
     dbid oid NOT NULL,
     event_type text NOT NULL,
     event text NOT NULL,
-    record wait_sampling_type NOT NULL
+    record @extschema@.wait_sampling_type NOT NULL
 );
-CREATE INDEX ON powa_wait_sampling_history_current(srvid);
+CREATE INDEX ON @extschema@.powa_wait_sampling_history_current(srvid);
 
-CREATE TABLE public.powa_wait_sampling_history_current_db (
-    srvid integer NOT NULL REFERENCES powa_servers(id)
+CREATE TABLE @extschema@.powa_wait_sampling_history_current_db (
+    srvid integer NOT NULL REFERENCES @extschema@.powa_servers(id)
       MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE,
     dbid oid NOT NULL,
     event_type text NOT NULL,
     event text NOT NULL,
-    record wait_sampling_type NOT NULL
+    record @extschema@.wait_sampling_type NOT NULL
 );
-CREATE INDEX ON powa_wait_sampling_history_current_db(srvid);
+CREATE INDEX ON @extschema@.powa_wait_sampling_history_current_db(srvid);
 
 /* end of pg_wait_sampling integration - part 1 */
 
 -- Mark all of powa's tables as "to be dumped"
-SELECT pg_catalog.pg_extension_config_dump('powa_servers','WHERE id > 0');
-SELECT pg_catalog.pg_extension_config_dump('powa_snapshot_metas','WHERE srvid > 0');
-SELECT pg_catalog.pg_extension_config_dump('powa_databases','');
-SELECT pg_catalog.pg_extension_config_dump('powa_statements','');
-SELECT pg_catalog.pg_extension_config_dump('powa_statements_history','');
-SELECT pg_catalog.pg_extension_config_dump('powa_statements_history_db','');
-SELECT pg_catalog.pg_extension_config_dump('powa_statements_history_current','');
-SELECT pg_catalog.pg_extension_config_dump('powa_statements_history_current_db','');
-SELECT pg_catalog.pg_extension_config_dump('powa_user_functions_history','');
-SELECT pg_catalog.pg_extension_config_dump('powa_user_functions_history_current','');
-SELECT pg_catalog.pg_extension_config_dump('powa_all_relations_history','');
-SELECT pg_catalog.pg_extension_config_dump('powa_all_relations_history_db','');
-SELECT pg_catalog.pg_extension_config_dump('powa_all_relations_history_current','');
-SELECT pg_catalog.pg_extension_config_dump('powa_all_relations_history_current_db','');
-SELECT pg_catalog.pg_extension_config_dump('powa_stat_bgwriter_history','');
-SELECT pg_catalog.pg_extension_config_dump('powa_stat_bgwriter_history_current','');
-SELECT pg_catalog.pg_extension_config_dump('powa_functions','WHERE added_manually');
-SELECT pg_catalog.pg_extension_config_dump('powa_kcache_metrics','');
-SELECT pg_catalog.pg_extension_config_dump('powa_kcache_metrics_db','');
-SELECT pg_catalog.pg_extension_config_dump('powa_kcache_metrics_current','');
-SELECT pg_catalog.pg_extension_config_dump('powa_kcache_metrics_current_db','');
-SELECT pg_catalog.pg_extension_config_dump('powa_qualstats_quals','');
-SELECT pg_catalog.pg_extension_config_dump('powa_qualstats_quals_history','');
-SELECT pg_catalog.pg_extension_config_dump('powa_qualstats_quals_history_current','');
-SELECT pg_catalog.pg_extension_config_dump('powa_qualstats_constvalues_history','');
-SELECT pg_catalog.pg_extension_config_dump('powa_qualstats_constvalues_history_current','');
-SELECT pg_catalog.pg_extension_config_dump('powa_wait_sampling_history','');
-SELECT pg_catalog.pg_extension_config_dump('powa_wait_sampling_history_db','');
-SELECT pg_catalog.pg_extension_config_dump('powa_wait_sampling_history_current','');
-SELECT pg_catalog.pg_extension_config_dump('powa_wait_sampling_history_current_db','');
+SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_servers','WHERE id > 0');
+SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_snapshot_metas','WHERE srvid > 0');
+SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_databases','');
+SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_statements','');
+SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_statements_history','');
+SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_statements_history_db','');
+SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_statements_history_current','');
+SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_statements_history_current_db','');
+SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_user_functions_history','');
+SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_user_functions_history_current','');
+SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_all_relations_history','');
+SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_all_relations_history_db','');
+SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_all_relations_history_current','');
+SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_all_relations_history_current_db','');
+SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_stat_bgwriter_history','');
+SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_stat_bgwriter_history_current','');
+SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_functions','WHERE added_manually');
+SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_kcache_metrics','');
+SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_kcache_metrics_db','');
+SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_kcache_metrics_current','');
+SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_kcache_metrics_current_db','');
+SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_qualstats_quals','');
+SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_qualstats_quals_history','');
+SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_qualstats_quals_history_current','');
+SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_qualstats_constvalues_history','');
+SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_qualstats_constvalues_history_current','');
+SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_wait_sampling_history','');
+SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_wait_sampling_history_db','');
+SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_wait_sampling_history_current','');
+SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_wait_sampling_history_current_db','');
 
 -- automatically configure powa for local snapshot if supported extension are
 -- created locally
-CREATE OR REPLACE FUNCTION public.powa_check_created_extensions()
+CREATE OR REPLACE FUNCTION @extschema@.powa_check_created_extensions()
 RETURNS event_trigger
 LANGUAGE plpgsql
 AS $_$
@@ -2033,21 +2033,21 @@ BEGIN
      * extension is created. Powa should be in a dedicated database and the
      * register function handle to be called several time, so it's not critical
      */
-    PERFORM public.powa_activate_extension(0, 'pg_stat_kcache');
-    PERFORM public.powa_activate_extension(0, 'pg_qualstats');
-    PERFORM public.powa_activate_extension(0, 'pg_track_settings');
-    PERFORM public.powa_activate_extension(0, 'pg_wait_sampling');
+    PERFORM @extschema@.powa_activate_extension(0, 'pg_stat_kcache');
+    PERFORM @extschema@.powa_activate_extension(0, 'pg_qualstats');
+    PERFORM @extschema@.powa_activate_extension(0, 'pg_track_settings');
+    PERFORM @extschema@.powa_activate_extension(0, 'pg_wait_sampling');
 END;
 $_$; /* end of powa_check_created_extensions */
 
 CREATE EVENT TRIGGER powa_check_created_extensions
     ON ddl_command_end
     WHEN tag IN ('CREATE EXTENSION')
-    EXECUTE PROCEDURE public.powa_check_created_extensions() ;
+    EXECUTE PROCEDURE @extschema@.powa_check_created_extensions() ;
 
 -- automatically remove extensions from local snapshot if supported extension
 -- is removed locally
-CREATE OR REPLACE FUNCTION public.powa_check_dropped_extensions()
+CREATE OR REPLACE FUNCTION @extschema@.powa_check_dropped_extensions()
 RETURNS event_trigger
 LANGUAGE plpgsql
 AS $_$
@@ -2066,15 +2066,15 @@ BEGIN
         WHERE d.object_type = 'extension'
     )
     SELECT function_name INTO funcname
-    FROM public.powa_functions f
+    FROM @extschema@.powa_functions f
     JOIN ext ON f.module = ext.object_name
     WHERE operation = 'unregister'
     ORDER BY module;
 
     IF ( funcname IS NOT NULL ) THEN
         BEGIN
-            PERFORM public.powa_log(format('running %I', funcname));
-            EXECUTE 'SELECT ' || quote_ident(funcname) || '(0)';
+            PERFORM @extschema@.powa_log(format('running %I', funcname));
+            EXECUTE 'SELECT @extschema@.' || quote_ident(funcname) || '(0)';
         EXCEPTION
           WHEN OTHERS THEN
             GET STACKED DIAGNOSTICS
@@ -2097,9 +2097,9 @@ $_$; /* end of powa_check_dropped_extensions */
 CREATE EVENT TRIGGER powa_check_dropped_extensions
     ON sql_drop
     WHEN tag IN ('DROP EXTENSION')
-    EXECUTE PROCEDURE public.powa_check_dropped_extensions() ;
+    EXECUTE PROCEDURE @extschema@.powa_check_dropped_extensions() ;
 
-CREATE OR REPLACE FUNCTION powa_prevent_concurrent_snapshot(_srvid integer = 0)
+CREATE OR REPLACE FUNCTION @extschema@.powa_prevent_concurrent_snapshot(_srvid integer = 0)
 RETURNS void
 AS $PROC$
 DECLARE
@@ -2111,7 +2111,7 @@ DECLARE
 BEGIN
     BEGIN
         PERFORM 1
-        FROM powa_snapshot_metas
+        FROM @extschema@.powa_snapshot_metas
         WHERE srvid = _srvid
         FOR UPDATE NOWAIT;
     EXCEPTION
@@ -2135,7 +2135,7 @@ BEGIN
 END;
 $PROC$ language plpgsql; /* end of powa_prevent_concurrent_snapshot() */
 
-CREATE OR REPLACE FUNCTION powa_take_snapshot(_srvid integer = 0) RETURNS integer
+CREATE OR REPLACE FUNCTION @extschema@.powa_take_snapshot(_srvid integer = 0) RETURNS integer
 AS $PROC$
 DECLARE
   purgets timestamp with time zone;
@@ -2162,31 +2162,31 @@ BEGIN
     PERFORM set_config('application_name',
         v_title || ' snapshot database list',
         false);
-    PERFORM powa_log('start of powa_take_snapshot(' || _srvid || ')');
+    PERFORM @extschema@.powa_log('start of powa_take_snapshot(' || _srvid || ')');
 
-    PERFORM powa_prevent_concurrent_snapshot(_srvid);
+    PERFORM @extschema@.powa_prevent_concurrent_snapshot(_srvid);
 
-    UPDATE powa_snapshot_metas
+    UPDATE @extschema@.powa_snapshot_metas
     SET coalesce_seq = coalesce_seq + 1,
         errors = NULL,
         snapts = now()
     WHERE srvid = _srvid
     RETURNING coalesce_seq INTO purge_seq;
 
-    PERFORM powa_log(format('coalesce_seq(%s): %s', _srvid, purge_seq));
+    PERFORM @extschema@.powa_log(format('coalesce_seq(%s): %s', _srvid, purge_seq));
 
     IF (_srvid = 0) THEN
         SELECT current_setting('powa.coalesce') INTO v_coalesce;
     ELSE
         SELECT powa_coalesce
-        FROM public.powa_servers
+        FROM @extschema@.powa_servers
         WHERE id = _srvid
         INTO v_coalesce;
     END IF;
 
     -- For all enabled snapshot functions in the powa_functions table, execute
     FOR funcname IN SELECT function_name
-                 FROM powa_functions
+                 FROM @extschema@.powa_functions
                  WHERE operation='snapshot'
                  AND enabled
                  AND srvid = _srvid
@@ -2194,11 +2194,11 @@ BEGIN
     LOOP
       -- Call all of them, for the current srvid
       BEGIN
-        PERFORM powa_log(format('calling snapshot function: %I', funcname));
+        PERFORM @extschema@.powa_log(format('calling snapshot function: %I', funcname));
         PERFORM set_config('application_name',
             v_title || quote_ident(funcname) || '(' || _srvid || ')', false);
 
-        EXECUTE format('SELECT %I(%s)', funcname, _srvid);
+        EXECUTE format('SELECT @extschema@.%I(%s)', funcname, _srvid);
       EXCEPTION
         WHEN OTHERS THEN
           GET STACKED DIAGNOSTICS
@@ -2221,12 +2221,12 @@ BEGIN
     -- Coalesce datas if needed
     IF ( (purge_seq % v_coalesce ) = 0 )
     THEN
-      PERFORM powa_log(
+      PERFORM @extschema@.powa_log(
         format('coalesce needed, srvid: %s - seq: %s - coalesce seq: %s',
         _srvid, purge_seq, v_coalesce ));
 
       FOR funcname IN SELECT function_name
-                   FROM powa_functions
+                   FROM @extschema@.powa_functions
                    WHERE operation='aggregate'
                    AND enabled
                    AND srvid = _srvid
@@ -2234,13 +2234,13 @@ BEGIN
       LOOP
         -- Call all of them, for the current srvid
         BEGIN
-          PERFORM powa_log(format('calling aggregate function: %I(%s)',
+          PERFORM @extschema@.powa_log(format('calling aggregate function: %I(%s)',
                 funcname, _srvid));
 
           PERFORM set_config('application_name',
               v_title || quote_ident(funcname) || '(' || _srvid || ')', false);
 
-          EXECUTE format('SELECT %I(%s)', funcname, _srvid);
+          EXECUTE format('SELECT @extschema@.%I(%s)', funcname, _srvid);
         EXCEPTION
           WHEN OTHERS THEN
             GET STACKED DIAGNOSTICS
@@ -2263,7 +2263,7 @@ BEGIN
       PERFORM set_config('application_name',
           v_title || 'UPDATE powa_snapshot_metas.aggets',
           false);
-      UPDATE powa_snapshot_metas
+      UPDATE @extschema@.powa_snapshot_metas
       SET aggts = now()
       WHERE srvid = _srvid;
     END IF;
@@ -2271,12 +2271,12 @@ BEGIN
     -- We also purge, at the pass after the coalesce
     IF ( (purge_seq % v_coalesce) = 1 )
     THEN
-      PERFORM powa_log(
+      PERFORM @extschema@.powa_log(
         format('purge needed, srvid: %s - seq: %s coalesce seq: %s',
         _srvid, purge_seq, v_coalesce));
 
       FOR funcname IN SELECT function_name
-                   FROM powa_functions
+                   FROM @extschema@.powa_functions
                    WHERE operation='purge'
                    AND enabled
                    AND srvid = _srvid
@@ -2284,13 +2284,13 @@ BEGIN
       LOOP
         -- Call all of them, for the current srvid
         BEGIN
-          PERFORM powa_log(format('calling purge function: %I(%s)',
+          PERFORM @extschema@.powa_log(format('calling purge function: %I(%s)',
                 funcname, _srvid));
           PERFORM set_config('application_name',
               v_title || quote_ident(funcname) || '(' || _srvid || ')',
               false);
 
-          EXECUTE format('SELECT %I(%s)', funcname, _srvid);
+          EXECUTE format('SELECT @extschema@.%I(%s)', funcname, _srvid);
         EXCEPTION
           WHEN OTHERS THEN
             GET STACKED DIAGNOSTICS
@@ -2313,18 +2313,18 @@ BEGIN
       PERFORM set_config('application_name',
           v_title || 'UPDATE powa_snapshot_metas.purgets',
           false);
-      UPDATE powa_snapshot_metas
+      UPDATE @extschema@.powa_snapshot_metas
       SET purgets = now()
       WHERE srvid = _srvid;
     END IF;
 
     IF (v_nb_err > 0) THEN
-      UPDATE powa_snapshot_metas
+      UPDATE @extschema@.powa_snapshot_metas
       SET errors = v_errs
       WHERE srvid = _srvid;
     END IF;
 
-    PERFORM powa_log('end of powa_take_snapshot(' || _srvid || ')');
+    PERFORM @extschema@.powa_log('end of powa_take_snapshot(' || _srvid || ')');
     PERFORM set_config('application_name',
         v_title || 'snapshot finished',
         false);
@@ -2333,7 +2333,7 @@ BEGIN
 END;
 $PROC$ LANGUAGE plpgsql; /* end of powa_take_snapshot(int) */
 
-CREATE OR REPLACE FUNCTION powa_databases_src(IN _srvid integer,
+CREATE OR REPLACE FUNCTION @extschema@.powa_databases_src(IN _srvid integer,
     OUT oid oid,
     OUT datname name)
 RETURNS SETOF record
@@ -2345,78 +2345,79 @@ BEGIN
         FROM pg_database d;
     ELSE
         RETURN QUERY SELECT d.oid, d.datname
-        FROM powa_databases_src_tmp d
+        FROM @extschema@.powa_databases_src_tmp d
         WHERE srvid = _srvid;
     END IF;
 END;
 $PROC$ LANGUAGE plpgsql; /* end of powa_databases_src */
 
-CREATE OR REPLACE FUNCTION powa_databases_snapshot(_srvid integer)
+CREATE OR REPLACE FUNCTION @extschema@.powa_databases_snapshot(_srvid integer)
 RETURNS void AS $PROC$
 DECLARE
     result boolean;
-    v_funcname    text := 'powa_databases_snapshot';
+    v_funcname    text := format('@extschema@.%I(%s)',
+                                 'powa_databases_snapshot', _srvid);
     v_rowcount    bigint;
 BEGIN
-    PERFORM powa_log(format('running %I', v_funcname));
+    PERFORM @extschema@.powa_log(format('running %s', v_funcname));
 
-    PERFORM powa_prevent_concurrent_snapshot(_srvid);
+    PERFORM @extschema@.powa_prevent_concurrent_snapshot(_srvid);
 
     -- Keep track of existing databases
-    PERFORM powa_log('Maintaining database list...');
+    PERFORM @extschema@.powa_log('Maintaining database list...');
 
     WITH missing AS (
         SELECT _srvid AS srvid, d.oid, d.datname
-        FROM powa_databases_src(_srvid) d
-        LEFT JOIN powa_databases p ON d.oid = p.oid AND p.srvid = _srvid
+        FROM @extschema@.powa_databases_src(_srvid) d
+        LEFT JOIN @extschema@.powa_databases p ON d.oid = p.oid AND p.srvid = _srvid
         WHERE p.oid IS NULL
     )
-    INSERT INTO public.powa_databases
+    INSERT INTO @extschema@.powa_databases
     SELECT * FROM missing;
 
     GET DIAGNOSTICS v_rowcount = ROW_COUNT;
-    perform powa_log(format('missing db: %s', v_rowcount));
+    PERFORM @extschema@.powa_log(format('missing db: %s', v_rowcount));
 
     -- Keep track of renamed databases
     WITH renamed AS (
         SELECT d.oid, d.datname
-        FROM powa_databases_src(_srvid) AS d
-        JOIN powa_databases AS p ON d.oid = p.oid AND p.srvid = _srvid
+        FROM @extschema@.powa_databases_src(_srvid) AS d
+        JOIN @extschema@.powa_databases AS p ON d.oid = p.oid AND p.srvid = _srvid
         WHERE d.datname != p.datname
     )
-    UPDATE powa_databases AS p
+    UPDATE @extschema@.powa_databases AS p
     SET datname = r.datname
     FROM renamed AS r
     WHERE p.oid = r.oid
       AND p.srvid = _srvid;
 
     GET DIAGNOSTICS v_rowcount = ROW_COUNT;
-    perform powa_log(format('renamed db: %s', v_rowcount));
+    PERFORM @extschema@.powa_log(format('renamed db: %s', v_rowcount));
 
     -- Keep track of when databases are dropped
     WITH dropped AS (
         SELECT p.oid
-        FROM powa_databases p
-        LEFT JOIN powa_databases_src(_srvid) d ON p.oid = d.oid
+        FROM @extschema@.powa_databases p
+        LEFT JOIN @extschema@.powa_databases_src(_srvid) d ON p.oid = d.oid
         WHERE d.oid IS NULL
           AND p.dropped IS NULL
           AND p.srvid = _srvid)
-    UPDATE powa_databases p
+    UPDATE @extschema@.powa_databases p
     SET dropped = now()
     FROM dropped d
     WHERE p.oid = d.oid
       AND p.srvid = _srvid;
 
     GET DIAGNOSTICS v_rowcount = ROW_COUNT;
-    perform powa_log(format('dropped db: %s', v_rowcount));
+    PERFORM @extschema@.powa_log(format('dropped db: %s', v_rowcount));
 
     IF (_srvid != 0) THEN
-        DELETE FROM powa_databases_src_tmp WHERE srvid = _srvid;
+        DELETE FROM @extschema@.powa_databases_src_tmp WHERE srvid = _srvid;
     END IF;
 END;
 $PROC$ language plpgsql; /* end of powa_databases_snapshot */
 
-CREATE OR REPLACE FUNCTION powa_statements_src(IN _srvid integer,
+CREATE OR REPLACE FUNCTION @extschema@.powa_statements_src(IN _srvid integer,
     OUT ts timestamp with time zone,
     OUT userid oid,
     OUT dbid oid,
@@ -2472,7 +2473,7 @@ BEGIN
             JOIN pg_roles r ON pgss.userid = r.oid
             WHERE pgss.query !~* '^[[:space:]]*(DEALLOCATE|BEGIN|PREPARE TRANSACTION|COMMIT PREPARED|ROLLBACK PREPARED)'
             AND NOT (r.rolname = ANY (string_to_array(
-                        powa_get_guc('powa.ignored_users', ''),
+                        @extschema@.powa_get_guc('powa.ignored_users', ''),
                         ',')));
         ELSIF (v_pgss[1] = 1 AND v_pgss[2] >= 8) THEN
             RETURN QUERY SELECT now(),
@@ -2491,7 +2492,7 @@ BEGIN
             JOIN pg_roles r ON pgss.userid = r.oid
             WHERE pgss.query !~* '^[[:space:]]*(DEALLOCATE|BEGIN|PREPARE TRANSACTION|COMMIT PREPARED|ROLLBACK PREPARED)'
             AND NOT (r.rolname = ANY (string_to_array(
-                        powa_get_guc('powa.ignored_users', ''),
+                        @extschema@.powa_get_guc('powa.ignored_users', ''),
                         ',')));
         ELSE
             RETURN QUERY SELECT now(),
@@ -2511,7 +2512,7 @@ BEGIN
             JOIN pg_roles r ON pgss.userid = r.oid
             WHERE pgss.query !~* '^[[:space:]]*(DEALLOCATE|BEGIN|PREPARE TRANSACTION|COMMIT PREPARED|ROLLBACK PREPARED)'
             AND NOT (r.rolname = ANY (string_to_array(
-                        powa_get_guc('powa.ignored_users', ''),
+                        @extschema@.powa_get_guc('powa.ignored_users', ''),
                         ',')));
         END IF;
     ELSE
@@ -2526,42 +2527,43 @@ BEGIN
             pgss.temp_blks_written, pgss.blk_read_time, pgss.blk_write_time,
             pgss.plans, pgss.total_plan_time,
             pgss.wal_records, pgss.wal_fpi, pgss.wal_bytes
-        FROM powa_statements_src_tmp pgss WHERE srvid = _srvid;
+        FROM @extschema@.powa_statements_src_tmp pgss WHERE srvid = _srvid;
     END IF;
 END;
 $PROC$ LANGUAGE plpgsql; /* end of powa_statements_src */
 
-CREATE OR REPLACE FUNCTION powa_statements_snapshot(_srvid integer) RETURNS void AS $PROC$
+CREATE OR REPLACE FUNCTION @extschema@.powa_statements_snapshot(_srvid integer) RETURNS void AS $PROC$
 DECLARE
     result boolean;
-    v_funcname    text := 'powa_statements_snapshot';
+    v_funcname    text := format('@extschema@.%I(%s)',
+                                 'powa_statements_snapshot', _srvid);
     v_rowcount    bigint;
 BEGIN
     -- In this function, we capture statements, and also aggregate counters by database
     -- so that the first screens of powa stay reactive even though there may be thousands
     -- of different statements
     -- We only capture databases that are still there
-    PERFORM powa_log(format('running %I', v_funcname));
+    PERFORM @extschema@.powa_log(format('running %s', v_funcname));
 
-    PERFORM powa_prevent_concurrent_snapshot(_srvid);
+    PERFORM @extschema@.powa_prevent_concurrent_snapshot(_srvid);
 
     WITH capture AS(
         SELECT *
-        FROM powa_statements_src(_srvid)
+        FROM @extschema@.powa_statements_src(_srvid)
     ),
-    mru as (UPDATE powa_statements set last_present_ts = now()
+    mru as (UPDATE @extschema@.powa_statements set last_present_ts = now()
             FROM capture
-            WHERE powa_statements.queryid = capture.queryid
-              AND powa_statements.dbid = capture.dbid
-              AND powa_statements.userid = capture.userid
-              AND powa_statements.srvid = _srvid
+            WHERE @extschema@.powa_statements.queryid = capture.queryid
+              AND @extschema@.powa_statements.dbid = capture.dbid
+              AND @extschema@.powa_statements.userid = capture.userid
+              AND @extschema@.powa_statements.srvid = _srvid
     ),
     missing_statements AS(
-        INSERT INTO public.powa_statements (srvid, queryid, dbid, userid, query)
+        INSERT INTO @extschema@.powa_statements (srvid, queryid, dbid, userid, query)
             SELECT _srvid, queryid, dbid, userid, min(query)
             FROM capture c
             WHERE NOT EXISTS (SELECT 1
-                              FROM powa_statements ps
+                              FROM @extschema@.powa_statements ps
                               WHERE ps.queryid = c.queryid
                               AND ps.dbid = c.dbid
                               AND ps.userid = c.userid
@@ -2571,7 +2573,7 @@ BEGIN
     ),
 
     by_query AS (
-        INSERT INTO public.powa_statements_history_current (srvid, queryid,
+        INSERT INTO @extschema@.powa_statements_history_current (srvid, queryid,
                 dbid, toplevel, userid, record)
             SELECT _srvid, queryid, dbid, toplevel, userid,
             ROW(
@@ -2582,12 +2584,12 @@ BEGIN
                 temp_blks_written, blk_read_time, blk_write_time,
                 plans, total_plan_time,
                 wal_records, wal_fpi, wal_bytes
-            )::powa_statements_history_record AS record
+            )::@extschema@.powa_statements_history_record AS record
             FROM capture
     ),
 
     by_database AS (
-        INSERT INTO public.powa_statements_history_current_db (srvid, dbid, record)
+        INSERT INTO @extschema@.powa_statements_history_current_db (srvid, dbid, record)
             SELECT _srvid, dbid,
             ROW(
                 ts, sum(calls),
@@ -2599,7 +2601,7 @@ BEGIN
                 sum(temp_blks_written), sum(blk_read_time), sum(blk_write_time),
                 sum(plans), sum(total_plan_time),
                 sum(wal_records), sum(wal_fpi), sum(wal_bytes)
-            )::powa_statements_history_record AS record
+            )::@extschema@.powa_statements_history_record AS record
             FROM capture
             GROUP BY dbid, ts
     )
@@ -2607,18 +2609,18 @@ BEGIN
     SELECT count(*) INTO v_rowcount
     FROM capture;
 
-    perform powa_log(format('%I - rowcount: %s',
+    PERFORM @extschema@.powa_log(format('%s - rowcount: %s',
             v_funcname, v_rowcount));
 
     IF (_srvid != 0) THEN
-        DELETE FROM powa_statements_src_tmp WHERE srvid = _srvid;
+        DELETE FROM @extschema@.powa_statements_src_tmp WHERE srvid = _srvid;
     END IF;
 
     result := true; -- For now we don't care. What could we do on error except crash anyway?
 END;
 $PROC$ language plpgsql; /* end of powa_statements_snapshot */
 
-CREATE OR REPLACE FUNCTION powa_user_functions_src(IN _srvid integer,
+CREATE OR REPLACE FUNCTION @extschema@.powa_user_functions_src(IN _srvid integer,
     OUT ts timestamp with time zone,
     OUT dbid oid,
     OUT funcid oid,
@@ -2632,52 +2634,53 @@ BEGIN
     IF (_srvid = 0) THEN
         RETURN QUERY SELECT now(), d.oid, r.funcid, r.calls, r.total_time,
             r.self_time
-        FROM pg_database d, powa_stat_user_functions(oid) r;
+        FROM pg_database d, @extschema@.powa_stat_user_functions(oid) r;
     ELSE
         RETURN QUERY SELECT r.ts, r.dbid, r.funcid, r.calls, r.total_time,
             r.self_time
-        FROM powa_user_functions_src_tmp r
+        FROM @extschema@.powa_user_functions_src_tmp r
         WHERE r.srvid = _srvid;
     END IF;
 END;
 $PROC$ LANGUAGE plpgsql; /* end of powa_user_functions_src */
 
-CREATE OR REPLACE FUNCTION powa_user_functions_snapshot(_srvid integer) RETURNS void AS $PROC$
+CREATE OR REPLACE FUNCTION @extschema@.powa_user_functions_snapshot(_srvid integer) RETURNS void AS $PROC$
 DECLARE
     result boolean;
-    v_funcname    text := 'powa_user_functions_snapshot';
+    v_funcname    text := format('@extschema@.%I(%s)',
+                                 'powa_user_functions_snapshot', _srvid);
     v_rowcount    bigint;
 BEGIN
-    PERFORM powa_log(format('running %I', v_funcname));
+    PERFORM @extschema@.powa_log(format('running %s', v_funcname));
 
-    PERFORM powa_prevent_concurrent_snapshot(_srvid);
+    PERFORM @extschema@.powa_prevent_concurrent_snapshot(_srvid);
 
     -- Insert cluster-wide user function statistics
     WITH func AS (
         SELECT *
-        FROM powa_user_functions_src(_srvid)
+        FROM @extschema@.powa_user_functions_src(_srvid)
     )
-    INSERT INTO public.powa_user_functions_history_current
+    INSERT INTO @extschema@.powa_user_functions_history_current
         SELECT _srvid, dbid, funcid,
         ROW(ts, calls,
             total_time,
-            self_time)::powa_user_functions_history_record AS record
+            self_time)::@extschema@.powa_user_functions_history_record AS record
         FROM func;
 
     GET DIAGNOSTICS v_rowcount = ROW_COUNT;
 
-    perform powa_log(format('%I - rowcount: %s',
+    PERFORM @extschema@.powa_log(format('%s - rowcount: %s',
             v_funcname, v_rowcount));
 
     IF (_srvid != 0) THEN
-        DELETE FROM powa_user_functions_src_tmp WHERE srvid = _srvid;
+        DELETE FROM @extschema@.powa_user_functions_src_tmp WHERE srvid = _srvid;
     END IF;
 
     result := true;
 END;
 $PROC$ language plpgsql; /* end of powa_user_functions_snapshot */
 
-CREATE OR REPLACE FUNCTION powa_all_relations_src(IN _srvid integer,
+CREATE OR REPLACE FUNCTION @extschema@.powa_all_relations_src(IN _srvid integer,
     OUT ts timestamp with time zone,
     OUT dbid oid,
     OUT relid oid,
@@ -2711,7 +2714,7 @@ BEGIN
             r.blks_hit, r.last_vacuum, r.vacuum_count, r.last_autovacuum,
             r.autovacuum_count, r.last_analyze, r.analyze_count,
             r.last_autoanalyze, r.autoanalyze_count
-        FROM pg_database d, powa_stat_all_rel(d.oid) as r;
+        FROM pg_database d, @extschema@.powa_stat_all_rel(d.oid) as r;
     ELSE
         RETURN QUERY SELECT r.ts,
             r.dbid, r.relid, r.numscan, r.tup_returned, r.tup_fetched,
@@ -2720,30 +2723,31 @@ BEGIN
             r.blks_hit, r.last_vacuum, r.vacuum_count, r.last_autovacuum,
             r.autovacuum_count, r.last_analyze, r.analyze_count,
             r.last_autoanalyze, r.autoanalyze_count
-        FROM powa_all_relations_src_tmp AS r
+        FROM @extschema@.powa_all_relations_src_tmp AS r
         WHERE r.srvid = _srvid;
     END IF;
 END;
 $PROC$ LANGUAGE plpgsql; /* end of powa_all_relations_src */
 
-CREATE OR REPLACE FUNCTION powa_all_relations_snapshot(_srvid integer) RETURNS void AS $PROC$
+CREATE OR REPLACE FUNCTION @extschema@.powa_all_relations_snapshot(_srvid integer) RETURNS void AS $PROC$
 DECLARE
     result boolean;
-    v_funcname    text := 'powa_all_relations_snapshot';
+    v_funcname    text := format('@extschema@.%I(%s)',
+                                 'powa_all_relations_snapshot', _srvid);
     v_rowcount    bigint;
 BEGIN
-    PERFORM powa_log(format('running %I', v_funcname));
+    PERFORM @extschema@.powa_log(format('running %s', v_funcname));
 
-    PERFORM powa_prevent_concurrent_snapshot(_srvid);
+    PERFORM @extschema@.powa_prevent_concurrent_snapshot(_srvid);
 
     -- Insert cluster-wide relation statistics
     WITH rel AS (
         SELECT *
-        FROM powa_all_relations_src(_srvid)
+        FROM @extschema@.powa_all_relations_src(_srvid)
     ),
 
     by_relation AS (
-        INSERT INTO public.powa_all_relations_history_current
+        INSERT INTO @extschema@.powa_all_relations_history_current
             SELECT _srvid, dbid, relid,
             ROW(ts,numscan, tup_returned, tup_fetched,
                 n_tup_ins, n_tup_upd, n_tup_del, n_tup_hot_upd,
@@ -2751,12 +2755,12 @@ BEGIN
                 blks_read, blks_hit, last_vacuum, vacuum_count,
                 last_autovacuum, autovacuum_count, last_analyze,
                 analyze_count, last_autoanalyze,
-                autoanalyze_count)::powa_all_relations_history_record AS record
+                autoanalyze_count)::@extschema@.powa_all_relations_history_record AS record
             FROM rel
     ),
 
     by_database AS (
-        INSERT INTO public.powa_all_relations_history_current_db (srvid, dbid, record)
+        INSERT INTO @extschema@.powa_all_relations_history_current_db (srvid, dbid, record)
             SELECT _srvid AS srvid, dbid,
             ROW(ts,
                 sum(CASE WHEN
@@ -2775,7 +2779,7 @@ BEGIN
                 sum(rel.blks_read), sum(rel.blks_hit),
                 sum(vacuum_count), sum(autovacuum_count),
                 sum(analyze_count), sum(autoanalyze_count)
-            )::powa_all_relations_history_db_record
+            )::@extschema@.powa_all_relations_history_db_record
             FROM rel
             GROUP BY srvid, dbid, ts
     )
@@ -2783,18 +2787,18 @@ BEGIN
     SELECT COUNT(*) into v_rowcount
     FROM rel;
 
-    perform powa_log(format('%I - rowcount: %s',
+    PERFORM @extschema@.powa_log(format('%s - rowcount: %s',
             v_funcname, v_rowcount));
 
     IF (_srvid != 0) THEN
-        DELETE FROM powa_all_relations_src_tmp WHERE srvid = _srvid;
+        DELETE FROM @extschema@.powa_all_relations_src_tmp WHERE srvid = _srvid;
     END IF;
 
     result := true;
 END;
 $PROC$ language plpgsql; /* end of powa_all_relations_snapshot */
 
-CREATE OR REPLACE FUNCTION powa_stat_bgwriter_src(IN _srvid integer,
+CREATE OR REPLACE FUNCTION @extschema@.powa_stat_bgwriter_src(IN _srvid integer,
     OUT ts timestamp with time zone,
     OUT checkpoints_timed bigint,
     OUT checkpoints_req bigint,
@@ -2821,41 +2825,42 @@ BEGIN
             s.checkpoint_sync_time, s.buffers_checkpoint, s.buffers_clean,
             s.maxwritten_clean, s.buffers_backend, s.buffers_backend_fsync,
             s.buffers_alloc
-        FROM powa_stat_bgwriter_src_tmp AS s
+        FROM @extschema@.powa_stat_bgwriter_src_tmp AS s
         WHERE s.srvid = _srvid;
     END IF;
 END;
 $PROC$ LANGUAGE plpgsql; /* end of powa_stat_bgwriter_src */
 
-CREATE OR REPLACE FUNCTION powa_stat_bgwriter_snapshot(_srvid integer) RETURNS void AS $PROC$
+CREATE OR REPLACE FUNCTION @extschema@.powa_stat_bgwriter_snapshot(_srvid integer) RETURNS void AS $PROC$
 DECLARE
     result boolean;
-    v_funcname    text := 'powa_stat_bgwriter_snapshot';
+    v_funcname    text := format('@extschema@.%I(%s)',
+                                 'powa_stat_bgwriter_snapshot', _srvid);
     v_rowcount    bigint;
 BEGIN
-    PERFORM powa_log(format('running %I', v_funcname));
+    PERFORM @extschema@.powa_log(format('running %s', v_funcname));
 
-    PERFORM powa_prevent_concurrent_snapshot(_srvid);
+    PERFORM @extschema@.powa_prevent_concurrent_snapshot(_srvid);
 
     -- Insert background writer statistics
     WITH rel AS (
         SELECT *
-        FROM powa_stat_bgwriter_src(_srvid)
+        FROM @extschema@.powa_stat_bgwriter_src(_srvid)
     )
-    INSERT INTO public.powa_stat_bgwriter_history_current
+    INSERT INTO @extschema@.powa_stat_bgwriter_history_current
         SELECT _srvid,
         ROW(ts, checkpoints_timed, checkpoints_req, checkpoint_write_time,
             checkpoint_sync_time, buffers_checkpoint, buffers_clean,
             maxwritten_clean, buffers_backend, buffers_backend_fsync,
-            buffers_alloc)::powa_stat_bgwriter_history_record AS record
+            buffers_alloc)::@extschema@.powa_stat_bgwriter_history_record AS record
         FROM rel;
 
     GET DIAGNOSTICS v_rowcount = ROW_COUNT;
-    perform powa_log(format('%I - rowcount: %s',
+    PERFORM @extschema@.powa_log(format('%s - rowcount: %s',
             v_funcname, v_rowcount));
 
     IF (_srvid != 0) THEN
-        DELETE FROM powa_stat_bgwriter_src_tmp WHERE srvid = _srvid;
+        DELETE FROM @extschema@.powa_stat_bgwriter_src_tmp WHERE srvid = _srvid;
     END IF;
 
     result := true;
@@ -2863,169 +2868,175 @@ END;
 $PROC$ language plpgsql; /* end of powa_stat_bgwriter_snapshot */
 
 
-CREATE OR REPLACE FUNCTION powa_databases_purge(_srvid integer)
+CREATE OR REPLACE FUNCTION @extschema@.powa_databases_purge(_srvid integer)
 RETURNS void AS $PROC$
 DECLARE
-    v_funcname    text := 'powa_databases_purge(' || _srvid || ')';
+    v_funcname    text := format('@extschema@.%I(%s)',
+                                 'powa_databases_purge', _srvid);
     v_rowcount    bigint;
     v_dropped_dbid oid[];
     v_retention   interval;
 BEGIN
-    PERFORM powa_log(format('running %I', v_funcname));
+    PERFORM @extschema@.powa_log(format('running %s', v_funcname));
 
-    PERFORM powa_prevent_concurrent_snapshot(_srvid);
+    PERFORM @extschema@.powa_prevent_concurrent_snapshot(_srvid);
 
-    SELECT powa_get_server_retention(_srvid) INTO v_retention;
+    SELECT @extschema@.powa_get_server_retention(_srvid) INTO v_retention;
 
     -- Cleanup old dropped databases, over retention
     -- This will cascade automatically to powa_statements and other
     WITH dropped_databases AS
-      ( DELETE FROM powa_databases
+      ( DELETE FROM @extschema@.powa_databases
         WHERE dropped < (now() - v_retention * 1.2)
         AND srvid = _srvid
         RETURNING oid
         )
     SELECT array_agg(oid) INTO v_dropped_dbid FROM dropped_databases;
 
-    perform powa_log(format('%I (powa_databases) - rowcount: %s)',
+    PERFORM @extschema@.powa_log(format('%s (powa_databases) - rowcount: %s)',
            v_funcname,array_length(v_dropped_dbid,1)));
 END;
 $PROC$ LANGUAGE plpgsql; /* end of powa_databases_purge */
 
 
-CREATE OR REPLACE FUNCTION powa_statements_purge(_srvid integer)
+CREATE OR REPLACE FUNCTION @extschema@.powa_statements_purge(_srvid integer)
 RETURNS void AS $PROC$
 DECLARE
-    v_funcname    text := 'powa_statements_purge(' || _srvid || ')';
+    v_funcname    text := format('@extschema@.%I(%s)',
+                                 'powa_statements_purge', _srvid);
     v_rowcount    bigint;
     v_retention   interval;
 BEGIN
-    PERFORM powa_log(format('running %I', v_funcname));
+    PERFORM @extschema@.powa_log(format('running %s', v_funcname));
 
-    PERFORM powa_prevent_concurrent_snapshot(_srvid);
+    PERFORM @extschema@.powa_prevent_concurrent_snapshot(_srvid);
 
-    SELECT powa_get_server_retention(_srvid) INTO v_retention;
+    SELECT @extschema@.powa_get_server_retention(_srvid) INTO v_retention;
 
     -- Delete obsolete data. We only bother with already coalesced data
-    DELETE FROM powa_statements_history
+    DELETE FROM @extschema@.powa_statements_history
     WHERE upper(coalesce_range)< (now() - v_retention)
     AND srvid = _srvid;
 
     GET DIAGNOSTICS v_rowcount = ROW_COUNT;
-    perform powa_log(format('%I (powa_statements_hitory) - rowcount: %s',
+    PERFORM @extschema@.powa_log(format('%s (powa_statements_hitory) - rowcount: %s',
             v_funcname, v_rowcount));
 
-    DELETE FROM powa_statements_history_db
+    DELETE FROM @extschema@.powa_statements_history_db
     WHERE upper(coalesce_range)< (now() - v_retention)
     AND srvid = _srvid;
 
     GET DIAGNOSTICS v_rowcount = ROW_COUNT;
-    perform powa_log(format('%I (powa_statements_history_db) - rowcount: %s',
+    PERFORM @extschema@.powa_log(format('%s (powa_statements_history_db) - rowcount: %s',
             v_funcname, v_rowcount));
 
-    DELETE FROM powa_statements
+    DELETE FROM @extschema@.powa_statements
     WHERE last_present_ts < (now() - v_retention)
     AND srvid = _srvid;
 
     GET DIAGNOSTICS v_rowcount = ROW_COUNT;
-    perform powa_log(format('%I (powa_statements) - rowcount: %s',
+    PERFORM @extschema@.powa_log(format('%s (powa_statements) - rowcount: %s',
             v_funcname, v_rowcount));
 END;
 $PROC$ LANGUAGE plpgsql; /* end of powa_statements_purge */
 
-CREATE OR REPLACE FUNCTION powa_user_functions_purge(_srvid integer)
+CREATE OR REPLACE FUNCTION @extschema@.powa_user_functions_purge(_srvid integer)
 RETURNS void AS $PROC$
 DECLARE
-    v_funcname    text := 'powa_user_functions_purge(' || _srvid || ')';
+    v_funcname    text := format('@extschema@.%I(%s)',
+                                 'powa_user_functions_purge', _srvid);
     v_rowcount    bigint;
     v_retention   interval;
 BEGIN
-    PERFORM powa_log(format('running %I', v_funcname));
+    PERFORM @extschema@.powa_log(format('running %s', v_funcname));
 
-    PERFORM powa_prevent_concurrent_snapshot(_srvid);
+    PERFORM @extschema@.powa_prevent_concurrent_snapshot(_srvid);
 
-    SELECT powa_get_server_retention(_srvid) INTO v_retention;
+    SELECT @extschema@.powa_get_server_retention(_srvid) INTO v_retention;
 
     -- Delete obsolete datas. We only bother with already coalesced data
-    DELETE FROM powa_user_functions_history
+    DELETE FROM @extschema@.powa_user_functions_history
     WHERE upper(coalesce_range)< (now() - v_retention)
     AND srvid = _srvid;
 
     GET DIAGNOSTICS v_rowcount = ROW_COUNT;
-    perform powa_log(format('%I - rowcount: %s',
+    PERFORM @extschema@.powa_log(format('%s - rowcount: %s',
             v_funcname, v_rowcount));
 END;
 $PROC$ LANGUAGE plpgsql; /* end of powa_user_functions_purge */
 
-CREATE OR REPLACE FUNCTION powa_all_relations_purge(_srvid integer)
+CREATE OR REPLACE FUNCTION @extschema@.powa_all_relations_purge(_srvid integer)
 RETURNS void AS $PROC$
 DECLARE
-    v_funcname    text := 'powa_all_relations_purge(' || _srvid || ')';
+    v_funcname    text := format('@extschema@.%I(%s)',
+                                 'powa_all_relations_purge', _srvid);
     v_rowcount    bigint;
     v_retention   interval;
 BEGIN
-    PERFORM powa_log(format('running %I', v_funcname));
+    PERFORM @extschema@.powa_log(format('running %s', v_funcname));
 
-    PERFORM powa_prevent_concurrent_snapshot(_srvid);
+    PERFORM @extschema@.powa_prevent_concurrent_snapshot(_srvid);
 
-    SELECT powa_get_server_retention(_srvid) INTO v_retention;
+    SELECT @extschema@.powa_get_server_retention(_srvid) INTO v_retention;
 
     -- Delete obsolete datas. We only bother with already coalesced data
-    DELETE FROM powa_all_relations_history
+    DELETE FROM @extschema@.powa_all_relations_history
     WHERE upper(coalesce_range)< (now() - v_retention)
     AND srvid = _srvid;
 
     GET DIAGNOSTICS v_rowcount = ROW_COUNT;
-    perform powa_log(format('%I - (powa_all_relations_history) rowcount: %s',
+    PERFORM @extschema@.powa_log(format('%s - (powa_all_relations_history) rowcount: %s',
             v_funcname, v_rowcount));
 
-    DELETE FROM powa_all_relations_history_db
+    DELETE FROM @extschema@.powa_all_relations_history_db
     WHERE upper(coalesce_range)< (now() - v_retention)
     AND srvid = _srvid;
 
     GET DIAGNOSTICS v_rowcount = ROW_COUNT;
-    perform powa_log(format('%I - (powa_all_relations_history_db) rowcount: %s',
+    PERFORM @extschema@.powa_log(format('%s - (powa_all_relations_history_db) rowcount: %s',
             v_funcname, v_rowcount));
 END;
 $PROC$ LANGUAGE plpgsql; /* end of powa_all_relations_purge */
 
-CREATE OR REPLACE FUNCTION powa_stat_bgwriter_purge(_srvid integer)
+CREATE OR REPLACE FUNCTION @extschema@.powa_stat_bgwriter_purge(_srvid integer)
 RETURNS void AS $PROC$
 DECLARE
-    v_funcname    text := 'powa_stat_bgwriter_purge(' || _srvid || ')';
+    v_funcname    text := format('@extschema@.%I(%s)',
+                                 'powa_stat_bgwriter_purge', _srvid);
     v_rowcount    bigint;
     v_retention   interval;
 BEGIN
-    PERFORM powa_log(format('running %I', v_funcname));
+    PERFORM @extschema@.powa_log(format('running %s', v_funcname));
 
-    PERFORM powa_prevent_concurrent_snapshot(_srvid);
+    PERFORM @extschema@.powa_prevent_concurrent_snapshot(_srvid);
 
-    SELECT powa_get_server_retention(_srvid) INTO v_retention;
+    SELECT @extschema@.powa_get_server_retention(_srvid) INTO v_retention;
 
     -- Delete obsolete datas. We only bother with already coalesced data
-    DELETE FROM powa_stat_bgwriter_history
+    DELETE FROM @extschema@.powa_stat_bgwriter_history
     WHERE upper(coalesce_range)< (now() - v_retention)
     AND srvid = _srvid;
 
     GET DIAGNOSTICS v_rowcount = ROW_COUNT;
-    perform powa_log(format('%I - rowcount: %s',
+    PERFORM @extschema@.powa_log(format('%s - rowcount: %s',
             v_funcname, v_rowcount));
 END;
 $PROC$ LANGUAGE plpgsql; /* end of powa_stat_bgwriter_purge */
 
 
-CREATE OR REPLACE FUNCTION powa_statements_aggregate(_srvid integer)
+CREATE OR REPLACE FUNCTION @extschema@.powa_statements_aggregate(_srvid integer)
 RETURNS void AS $PROC$
 DECLARE
-    v_funcname    text := 'powa_statements_aggregate(' || _srvid || ')';
+    v_funcname    text := format('@extschema@.%I(%s)',
+                                 'powa_statements_aggregate', _srvid);
     v_rowcount    bigint;
 BEGIN
-    PERFORM powa_log(format('running %I', v_funcname));
+    PERFORM @extschema@.powa_log(format('running %s', v_funcname));
 
-    PERFORM powa_prevent_concurrent_snapshot(_srvid);
+    PERFORM @extschema@.powa_prevent_concurrent_snapshot(_srvid);
 
     -- aggregate statements table
-    INSERT INTO public.powa_statements_history (srvid, queryid, dbid, toplevel,
+    INSERT INTO @extschema@.powa_statements_history (srvid, queryid, dbid, toplevel,
             userid, coalesce_range, records, mins_in_range, maxs_in_range)
         SELECT srvid, queryid, dbid, toplevel, userid,
             tstzrange(min((record).ts), max((record).ts),'[]'),
@@ -3042,7 +3053,7 @@ BEGIN
                 min((record).plans),min((record).total_plan_time),
                 min((record).wal_records),min((record).wal_fpi),
                 min((record).wal_bytes)
-            )::powa_statements_history_record,
+            )::@extschema@.powa_statements_history_record,
             ROW(max((record).ts),
                 max((record).calls),max((record).total_exec_time),
                 max((record).rows),
@@ -3055,19 +3066,19 @@ BEGIN
                 max((record).plans),max((record).total_plan_time),
                 max((record).wal_records),max((record).wal_fpi),
                 max((record).wal_bytes)
-            )::powa_statements_history_record
-        FROM powa_statements_history_current
+            )::@extschema@.powa_statements_history_record
+        FROM @extschema@.powa_statements_history_current
         WHERE srvid = _srvid
         GROUP BY srvid, queryid, dbid, toplevel, userid;
 
     GET DIAGNOSTICS v_rowcount = ROW_COUNT;
-    perform powa_log(format('%I (powa_statements_history) - rowcount: %s',
+    PERFORM @extschema@.powa_log(format('%s (powa_statements_history) - rowcount: %s',
             v_funcname, v_rowcount));
 
-    DELETE FROM powa_statements_history_current WHERE srvid = _srvid;
+    DELETE FROM @extschema@.powa_statements_history_current WHERE srvid = _srvid;
 
     -- aggregate db table
-    INSERT INTO public.powa_statements_history_db (srvid, dbid, coalesce_range,
+    INSERT INTO @extschema@.powa_statements_history_db (srvid, dbid, coalesce_range,
             records, mins_in_range, maxs_in_range)
         SELECT srvid, dbid,
             tstzrange(min((record).ts), max((record).ts),'[]'),
@@ -3084,7 +3095,7 @@ BEGIN
                 min((record).plans),min((record).total_plan_time),
                 min((record).wal_records),min((record).wal_fpi),
                 min((record).wal_bytes)
-            )::powa_statements_history_record,
+            )::@extschema@.powa_statements_history_record,
             ROW(max((record).ts),
                 max((record).calls),max((record).total_exec_time),
                 max((record).rows),
@@ -3097,55 +3108,56 @@ BEGIN
                 max((record).plans),max((record).total_plan_time),
                 max((record).wal_records),max((record).wal_fpi),
                 max((record).wal_bytes)
-            )::powa_statements_history_record
-        FROM powa_statements_history_current_db
+            )::@extschema@.powa_statements_history_record
+        FROM @extschema@.powa_statements_history_current_db
         WHERE srvid = _srvid
         GROUP BY srvid, dbid;
 
     GET DIAGNOSTICS v_rowcount = ROW_COUNT;
-    perform powa_log(format('%I (powa_statements_history_db) - rowcount: %s',
+    PERFORM @extschema@.powa_log(format('%s (powa_statements_history_db) - rowcount: %s',
             v_funcname, v_rowcount));
 
-    DELETE FROM powa_statements_history_current_db WHERE srvid = _srvid;
+    DELETE FROM @extschema@.powa_statements_history_current_db WHERE srvid = _srvid;
 END;
 $PROC$ LANGUAGE plpgsql; /* end of powa_statements_aggregate */
 
-CREATE OR REPLACE FUNCTION powa_user_functions_aggregate(_srvid integer)
+CREATE OR REPLACE FUNCTION @extschema@.powa_user_functions_aggregate(_srvid integer)
 RETURNS void AS $PROC$
 BEGIN
-    PERFORM powa_log('running powa_user_functions_aggregate(' || _srvid ||')');
+    PERFORM @extschema@.powa_log('running powa_user_functions_aggregate(' || _srvid ||')');
 
-    PERFORM powa_prevent_concurrent_snapshot(_srvid);
+    PERFORM @extschema@.powa_prevent_concurrent_snapshot(_srvid);
 
     -- aggregate user_functions table
-    INSERT INTO public.powa_user_functions_history
+    INSERT INTO @extschema@.powa_user_functions_history
         SELECT srvid, dbid, funcid,
             tstzrange(min((record).ts), max((record).ts),'[]'),
             array_agg(record),
             ROW(min((record).ts), min((record).calls),min((record).total_time),
-                min((record).self_time))::powa_user_functions_history_record,
+                min((record).self_time))::@extschema@.powa_user_functions_history_record,
             ROW(max((record).ts), max((record).calls),max((record).total_time),
-                max((record).self_time))::powa_user_functions_history_record
-        FROM powa_user_functions_history_current
+                max((record).self_time))::@extschema@.powa_user_functions_history_record
+        FROM @extschema@.powa_user_functions_history_current
         WHERE srvid = _srvid
         GROUP BY srvid, dbid, funcid;
 
-    DELETE FROM powa_user_functions_history_current WHERE srvid = _srvid;
+    DELETE FROM @extschema@.powa_user_functions_history_current WHERE srvid = _srvid;
  END;
 $PROC$ LANGUAGE plpgsql; /* end of powa_user_functions_aggregate */
 
-CREATE OR REPLACE FUNCTION powa_all_relations_aggregate(_srvid integer)
+CREATE OR REPLACE FUNCTION @extschema@.powa_all_relations_aggregate(_srvid integer)
 RETURNS void AS $PROC$
 DECLARE
-    v_funcname    text := 'powa_all_relations_aggregate(' || _srvid || ')';
+    v_funcname    text := format('@extschema@.%I(%s)',
+                                 'powa_all_relations_aggregate', _srvid);
     v_rowcount    bigint;
 BEGIN
-    PERFORM powa_log(format('running %I', v_funcname));
+    PERFORM @extschema@.powa_log(format('running %s', v_funcname));
 
-    PERFORM powa_prevent_concurrent_snapshot(_srvid);
+    PERFORM @extschema@.powa_prevent_concurrent_snapshot(_srvid);
 
     -- aggregate all_relations table
-    INSERT INTO public.powa_all_relations_history
+    INSERT INTO @extschema@.powa_all_relations_history
         SELECT srvid, dbid, relid,
             tstzrange(min((record).ts), max((record).ts),'[]'),
             array_agg(record),
@@ -3159,7 +3171,7 @@ BEGIN
                 min((record).vacuum_count),min((record).last_autovacuum),
                 min((record).autovacuum_count),min((record).last_analyze),
                 min((record).analyze_count),min((record).last_autoanalyze),
-                min((record).autoanalyze_count))::powa_all_relations_history_record,
+                min((record).autoanalyze_count))::@extschema@.powa_all_relations_history_record,
             ROW(max((record).ts),
                 max((record).numscan),max((record).tup_returned),max((record).tup_fetched),
                 max((record).n_tup_ins),max((record).n_tup_upd),
@@ -3170,19 +3182,19 @@ BEGIN
                 max((record).vacuum_count),max((record).last_autovacuum),
                 max((record).autovacuum_count),max((record).last_analyze),
                 max((record).analyze_count),max((record).last_autoanalyze),
-                max((record).autoanalyze_count))::powa_all_relations_history_record
-        FROM powa_all_relations_history_current
+                max((record).autoanalyze_count))::@extschema@.powa_all_relations_history_record
+        FROM @extschema@.powa_all_relations_history_current
         WHERE srvid = _srvid
         GROUP BY srvid, dbid, relid;
 
     GET DIAGNOSTICS v_rowcount = ROW_COUNT;
-    perform powa_log(format('%I - (powa_all_relations_history_current) rowcount: %s',
+    PERFORM @extschema@.powa_log(format('%s - (powa_all_relations_history_current) rowcount: %s',
             v_funcname, v_rowcount));
 
-    DELETE FROM powa_all_relations_history_current WHERE srvid = _srvid;
+    DELETE FROM @extschema@.powa_all_relations_history_current WHERE srvid = _srvid;
 
     -- aggregate all_relations_db table
-    INSERT INTO public.powa_all_relations_history_db
+    INSERT INTO @extschema@.powa_all_relations_history_db
         SELECT srvid, dbid,
             tstzrange(min((record).ts), max((record).ts),'[]'),
             array_agg(record),
@@ -3196,7 +3208,7 @@ BEGIN
                 min((record).blks_read),min((record).blks_hit),
                 min((record).vacuum_count),min((record).autovacuum_count),
                 min((record).analyze_count),min((record).autoanalyze_count)
-            )::powa_all_relations_history_db_record,
+            )::@extschema@.powa_all_relations_history_db_record,
             ROW(max((record).ts),
                 max((record).seq_scan),max((record).idx_scan),
                 max((record).tup_returned),max((record).tup_fetched),
@@ -3207,31 +3219,32 @@ BEGIN
                 max((record).blks_read),max((record).blks_hit),
                 max((record).vacuum_count),max((record).autovacuum_count),
                 max((record).analyze_count),max((record).autoanalyze_count)
-            )::powa_all_relations_history_db_record
-        FROM powa_all_relations_history_current_db
+            )::@extschema@.powa_all_relations_history_db_record
+        FROM @extschema@.powa_all_relations_history_current_db
         WHERE srvid = _srvid
         GROUP BY srvid, dbid;
 
     GET DIAGNOSTICS v_rowcount = ROW_COUNT;
-    perform powa_log(format('%I (powa_all_relations_history_db) - rowcount: %s',
+    PERFORM @extschema@.powa_log(format('%s (powa_all_relations_history_db) - rowcount: %s',
             v_funcname, v_rowcount));
 
-    DELETE FROM powa_all_relations_history_current_db WHERE srvid = _srvid;
+    DELETE FROM @extschema@.powa_all_relations_history_current_db WHERE srvid = _srvid;
  END;
 $PROC$ LANGUAGE plpgsql; /* end of powa_all_relations_aggregate */
 
-CREATE OR REPLACE FUNCTION powa_stat_bgwriter_aggregate(_srvid integer)
+CREATE OR REPLACE FUNCTION @extschema@.powa_stat_bgwriter_aggregate(_srvid integer)
 RETURNS void AS $PROC$
 DECLARE
-    v_funcname    text := 'powa_stat_bgwriter_aggregate(' || _srvid || ')';
+    v_funcname    text := format('@extschema@.%I(%s)',
+                                 'powa_stat_bgwriter_aggregate', _srvid);
     v_rowcount    bigint;
 BEGIN
-    PERFORM powa_log(format('running %I', v_funcname));
+    PERFORM @extschema@.powa_log(format('running %s', v_funcname));
 
-    PERFORM powa_prevent_concurrent_snapshot(_srvid);
+    PERFORM @extschema@.powa_prevent_concurrent_snapshot(_srvid);
 
     -- aggregate bgwriter table
-    INSERT INTO public.powa_stat_bgwriter_history
+    INSERT INTO @extschema@.powa_stat_bgwriter_history
         SELECT srvid,
             tstzrange(min((record).ts), max((record).ts),'[]'),
             array_agg(record),
@@ -3245,7 +3258,7 @@ BEGIN
                 min((record).maxwritten_clean),
                 min((record).buffers_backend),
                 min((record).buffers_backend_fsync),
-                min((record).buffers_alloc))::powa_stat_bgwriter_history_record,
+                min((record).buffers_alloc))::@extschema@.powa_stat_bgwriter_history_record,
             ROW(max((record).ts),
                 max((record).checkpoints_timed),
                 max((record).checkpoints_req),
@@ -3256,20 +3269,20 @@ BEGIN
                 max((record).maxwritten_clean),
                 max((record).buffers_backend),
                 max((record).buffers_backend_fsync),
-                max((record).buffers_alloc))::powa_stat_bgwriter_history_record
-        FROM powa_stat_bgwriter_history_current
+                max((record).buffers_alloc))::@extschema@.powa_stat_bgwriter_history_record
+        FROM @extschema@.powa_stat_bgwriter_history_current
         WHERE srvid = _srvid
         GROUP BY srvid;
 
     GET DIAGNOSTICS v_rowcount = ROW_COUNT;
-    perform powa_log(format('%I - rowcount: %s',
+    PERFORM @extschema@.powa_log(format('%s - rowcount: %s',
             v_funcname, v_rowcount));
 
-    DELETE FROM powa_stat_bgwriter_history_current WHERE srvid = _srvid;
+    DELETE FROM @extschema@.powa_stat_bgwriter_history_current WHERE srvid = _srvid;
  END;
 $PROC$ LANGUAGE plpgsql; /* end of powa_stat_bgwriter_aggregate */
 
-CREATE OR REPLACE FUNCTION public.powa_reset(_srvid integer)
+CREATE OR REPLACE FUNCTION @extschema@.powa_reset(_srvid integer)
  RETURNS boolean
  LANGUAGE plpgsql
 AS $function$
@@ -3284,13 +3297,13 @@ BEGIN
     -- Find reset function for every supported datasource, including pgss
     -- Also call reset function even if they're not enabled
     FOR funcname IN SELECT function_name
-                 FROM powa_functions
+                 FROM @extschema@.powa_functions
                  WHERE operation='reset'
                  AND srvid = _srvid
                  ORDER BY module LOOP
       -- Call all of them, for the current srvid
       BEGIN
-          EXECUTE format('SELECT %I(%s)', funcname, _srvid);
+          EXECUTE format('SELECT @extschema@.%I(%s)', funcname, _srvid);
       EXCEPTION
         WHEN OTHERS THEN
           GET STACKED DIAGNOSTICS
@@ -3299,13 +3312,13 @@ BEGIN
               v_detail  = PG_EXCEPTION_DETAIL,
               v_hint    = PG_EXCEPTION_HINT,
               v_context = PG_EXCEPTION_CONTEXT;
-          RAISE warning 'powa_reset(): function "%(%)" failed:
+          RAISE warning 'powa_reset(): function "@extschema@.%(%)" failed:
               state  : %
               message: %
               detail : %
               hint   : %
               context: %',
-              _srvid, funcname, v_state, v_msg, v_detail, v_hint, v_context;
+              funcname, _srvid, v_state, v_msg, v_detail, v_hint, v_context;
 
       END;
     END LOOP;
@@ -3313,89 +3326,89 @@ BEGIN
 END;
 $function$; /* end of powa_reset */
 
-CREATE OR REPLACE FUNCTION public.powa_statements_reset(_srvid integer)
+CREATE OR REPLACE FUNCTION @extschema@.powa_statements_reset(_srvid integer)
  RETURNS boolean
  LANGUAGE plpgsql
 AS $function$
 BEGIN
-    PERFORM public.powa_log('Resetting powa_statements_history(' || _srvid || ')');
-    DELETE FROM public.powa_statements_history WHERE srvid = _srvid;
+    PERFORM @extschema@.powa_log('Resetting powa_statements_history(' || _srvid || ')');
+    DELETE FROM @extschema@.powa_statements_history WHERE srvid = _srvid;
 
-    PERFORM public.powa_log('Resetting powa_statements_history_current(' || _srvid || ')');
-    DELETE FROM public.powa_statements_history_current WHERE srvid = _srvid;
+    PERFORM @extschema@.powa_log('Resetting powa_statements_history_current(' || _srvid || ')');
+    DELETE FROM @extschema@.powa_statements_history_current WHERE srvid = _srvid;
 
-    PERFORM public.powa_log('Resetting powa_statements_history_db(' || _srvid || ')');
-    DELETE FROM public.powa_statements_history_db WHERE srvid = _srvid;
+    PERFORM @extschema@.powa_log('Resetting powa_statements_history_db(' || _srvid || ')');
+    DELETE FROM @extschema@.powa_statements_history_db WHERE srvid = _srvid;
 
-    PERFORM public.powa_log('Resetting powa_statements_history_current_db(' || _srvid || ')');
-    DELETE FROM public.powa_statements_history_current_db WHERE srvid = _srvid;
+    PERFORM @extschema@.powa_log('Resetting powa_statements_history_current_db(' || _srvid || ')');
+    DELETE FROM @extschema@.powa_statements_history_current_db WHERE srvid = _srvid;
 
-    PERFORM public.powa_log('Resetting powa_statements_src_tmp(' || _srvid || ')');
-    DELETE FROM public.powa_statements_src_tmp WHERE srvid = _srvid;
+    PERFORM @extschema@.powa_log('Resetting powa_statements_src_tmp(' || _srvid || ')');
+    DELETE FROM @extschema@.powa_statements_src_tmp WHERE srvid = _srvid;
 
     -- if 3rd part datasource has FK on it, throw everything away
-    DELETE FROM public.powa_statements WHERE srvid = _srvid;
-    PERFORM public.powa_log('Resetting powa_statements(' || _srvid || ')');
+    DELETE FROM @extschema@.powa_statements WHERE srvid = _srvid;
+    PERFORM @extschema@.powa_log('Resetting powa_statements(' || _srvid || ')');
 
     RETURN true;
 END;
 $function$; /* end of powa_statements_reset */
 
-CREATE OR REPLACE FUNCTION public.powa_user_functions_reset(_srvid integer)
+CREATE OR REPLACE FUNCTION @extschema@.powa_user_functions_reset(_srvid integer)
  RETURNS boolean
  LANGUAGE plpgsql
 AS $function$
 BEGIN
-    PERFORM public.powa_log('Resetting powa_user_functions_history(' || _srvid || ')');
-    DELETE FROM public.powa_user_functions_history WHERE srvid = _srvid;
+    PERFORM @extschema@.powa_log('Resetting powa_user_functions_history(' || _srvid || ')');
+    DELETE FROM @extschema@.powa_user_functions_history WHERE srvid = _srvid;
 
-    PERFORM public.powa_log('Resetting powa_user_functions_history_current(' || _srvid || ')');
-    DELETE FROM public.powa_user_functions_history_current WHERE srvid = _srvid;
+    PERFORM @extschema@.powa_log('Resetting powa_user_functions_history_current(' || _srvid || ')');
+    DELETE FROM @extschema@.powa_user_functions_history_current WHERE srvid = _srvid;
 
-    PERFORM public.powa_log('Resetting powa_user_functions_src_tmp(' || _srvid || ')');
-    DELETE FROM public.powa_user_functions_src_tmp WHERE srvid = _srvid;
+    PERFORM @extschema@.powa_log('Resetting powa_user_functions_src_tmp(' || _srvid || ')');
+    DELETE FROM @extschema@.powa_user_functions_src_tmp WHERE srvid = _srvid;
 
     RETURN true;
 END;
 $function$; /* end of powa_user_functions_reset */
 
-CREATE OR REPLACE FUNCTION public.powa_all_relations_reset(_srvid integer)
+CREATE OR REPLACE FUNCTION @extschema@.powa_all_relations_reset(_srvid integer)
  RETURNS boolean
  LANGUAGE plpgsql
 AS $function$
 BEGIN
-    PERFORM public.powa_log('Resetting powa_all_relations_history(' || _srvid || ')');
-    DELETE FROM public.powa_all_relations_history WHERE srvid = _srvid;
+    PERFORM @extschema@.powa_log('Resetting powa_all_relations_history(' || _srvid || ')');
+    DELETE FROM @extschema@.powa_all_relations_history WHERE srvid = _srvid;
 
-    PERFORM public.powa_log('Resetting powa_all_relations_history_db(' || _srvid || ')');
-    DELETE FROM public.powa_all_relations_history_db WHERE srvid = _srvid;
+    PERFORM @extschema@.powa_log('Resetting powa_all_relations_history_db(' || _srvid || ')');
+    DELETE FROM @extschema@.powa_all_relations_history_db WHERE srvid = _srvid;
 
-    PERFORM public.powa_log('Resetting powa_all_relations_history_current(' || _srvid || ')');
-    DELETE FROM public.powa_all_relations_history_current WHERE srvid = _srvid;
+    PERFORM @extschema@.powa_log('Resetting powa_all_relations_history_current(' || _srvid || ')');
+    DELETE FROM @extschema@.powa_all_relations_history_current WHERE srvid = _srvid;
 
-    PERFORM public.powa_log('Resetting powa_all_relations_history_current_db(' || _srvid || ')');
-    DELETE FROM public.powa_all_relations_history_current_db WHERE srvid = _srvid;
+    PERFORM @extschema@.powa_log('Resetting powa_all_relations_history_current_db(' || _srvid || ')');
+    DELETE FROM @extschema@.powa_all_relations_history_current_db WHERE srvid = _srvid;
 
-    PERFORM public.powa_log('Resetting powa_all_relations_src_tmp(' || _srvid || ')');
-    DELETE FROM public.powa_all_relations_src_tmp WHERE srvid = _srvid;
+    PERFORM @extschema@.powa_log('Resetting powa_all_relations_src_tmp(' || _srvid || ')');
+    DELETE FROM @extschema@.powa_all_relations_src_tmp WHERE srvid = _srvid;
 
     RETURN true;
 END;
 $function$; /* end of powa_all_relations_reset */
 
-CREATE OR REPLACE FUNCTION public.powa_stat_bgwriter_reset(_srvid integer)
+CREATE OR REPLACE FUNCTION @extschema@.powa_stat_bgwriter_reset(_srvid integer)
  RETURNS boolean
  LANGUAGE plpgsql
 AS $function$
 BEGIN
-    PERFORM public.powa_log('Resetting powa_stat_bgwriter_history(' || _srvid || ')');
-    DELETE FROM public.powa_stat_bgwriter_history WHERE srvid = _srvid;
+    PERFORM @extschema@.powa_log('Resetting powa_stat_bgwriter_history(' || _srvid || ')');
+    DELETE FROM @extschema@.powa_stat_bgwriter_history WHERE srvid = _srvid;
 
-    PERFORM public.powa_log('Resetting powa_stat_bgwriter_history_current(' || _srvid || ')');
-    DELETE FROM public.powa_stat_bgwriter_history_current WHERE srvid = _srvid;
+    PERFORM @extschema@.powa_log('Resetting powa_stat_bgwriter_history_current(' || _srvid || ')');
+    DELETE FROM @extschema@.powa_stat_bgwriter_history_current WHERE srvid = _srvid;
 
-    PERFORM public.powa_log('Resetting powa_stat_bgwriter_src_tmp(' || _srvid || ')');
-    DELETE FROM public.powa_stat_bgwriter_src_tmp WHERE srvid = _srvid;
+    PERFORM @extschema@.powa_log('Resetting powa_stat_bgwriter_src_tmp(' || _srvid || ')');
+    DELETE FROM @extschema@.powa_stat_bgwriter_src_tmp WHERE srvid = _srvid;
 
     RETURN true;
 END;
@@ -3406,7 +3419,7 @@ $function$; /* end of powa_stat_bgwriter_reset */
 /*
  * register pg_stat_kcache extension
  */
-CREATE OR REPLACE function public.powa_kcache_register(_srvid integer = 0) RETURNS bool AS
+CREATE OR REPLACE function @extschema@.powa_kcache_register(_srvid integer = 0) RETURNS bool AS
 $_$
 DECLARE
     v_func_present bool;
@@ -3423,14 +3436,14 @@ BEGIN
 
     IF ( v_ext_present ) THEN
         SELECT COUNT(*) > 0 INTO v_func_present
-        FROM public.powa_functions
+        FROM @extschema@.powa_functions
         WHERE module = 'pg_stat_kcache'
         AND srvid = _srvid;
 
         IF ( NOT v_func_present) THEN
-            PERFORM powa_log('registering pg_stat_kcache');
+            PERFORM @extschema@.powa_log('registering pg_stat_kcache');
 
-            INSERT INTO public.powa_functions (srvid, extname, module, operation, function_name, query_source, added_manually, enabled, priority)
+            INSERT INTO @extschema@.powa_functions (srvid, extname, module, operation, function_name, query_source, added_manually, enabled, priority)
             VALUES (_srvid, 'pg_stat_kcache', 'pg_stat_kcache', 'snapshot',   'powa_kcache_snapshot',   'powa_kcache_src', true, true, -1),
                    (_srvid, 'pg_stat_kcache', 'pg_stat_kcache', 'aggregate',  'powa_kcache_aggregate',  NULL,              true, true, default),
                    (_srvid, 'pg_stat_kcache', 'pg_stat_kcache', 'unregister', 'powa_kcache_unregister', NULL,              true, true, default),
@@ -3447,11 +3460,11 @@ language plpgsql; /* end of powa_kcache_register */
 /*
  * unregister pg_stat_kcache extension
  */
-CREATE OR REPLACE function public.powa_kcache_unregister(_srvid integer = 0) RETURNS bool AS
+CREATE OR REPLACE function @extschema@.powa_kcache_unregister(_srvid integer = 0) RETURNS bool AS
 $_$
 BEGIN
-    PERFORM powa_log('unregistering pg_stat_kcache');
-    DELETE FROM public.powa_functions
+    PERFORM @extschema@.powa_log('unregistering pg_stat_kcache');
+    DELETE FROM @extschema@.powa_functions
     WHERE module = 'pg_stat_kcache'
     AND srvid = _srvid;
     RETURN true;
@@ -3459,7 +3472,7 @@ END;
 $_$
 language plpgsql; /* end of powa_kcache_unregister */
 
-CREATE OR REPLACE FUNCTION powa_kcache_src(IN _srvid integer,
+CREATE OR REPLACE FUNCTION @extschema@.powa_kcache_src(IN _srvid integer,
     OUT ts timestamp with time zone,
     OUT queryid bigint, OUT top bool, OUT userid oid, OUT dbid oid,
     OUT plan_reads bigint, OUT plan_writes bigint,
@@ -3504,9 +3517,9 @@ BEGIN
             FROM pg_stat_kcache() k
             JOIN pg_roles r ON r.oid = k.userid
             WHERE NOT (r.rolname = ANY (string_to_array(
-                        powa_get_guc('powa.ignored_users', ''),
+                        @extschema@.powa_get_guc('powa.ignored_users', ''),
                         ',')))
-            AND k.dbid NOT IN (SELECT oid FROM powa_databases WHERE dropped IS NOT NULL);
+            AND k.dbid NOT IN (SELECT oid FROM @extschema@.powa_databases WHERE dropped IS NOT NULL);
         ELSE
             RETURN QUERY SELECT now(),
                 k.queryid, 'true'::bool as top, k.userid, k.dbid,
@@ -3528,9 +3541,9 @@ BEGIN
             FROM pg_stat_kcache() k
             JOIN pg_roles r ON r.oid = k.userid
             WHERE NOT (r.rolname = ANY (string_to_array(
-                        powa_get_guc('powa.ignored_users', ''),
+                        @extschema@.powa_get_guc('powa.ignored_users', ''),
                         ',')))
-            AND k.dbid NOT IN (SELECT oid FROM powa_databases WHERE dropped IS NOT NULL);
+            AND k.dbid NOT IN (SELECT oid FROM @extschema@.powa_databases WHERE dropped IS NOT NULL);
         END IF;
     ELSE
         RETURN QUERY SELECT k.ts,
@@ -3545,7 +3558,7 @@ BEGIN
             k.exec_minflts, k.exec_majflts, k.exec_nswaps,
             k.exec_msgsnds, k.exec_msgrcvs, k.exec_nsignals,
             k.exec_nvcsws, k.exec_nivcsws
-        FROM powa_kcache_src_tmp k
+        FROM @extschema@.powa_kcache_src_tmp k
         WHERE k.srvid = _srvid;
     END IF;
 END;
@@ -3554,23 +3567,24 @@ $PROC$ LANGUAGE plpgsql; /* end of powa_kcache_src */
 /*
  * powa_kcache snapshot collection.
  */
-CREATE OR REPLACE FUNCTION powa_kcache_snapshot(_srvid integer) RETURNS void as $PROC$
+CREATE OR REPLACE FUNCTION @extschema@.powa_kcache_snapshot(_srvid integer) RETURNS void as $PROC$
 DECLARE
   result bool;
-    v_funcname    text := 'powa_kcache_snapshot';
+    v_funcname    text := format('@extschema@.%I(%s)',
+                                 'powa_kcache_snapshot', _srvid);
     v_rowcount    bigint;
 BEGIN
-    PERFORM powa_log(format('running %I', v_funcname));
+    PERFORM @extschema@.powa_log(format('running %s', v_funcname));
 
-    PERFORM powa_prevent_concurrent_snapshot(_srvid);
+    PERFORM @extschema@.powa_prevent_concurrent_snapshot(_srvid);
 
     WITH capture AS (
         SELECT *
-        FROM powa_kcache_src(_srvid)
+        FROM @extschema@.powa_kcache_src(_srvid)
     ),
 
     by_query AS (
-        INSERT INTO public.powa_kcache_metrics_current (srvid, queryid, top, dbid, userid, metrics)
+        INSERT INTO @extschema@.powa_kcache_metrics_current (srvid, queryid, top, dbid, userid, metrics)
             SELECT _srvid, queryid, top, dbid, userid,
               (ts,
                plan_reads, plan_writes, plan_user_time, plan_system_time,
@@ -3581,12 +3595,12 @@ BEGIN
                exec_minflts, exec_majflts, exec_nswaps,
                exec_msgsnds, exec_msgrcvs, exec_nsignals,
                exec_nvcsws, exec_nivcsws
-        )::powa_kcache_type
+        )::@extschema@.powa_kcache_type
             FROM capture
     ),
 
     by_database AS (
-        INSERT INTO public.powa_kcache_metrics_current_db (srvid, top, dbid, metrics)
+        INSERT INTO @extschema@.powa_kcache_metrics_current_db (srvid, top, dbid, metrics)
             SELECT _srvid AS srvid, top, dbid,
               (ts,
                sum(plan_reads), sum(plan_writes),
@@ -3599,7 +3613,7 @@ BEGIN
                sum(exec_minflts), sum(exec_majflts), sum(exec_nswaps),
                sum(exec_msgsnds), sum(exec_msgrcvs), sum(exec_nsignals),
                sum(exec_nvcsws), sum(exec_nivcsws)
-              )::powa_kcache_type
+              )::@extschema@.powa_kcache_type
             FROM capture
             GROUP BY ts, srvid, top, dbid
     )
@@ -3607,11 +3621,11 @@ BEGIN
     SELECT COUNT(*) into v_rowcount
     FROM capture;
 
-    perform powa_log(format('%I - rowcount: %s',
+    PERFORM @extschema@.powa_log(format('%s - rowcount: %s',
             v_funcname, v_rowcount));
 
     IF (_srvid != 0) THEN
-        DELETE FROM powa_kcache_src_tmp WHERE srvid = _srvid;
+        DELETE FROM @extschema@.powa_kcache_src_tmp WHERE srvid = _srvid;
     END IF;
 
     result := true;
@@ -3621,19 +3635,20 @@ $PROC$ language plpgsql; /* end of powa_kcache_snapshot */
 /*
  * powa_kcache aggregation
  */
-CREATE OR REPLACE FUNCTION powa_kcache_aggregate(_srvid integer)
+CREATE OR REPLACE FUNCTION @extschema@.powa_kcache_aggregate(_srvid integer)
 RETURNS void AS $PROC$
 DECLARE
     result     bool;
-    v_funcname text := 'powa_kcache_aggregate(' || _srvid || ')';
+    v_funcname text := format('@extschema@.%I(%s)',
+                              'powa_kcache_aggregate', _srvid);
     v_rowcount bigint;
 BEGIN
-    PERFORM powa_log(format('running %I', v_funcname));
+    PERFORM @extschema@.powa_log(format('running %s', v_funcname));
 
-    PERFORM powa_prevent_concurrent_snapshot(_srvid);
+    PERFORM @extschema@.powa_prevent_concurrent_snapshot(_srvid);
 
     -- aggregate metrics table
-    INSERT INTO public.powa_kcache_metrics (coalesce_range, srvid, queryid,
+    INSERT INTO @extschema@.powa_kcache_metrics (coalesce_range, srvid, queryid,
                                             top, dbid, userid, metrics,
                                             mins_in_range, maxs_in_range)
         SELECT tstzrange(min((metrics).ts), max((metrics).ts),'[]'),
@@ -3653,7 +3668,7 @@ BEGIN
             min((metrics).exec_msgsnds), min((metrics).exec_msgrcvs),
             min((metrics).exec_nsignals),
             min((metrics).exec_nvcsws), min((metrics).exec_nivcsws)
-        )::powa_kcache_type,
+        )::@extschema@.powa_kcache_type,
         ROW(max((metrics).ts),
             max((metrics).plan_reads), max((metrics).plan_writes),
             max((metrics).plan_user_time), max((metrics).plan_system_time),
@@ -3669,19 +3684,19 @@ BEGIN
             max((metrics).exec_msgsnds), max((metrics).exec_msgrcvs),
             max((metrics).exec_nsignals),
             max((metrics).exec_nvcsws), max((metrics).exec_nivcsws)
-        )::powa_kcache_type
-        FROM powa_kcache_metrics_current
+        )::@extschema@.powa_kcache_type
+        FROM @extschema@.powa_kcache_metrics_current
         WHERE srvid = _srvid
         GROUP BY srvid, queryid, top, dbid, userid;
 
     GET DIAGNOSTICS v_rowcount = ROW_COUNT;
-    perform powa_log(format('%I (powa_kcache_metrics) - rowcount: %s',
+    PERFORM @extschema@.powa_log(format('%s (powa_kcache_metrics) - rowcount: %s',
             v_funcname, v_rowcount));
 
-    DELETE FROM powa_kcache_metrics_current WHERE srvid = _srvid;
+    DELETE FROM @extschema@.powa_kcache_metrics_current WHERE srvid = _srvid;
 
     -- aggregate metrics_db table
-    INSERT INTO public.powa_kcache_metrics_db (srvid, coalesce_range, dbid,
+    INSERT INTO @extschema@.powa_kcache_metrics_db (srvid, coalesce_range, dbid,
                                                top, metrics,
                                                mins_in_range, maxs_in_range)
         SELECT srvid, tstzrange(min((metrics).ts), max((metrics).ts),'[]'),
@@ -3701,7 +3716,7 @@ BEGIN
             min((metrics).exec_msgsnds), min((metrics).exec_msgrcvs),
             min((metrics).exec_nsignals),
             min((metrics).exec_nvcsws), min((metrics).exec_nivcsws)
-        )::powa_kcache_type,
+        )::@extschema@.powa_kcache_type,
         ROW(max((metrics).ts),
             max((metrics).plan_reads), max((metrics).plan_writes),
             max((metrics).plan_user_time), max((metrics).plan_system_time),
@@ -3717,50 +3732,51 @@ BEGIN
             max((metrics).exec_msgsnds), max((metrics).exec_msgrcvs),
             max((metrics).exec_nsignals),
             max((metrics).exec_nvcsws), max((metrics).exec_nivcsws)
-        )::powa_kcache_type
-        FROM powa_kcache_metrics_current_db
+        )::@extschema@.powa_kcache_type
+        FROM @extschema@.powa_kcache_metrics_current_db
         WHERE srvid = _srvid
         GROUP BY srvid, dbid, top;
 
     GET DIAGNOSTICS v_rowcount = ROW_COUNT;
-    perform powa_log(format('%I (powa_kcache_metrics_db) - rowcount: %s',
+    PERFORM @extschema@.powa_log(format('%s (powa_kcache_metrics_db) - rowcount: %s',
             v_funcname, v_rowcount));
 
-    DELETE FROM powa_kcache_metrics_current_db WHERE srvid = _srvid;
+    DELETE FROM @extschema@.powa_kcache_metrics_current_db WHERE srvid = _srvid;
 END
 $PROC$ language plpgsql; /* end of powa_kcache_aggregate */
 
 /*
  * powa_kcache purge
  */
-CREATE OR REPLACE FUNCTION powa_kcache_purge(_srvid integer)
+CREATE OR REPLACE FUNCTION @extschema@.powa_kcache_purge(_srvid integer)
 RETURNS void as $PROC$
 DECLARE
-    v_funcname    text := 'powa_kcache_purge(' || _srvid || ')';
+    v_funcname    text := format('@extschema@.%I(%s)',
+                                 'powa_kcache_purge', _srvid);
     v_rowcount    bigint;
     v_retention   interval;
 BEGIN
-    PERFORM powa_log(format('running %I', v_funcname));
+    PERFORM @extschema@.powa_log(format('running %s', v_funcname));
 
-    PERFORM powa_prevent_concurrent_snapshot(_srvid);
+    PERFORM @extschema@.powa_prevent_concurrent_snapshot(_srvid);
 
-    SELECT powa_get_server_retention(_srvid) INTO v_retention;
+    SELECT @extschema@.powa_get_server_retention(_srvid) INTO v_retention;
 
     -- Delete obsolete datas. We only bother with already coalesced data
-    DELETE FROM powa_kcache_metrics
+    DELETE FROM @extschema@.powa_kcache_metrics
     WHERE upper(coalesce_range) < (now() - v_retention)
     AND srvid = _srvid;
 
     GET DIAGNOSTICS v_rowcount = ROW_COUNT;
-    perform powa_log(format('%I (powa_kcache_metrics) - rowcount: %s',
+    PERFORM @extschema@.powa_log(format('%s (powa_kcache_metrics) - rowcount: %s',
             v_funcname, v_rowcount));
 
-    DELETE FROM powa_kcache_metrics_db
+    DELETE FROM @extschema@.powa_kcache_metrics_db
     WHERE upper(coalesce_range) < (now() - v_retention)
     AND srvid = _srvid;
 
     GET DIAGNOSTICS v_rowcount = ROW_COUNT;
-    perform powa_log(format('%I (powa_kcache_metrics_db) - rowcount: %s',
+    PERFORM @extschema@.powa_log(format('%s (powa_kcache_metrics_db) - rowcount: %s',
             v_funcname, v_rowcount));
 END;
 $PROC$ language plpgsql; /* end of powa_kcache_purge */
@@ -3768,33 +3784,34 @@ $PROC$ language plpgsql; /* end of powa_kcache_purge */
 /*
  * powa_kcache reset
  */
-CREATE OR REPLACE FUNCTION powa_kcache_reset(_srvid integer)
+CREATE OR REPLACE FUNCTION @extschema@.powa_kcache_reset(_srvid integer)
 RETURNS void as $PROC$
 DECLARE
-    v_funcname    text := 'powa_kcache_reset(' || _srvid || ')';
+    v_funcname    text := format('@extschema@.%I(%s)',
+                                 'powa_kcache_reset', _srvid);
     v_rowcount    bigint;
 BEGIN
-    PERFORM public.powa_log(format('running %I', v_funcname));
+    PERFORM @extschema@.powa_log(format('running %s', v_funcname));
 
-    PERFORM public.powa_log('resetting powa_kcache_metrics(' || _srvid || ')');
-    DELETE FROM public.powa_kcache_metrics WHERE srvid = _srvid;
+    PERFORM @extschema@.powa_log('resetting @extschema@.powa_kcache_metrics(' || _srvid || ')');
+    DELETE FROM @extschema@.powa_kcache_metrics WHERE srvid = _srvid;
 
-    PERFORM public.powa_log('resetting powa_kcache_metrics_db(' || _srvid || ')');
-    DELETE FROM public.powa_kcache_metrics_db WHERE srvid = _srvid;
+    PERFORM @extschema@.powa_log('resetting @extschema@.powa_kcache_metrics_db(' || _srvid || ')');
+    DELETE FROM @extschema@.powa_kcache_metrics_db WHERE srvid = _srvid;
 
-    PERFORM public.powa_log('resetting powa_kcache_metrics_current(' || _srvid || ')');
-    DELETE FROM public.powa_kcache_metrics_current WHERE srvid = _srvid;
+    PERFORM @extschema@.powa_log('resetting @extschema@.powa_kcache_metrics_current(' || _srvid || ')');
+    DELETE FROM @extschema@.powa_kcache_metrics_current WHERE srvid = _srvid;
 
-    PERFORM public.powa_log('resetting powa_kcache_metrics_current_db(' || _srvid || ')');
-    DELETE FROM public.powa_kcache_metrics_current_db WHERE srvid = _srvid;
+    PERFORM @extschema@.powa_log('resetting @extschema@.powa_kcache_metrics_current_db(' || _srvid || ')');
+    DELETE FROM @extschema@.powa_kcache_metrics_current_db WHERE srvid = _srvid;
 
-    PERFORM public.powa_log('resetting powa_kcache_src_tmp(' || _srvid || ')');
-    DELETE FROM public.powa_kcache_src_tmp WHERE srvid = _srvid;
+    PERFORM @extschema@.powa_log('resetting @extschema@.powa_kcache_src_tmp(' || _srvid || ')');
+    DELETE FROM @extschema@.powa_kcache_src_tmp WHERE srvid = _srvid;
 END;
 $PROC$ language plpgsql; /* end of powa_kcache_reset */
 
 -- By default, try to register pg_stat_kcache, in case it's alreay here
-SELECT * FROM public.powa_activate_extension(0, 'pg_stat_kcache');
+SELECT * FROM @extschema@.powa_activate_extension(0, 'pg_stat_kcache');
 
 /* end of pg_stat_kcache integration - part 2 */
 
@@ -3803,7 +3820,7 @@ SELECT * FROM public.powa_activate_extension(0, 'pg_stat_kcache');
 /*
  * powa_qualstats_register
  */
-CREATE OR REPLACE function public.powa_qualstats_register(_srvid integer = 0) RETURNS bool AS
+CREATE OR REPLACE function @extschema@.powa_qualstats_register(_srvid integer = 0) RETURNS bool AS
 $_$
 DECLARE
     v_func_present bool;
@@ -3819,14 +3836,14 @@ BEGIN
 
     IF ( v_ext_present) THEN
         SELECT COUNT(*) > 0 INTO v_func_present
-        FROM public.powa_functions
+        FROM @extschema@.powa_functions
         WHERE module = 'pg_qualstats'
         AND srvid = _srvid;
 
         IF ( NOT v_func_present) THEN
-            PERFORM powa_log('registering pg_qualstats');
+            PERFORM @extschema@.powa_log('registering pg_qualstats');
 
-            INSERT INTO public.powa_functions (srvid, extname, module, operation, function_name, query_source, query_cleanup, added_manually, enabled)
+            INSERT INTO @extschema@.powa_functions (srvid, extname, module, operation, function_name, query_source, query_cleanup, added_manually, enabled)
             VALUES (_srvid, 'pg_qualstats', 'pg_qualstats', 'snapshot',   'powa_qualstats_snapshot',   'powa_qualstats_src', 'SELECT pg_qualstats_reset()', true, true),
                    (_srvid, 'pg_qualstats', 'pg_qualstats', 'aggregate',  'powa_qualstats_aggregate',  NULL,                 NULL,                          true, true),
                    (_srvid, 'pg_qualstats', 'pg_qualstats', 'unregister', 'powa_qualstats_unregister', NULL,                 NULL,                          true, true),
@@ -3843,7 +3860,7 @@ language plpgsql; /* end of powa_qualstats_register */
 /*
  * powa_qualstats utility SRF for aggregating constvalues
  */
-CREATE OR REPLACE FUNCTION powa_qualstats_aggregate_constvalues_current(
+CREATE OR REPLACE FUNCTION @extschema@.powa_qualstats_aggregate_constvalues_current(
     IN _srvid integer,
     IN _ts_from timestamptz DEFAULT '-infinity'::timestamptz,
     IN _ts_to timestamptz DEFAULT 'infinity'::timestamptz,
@@ -3853,23 +3870,23 @@ CREATE OR REPLACE FUNCTION powa_qualstats_aggregate_constvalues_current(
     OUT dbid oid,
     OUT userid oid,
     OUT tstzrange tstzrange,
-    OUT mu qual_values[],
-    OUT mf qual_values[],
-    OUT lf qual_values[],
-    OUT me qual_values[],
-    OUT mer qual_values[],
-    OUT men qual_values[])
+    OUT mu @extschema@.qual_values[],
+    OUT mf @extschema@.qual_values[],
+    OUT lf @extschema@.qual_values[],
+    OUT me @extschema@.qual_values[],
+    OUT mer @extschema@.qual_values[],
+    OUT men @extschema@.qual_values[])
 RETURNS SETOF record STABLE AS $_$
 SELECT
     -- Ordered aggregate of top 20 metrics for each kind of stats (most executed, most filetered, least filtered...)
     srvid, qualid, queryid, dbid, userid,
     tstzrange(min(min_constvalues_ts) , max(max_constvalues_ts) ,'[]') ,
-    array_agg((constvalues, sum_occurences, sum_execution_count, sum_nbfiltered, avg_mean_err_estimate_ratio, avg_mean_err_estimate_num)::qual_values ORDER BY occurences_rank ASC) FILTER (WHERE occurences_rank <=20)  mu,
-    array_agg((constvalues, sum_occurences, sum_execution_count, sum_nbfiltered, avg_mean_err_estimate_ratio, avg_mean_err_estimate_num)::qual_values ORDER BY filtered_rank ASC) FILTER (WHERE filtered_rank <=20)  mf,
-    array_agg((constvalues, sum_occurences, sum_execution_count, sum_nbfiltered, avg_mean_err_estimate_ratio, avg_mean_err_estimate_num)::qual_values ORDER BY filtered_rank DESC) FILTER (WHERE filtered_rank >= nb_lines - 20)  lf, -- Keep last 20 lines from the same window function
-    array_agg((constvalues, sum_occurences, sum_execution_count, sum_nbfiltered, avg_mean_err_estimate_ratio, avg_mean_err_estimate_num)::qual_values ORDER BY execution_rank ASC) FILTER (WHERE execution_rank <=20)  me,
-    array_agg((constvalues, sum_occurences, sum_execution_count, sum_nbfiltered, avg_mean_err_estimate_ratio, avg_mean_err_estimate_num)::qual_values ORDER BY err_estimate_ratio_rank ASC) FILTER (WHERE err_estimate_ratio_rank <=20)  mer,
-    array_agg((constvalues, sum_occurences, sum_execution_count, sum_nbfiltered, avg_mean_err_estimate_ratio, avg_mean_err_estimate_num)::qual_values ORDER BY err_estimate_num_rank ASC) FILTER (WHERE err_estimate_num_rank <=20)  men
+    array_agg((constvalues, sum_occurences, sum_execution_count, sum_nbfiltered, avg_mean_err_estimate_ratio, avg_mean_err_estimate_num)::@extschema@.qual_values ORDER BY occurences_rank ASC) FILTER (WHERE occurences_rank <=20)  mu,
+    array_agg((constvalues, sum_occurences, sum_execution_count, sum_nbfiltered, avg_mean_err_estimate_ratio, avg_mean_err_estimate_num)::@extschema@.qual_values ORDER BY filtered_rank ASC) FILTER (WHERE filtered_rank <=20)  mf,
+    array_agg((constvalues, sum_occurences, sum_execution_count, sum_nbfiltered, avg_mean_err_estimate_ratio, avg_mean_err_estimate_num)::@extschema@.qual_values ORDER BY filtered_rank DESC) FILTER (WHERE filtered_rank >= nb_lines - 20)  lf, -- Keep last 20 lines from the same window function
+    array_agg((constvalues, sum_occurences, sum_execution_count, sum_nbfiltered, avg_mean_err_estimate_ratio, avg_mean_err_estimate_num)::@extschema@.qual_values ORDER BY execution_rank ASC) FILTER (WHERE execution_rank <=20)  me,
+    array_agg((constvalues, sum_occurences, sum_execution_count, sum_nbfiltered, avg_mean_err_estimate_ratio, avg_mean_err_estimate_num)::@extschema@.qual_values ORDER BY err_estimate_ratio_rank ASC) FILTER (WHERE err_estimate_ratio_rank <=20)  mer,
+    array_agg((constvalues, sum_occurences, sum_execution_count, sum_nbfiltered, avg_mean_err_estimate_ratio, avg_mean_err_estimate_num)::@extschema@.qual_values ORDER BY err_estimate_num_rank ASC) FILTER (WHERE err_estimate_num_rank <=20)  men
 FROM (
     -- Establish rank for different stats (occurences, execution...) of each constvalues
     SELECT srvid, qualid, queryid, dbid, userid,
@@ -3891,7 +3908,7 @@ FROM (
             sum(execution_count) as sum_execution_count,
             avg(mean_err_estimate_ratio) as avg_mean_err_estimate_ratio,
             avg(mean_err_estimate_num) as avg_mean_err_estimate_num
-        FROM powa_qualstats_constvalues_history_current
+        FROM @extschema@.powa_qualstats_constvalues_history_current
         WHERE srvid = _srvid
           AND ts >= _ts_from AND ts <= _ts_to
         GROUP BY srvid, qualid, queryid, dbid, userid,constvalues
@@ -3902,7 +3919,7 @@ GROUP BY srvid, qualid, queryid, dbid, userid
 ;
 $_$ LANGUAGE sql; /* end of powa_qualstats_aggregate_constvalues_current */
 
-CREATE OR REPLACE FUNCTION powa_qualstats_src(IN _srvid integer,
+CREATE OR REPLACE FUNCTION @extschema@.powa_qualstats_src(IN _srvid integer,
     OUT ts timestamp with time zone,
     OUT uniquequalnodeid bigint,
     OUT dbid oid,
@@ -3915,7 +3932,7 @@ CREATE OR REPLACE FUNCTION powa_qualstats_src(IN _srvid integer,
     OUT mean_err_estimate_num double precision,
     OUT queryid bigint,
     OUT constvalues varchar[],
-    OUT quals qual_type[]
+    OUT quals @extschema@.qual_type[]
 ) RETURNS SETOF record STABLE AS $PROC$
 DECLARE
   is_v2 bool;
@@ -3946,7 +3963,7 @@ BEGIN
                     i.mean_err_estimate_ratio, i.mean_err_estimate_num,
                     i.queryid,
                     array_agg(i.constvalue order by i.constant_position) AS constvalues,
-                    array_agg(ROW(i.relid, i.attnum, i.opno, i.eval_type)::qual_type) AS quals
+                    array_agg(ROW(i.relid, i.attnum, i.opno, i.eval_type)::@extschema@.qual_type) AS quals
                 FROM
                 (
                     SELECT qs.dbid,
@@ -3989,15 +4006,15 @@ BEGIN
                     FROM pg_stat_statements s1
                 UNION
                 SELECT s2.queryid, s2.dbid, s2.userid
-                    FROM powa_statements s2 WHERE s2.srvid = 0
+                    FROM @extschema@.powa_statements s2 WHERE s2.srvid = 0
             ) s USING(queryid, dbid, userid)
         -- we don't gather quals for databases that have been dropped
         JOIN pg_database d ON d.oid = s.dbid
         JOIN pg_roles r ON s.userid = r.oid
           AND NOT (r.rolname = ANY (string_to_array(
-                    powa_get_guc('powa.ignored_users', ''),
+                    @extschema@.powa_get_guc('powa.ignored_users', ''),
                     ',')))
-        WHERE pgqs.dbid NOT IN (SELECT oid FROM powa_databases WHERE dropped IS NOT NULL)
+        WHERE pgqs.dbid NOT IN (SELECT oid FROM @extschema@.powa_databases WHERE dropped IS NOT NULL)
         $sql$, ratio_col, num_col);
         RETURN QUERY EXECUTE sql;
     ELSE
@@ -4007,41 +4024,42 @@ BEGIN
                 pgqs.nbfiltered, pgqs.mean_err_estimate_ratio,
                 pgqs.mean_err_estimate_num, pgqs.queryid, pgqs.constvalues,
                 pgqs.quals
-            FROM powa_qualstats_src_tmp pgqs
+            FROM @extschema@.powa_qualstats_src_tmp pgqs
         WHERE pgqs.srvid = _srvid;
     END IF;
 END;
 $PROC$ LANGUAGE plpgsql; /* end of powa_qualstats_src */
 
-CREATE OR REPLACE FUNCTION powa_qualstats_snapshot(_srvid integer) RETURNS void as $PROC$
+CREATE OR REPLACE FUNCTION @extschema@.powa_qualstats_snapshot(_srvid integer) RETURNS void as $PROC$
 DECLARE
     result     bool;
-    v_funcname text := 'powa_qualstats_snapshot';
+    v_funcname text := format('@extschema.%I(%s)',
+                              'powa_qualstats_snapshot', _srvid);
     v_rowcount bigint;
 BEGIN
-  PERFORM powa_log(format('running %I', v_funcname));
+  PERFORM @extschema@.powa_log(format('running %s', v_funcname));
 
-  PERFORM powa_prevent_concurrent_snapshot(_srvid);
+  PERFORM @extschema@.powa_prevent_concurrent_snapshot(_srvid);
 
   WITH capture AS (
     SELECT *
-    FROM powa_qualstats_src(_srvid) q
+    FROM @extschema@.powa_qualstats_src(_srvid) q
     WHERE EXISTS (SELECT 1
-      FROM powa_statements s
+      FROM @extschema@.powa_statements s
       WHERE s.srvid = _srvid
       AND q.queryid = s.queryid
       AND q.dbid = s.dbid
       AND q.userid = s.userid)
   ),
   missing_quals AS (
-      INSERT INTO public.powa_qualstats_quals (srvid, qualid, queryid, dbid, userid, quals)
+      INSERT INTO @extschema@.powa_qualstats_quals (srvid, qualid, queryid, dbid, userid, quals)
         SELECT DISTINCT _srvid AS srvid, qs.qualnodeid, qs.queryid, qs.dbid, qs.userid,
-          array_agg(DISTINCT q::qual_type)
+          array_agg(DISTINCT q::@extschema@.qual_type)
         FROM capture qs,
         LATERAL (SELECT (unnest(quals)).*) as q
         WHERE NOT EXISTS (
           SELECT 1
-          FROM powa_qualstats_quals nh
+          FROM @extschema@.powa_qualstats_quals nh
           WHERE nh.srvid = _srvid
             AND nh.qualid = qs.qualnodeid
             AND nh.queryid = qs.queryid
@@ -4052,7 +4070,7 @@ BEGIN
       RETURNING *
   ),
   by_qual AS (
-      INSERT INTO public.powa_qualstats_quals_history_current (srvid, qualid, queryid,
+      INSERT INTO @extschema@.powa_qualstats_quals_history_current (srvid, qualid, queryid,
         dbid, userid, ts, occurences, execution_count, nbfiltered,
         mean_err_estimate_ratio, mean_err_estimate_num)
       SELECT _srvid AS srvid, qs.qualnodeid, qs.queryid, qs.dbid, qs.userid,
@@ -4063,7 +4081,7 @@ BEGIN
       RETURNING *
   ),
   by_qual_with_const AS (
-      INSERT INTO public.powa_qualstats_constvalues_history_current(srvid, qualid,
+      INSERT INTO @extschema@.powa_qualstats_constvalues_history_current(srvid, qualid,
         queryid, dbid, userid, ts, occurences, execution_count, nbfiltered,
         mean_err_estimate_ratio, mean_err_estimate_num, constvalues)
       SELECT _srvid, qualnodeid, qs.queryid, qs.dbid, qs.userid, ts,
@@ -4074,11 +4092,11 @@ BEGIN
   SELECT COUNT(*) into v_rowcount
   FROM capture;
 
-  perform powa_log(format('%I - rowcount: %s',
+  PERFORM @extschema@.powa_log(format('%s - rowcount: %s',
         v_funcname, v_rowcount));
 
     IF (_srvid != 0) THEN
-        DELETE FROM powa_qualstats_src_tmp WHERE srvid = _srvid;
+        DELETE FROM @extschema@.powa_qualstats_src_tmp WHERE srvid = _srvid;
     END IF;
 
   result := true;
@@ -4095,64 +4113,64 @@ $PROC$ language plpgsql; /* end of powa_qualstats_snapshot */
 /*
  * powa_qualstats aggregate
  */
-CREATE OR REPLACE FUNCTION powa_qualstats_aggregate(_srvid integer)
+CREATE OR REPLACE FUNCTION @extschema@.powa_qualstats_aggregate(_srvid integer)
 RETURNS void AS $PROC$
 DECLARE
   result bool;
 BEGIN
-  PERFORM powa_log('running powa_qualstats_aggregate(' || _srvid || ')');
+  PERFORM @extschema@.powa_log('running powa_qualstats_aggregate(' || _srvid || ')');
 
-  PERFORM powa_prevent_concurrent_snapshot(_srvid);
+  PERFORM @extschema@.powa_prevent_concurrent_snapshot(_srvid);
 
-  INSERT INTO public.powa_qualstats_constvalues_history (
+  INSERT INTO @extschema@.powa_qualstats_constvalues_history (
       srvid, qualid, queryid, dbid, userid, coalesce_range, most_used,
       most_filtering, least_filtering, most_executed, most_errestim_ratio,
     most_errestim_num)
-    SELECT * FROM powa_qualstats_aggregate_constvalues_current(_srvid)
+    SELECT * FROM @extschema@.powa_qualstats_aggregate_constvalues_current(_srvid)
     WHERE srvid = _srvid;
 
-  INSERT INTO public.powa_qualstats_quals_history (srvid, qualid, queryid, dbid,
+  INSERT INTO @extschema@.powa_qualstats_quals_history (srvid, qualid, queryid, dbid,
       userid, coalesce_range, records, mins_in_range, maxs_in_range)
     SELECT srvid, qualid, queryid, dbid, userid, tstzrange(min(ts),
       max(ts),'[]'),
       array_agg((ts, occurences, execution_count, nbfiltered,
             mean_err_estimate_ratio,
-            mean_err_estimate_num)::powa_qualstats_history_item),
+            mean_err_estimate_num)::@extschema@.powa_qualstats_history_item),
     ROW(min(ts), min(occurences), min(execution_count), min(nbfiltered),
         min(mean_err_estimate_ratio), min(mean_err_estimate_num)
-    )::powa_qualstats_history_item,
+    )::@extschema@.powa_qualstats_history_item,
     ROW(max(ts), max(occurences), max(execution_count), max(nbfiltered),
         max(mean_err_estimate_ratio), max(mean_err_estimate_num)
-    )::powa_qualstats_history_item
-    FROM powa_qualstats_quals_history_current
+    )::@extschema@.powa_qualstats_history_item
+    FROM @extschema@.powa_qualstats_quals_history_current
     WHERE srvid = _srvid
     GROUP BY srvid, qualid, queryid, dbid, userid;
 
-  DELETE FROM powa_qualstats_constvalues_history_current WHERE srvid = _srvid;
-  DELETE FROM powa_qualstats_quals_history_current WHERE srvid = _srvid;
+  DELETE FROM @extschema@.powa_qualstats_constvalues_history_current WHERE srvid = _srvid;
+  DELETE FROM @extschema@.powa_qualstats_quals_history_current WHERE srvid = _srvid;
 END
 $PROC$ language plpgsql; /* end of powa_qualstats_aggregate */
 
 /*
  * powa_qualstats_purge
  */
-CREATE OR REPLACE FUNCTION powa_qualstats_purge(_srvid integer)
+CREATE OR REPLACE FUNCTION @extschema@.powa_qualstats_purge(_srvid integer)
 RETURNS void as $PROC$
 DECLARE
     v_retention   interval;
 BEGIN
-    PERFORM powa_log('running powa_qualstats_purge(' || _srvid || ')');
+    PERFORM @extschema@.powa_log('running powa_qualstats_purge(' || _srvid || ')');
 
-    PERFORM powa_prevent_concurrent_snapshot(_srvid);
+    PERFORM @extschema@.powa_prevent_concurrent_snapshot(_srvid);
 
-    SELECT powa_get_server_retention(_srvid) INTO v_retention;
+    SELECT @extschema@.powa_get_server_retention(_srvid) INTO v_retention;
 
     -- Delete obsolete datas. We only bother with already coalesced data
-    DELETE FROM powa_qualstats_constvalues_history
+    DELETE FROM @extschema@.powa_qualstats_constvalues_history
     WHERE upper(coalesce_range) < (now() - v_retention)
     AND srvid = _srvid;
 
-    DELETE FROM powa_qualstats_quals_history
+    DELETE FROM @extschema@.powa_qualstats_quals_history
     WHERE upper(coalesce_range) < (now() - v_retention)
     AND srvid = _srvid;
 END;
@@ -4161,32 +4179,32 @@ $PROC$ language plpgsql; /* end of powa_qualstats_purge */
 /*
  * powa_qualstats_reset
  */
-CREATE OR REPLACE FUNCTION powa_qualstats_reset(_srvid integer)
+CREATE OR REPLACE FUNCTION @extschema@.powa_qualstats_reset(_srvid integer)
 RETURNS void as $PROC$
 BEGIN
-  PERFORM public.powa_log('running powa_qualstats_reset(' || _srvid || ')');
+  PERFORM @extschema@.powa_log('running powa_qualstats_reset(' || _srvid || ')');
 
-  PERFORM public.powa_log('resetting powa_qualstats_quals(' || _srvid || ')');
-  DELETE FROM public.powa_qualstats_quals WHERE srvid = _srvid;
+  PERFORM @extschema@.powa_log('resetting powa_qualstats_quals(' || _srvid || ')');
+  DELETE FROM @extschema@.powa_qualstats_quals WHERE srvid = _srvid;
   -- cascaded :
   -- powa_qualstats_quals_history
   -- powa_qualstats_quals_history_current
   -- powa_qualstats_constvalues_history
   -- powa_qualstats_constvalues_history_current
 
-  PERFORM public.powa_log('resetting powa_qualstats_src_tmp(' || _srvid || ')');
-  DELETE FROM public.powa_qualstats_src_tmp WHERE srvid = _srvid;
+  PERFORM @extschema@.powa_log('resetting powa_qualstats_src_tmp(' || _srvid || ')');
+  DELETE FROM @extschema@.powa_qualstats_src_tmp WHERE srvid = _srvid;
 END;
 $PROC$ language plpgsql; /* end of powa_qualstats_reset */
 
 /*
  * powa_qualstats_unregister
  */
-CREATE OR REPLACE function public.powa_qualstats_unregister(_srvid integer = 0) RETURNS bool AS
+CREATE OR REPLACE function @extschema@.powa_qualstats_unregister(_srvid integer = 0) RETURNS bool AS
 $_$
 BEGIN
-    PERFORM powa_log('unregistering pg_qualstats');
-    DELETE FROM public.powa_functions
+    PERFORM @extschema@.powa_log('unregistering pg_qualstats');
+    DELETE FROM @extschema@.powa_functions
     WHERE module = 'pg_qualstats'
     AND srvid = _srvid;
     RETURN true;
@@ -4195,13 +4213,13 @@ $_$
 language plpgsql; /* end of powa_qualstats_unregister */
 
 -- By default, try to register pg_qualstats, in case it's alreay here
-SELECT * FROM public.powa_activate_extension(0, 'pg_qualstats');
+SELECT * FROM @extschema@.powa_activate_extension(0, 'pg_qualstats');
 
 /* end of pg_qualstats integration - part 2 */
 
 /* pg_track_settings integration */
 
-CREATE OR REPLACE FUNCTION powa_track_settings_register(_srvid integer = 0) RETURNS bool AS $_$
+CREATE OR REPLACE FUNCTION @extschema@.powa_track_settings_register(_srvid integer = 0) RETURNS bool AS $_$
 DECLARE
     v_func_present bool;
     v_ext_present bool;
@@ -4216,16 +4234,16 @@ BEGIN
 
     IF ( v_ext_present ) THEN
         SELECT COUNT(*) > 0 INTO v_func_present
-        FROM public.powa_functions
+        FROM @extschema@.powa_functions
         WHERE module = 'pg_track_settings'
         AND srvid = _srvid;
 
         IF ( NOT v_func_present) THEN
-            PERFORM powa_log('registering pg_track_settings');
+            PERFORM @extschema@.powa_log('registering pg_track_settings');
 
             -- This extension handles its own storage, just add its snapshot,
             -- reset and an unregister function.
-            INSERT INTO public.powa_functions (srvid, extname, module, operation, function_name, query_source, added_manually, enabled)
+            INSERT INTO @extschema@.powa_functions (srvid, extname, module, operation, function_name, query_source, added_manually, enabled)
             VALUES (_srvid, 'pg_track_settings', 'pg_track_settings', 'snapshot',   'pg_track_settings_snapshot_settings', 'pg_track_settings_settings_src', true, true),
                    (_srvid, 'pg_track_settings', 'pg_track_settings', 'snapshot',   'pg_track_settings_snapshot_rds',      'pg_track_settings_rds_src',      true, true),
                    (_srvid, 'pg_track_settings', 'pg_track_settings', 'snapshot',   'pg_track_settings_snapshot_reboot',   'pg_track_settings_reboot_src',   true, true),
@@ -4238,11 +4256,11 @@ BEGIN
 END;
 $_$ language plpgsql; /* end of pg_track_settings_register */
 
-CREATE OR REPLACE function public.powa_track_settings_unregister(_srvid integer = 0) RETURNS bool AS
+CREATE OR REPLACE function @extschema@.powa_track_settings_unregister(_srvid integer = 0) RETURNS bool AS
 $_$
 BEGIN
-    PERFORM powa_log('unregistering pg_track_settings');
-    DELETE FROM public.powa_functions
+    PERFORM @extschema@.powa_log('unregistering pg_track_settings');
+    DELETE FROM @extschema@.powa_functions
     WHERE module = 'pg_track_settings'
     AND srvid = _srvid;
     RETURN true;
@@ -4251,7 +4269,7 @@ $_$
 language plpgsql; /* end of powa_track_settings_unregister */
 
 -- By default, try to register pg_track_settings, in case it's alreay here
-SELECT * FROM public.powa_activate_extension(0, 'pg_track_settings');
+SELECT * FROM @extschema@.powa_activate_extension(0, 'pg_track_settings');
 
 /* end pg_track_settings integration */
 
@@ -4260,7 +4278,7 @@ SELECT * FROM public.powa_activate_extension(0, 'pg_track_settings');
 /*
  * register pg_wait_sampling extension
  */
-CREATE OR REPLACE function public.powa_wait_sampling_register(_srvid integer = 0) RETURNS bool AS
+CREATE OR REPLACE function @extschema@.powa_wait_sampling_register(_srvid integer = 0) RETURNS bool AS
 $_$
 DECLARE
     v_func_present bool;
@@ -4277,14 +4295,14 @@ BEGIN
 
     IF ( v_ext_present ) THEN
         SELECT COUNT(*) > 0 INTO v_func_present
-        FROM public.powa_functions
+        FROM @extschema@.powa_functions
         WHERE module = 'pg_wait_sampling'
         AND srvid = _srvid;
 
         IF ( NOT v_func_present) THEN
-            PERFORM powa_log('registering pg_wait_sampling');
+            PERFORM @extschema@.powa_log('registering pg_wait_sampling');
 
-            INSERT INTO public.powa_functions (srvid, extname, module, operation, function_name, query_source, added_manually, enabled)
+            INSERT INTO @extschema@.powa_functions (srvid, extname, module, operation, function_name, query_source, added_manually, enabled)
             VALUES (_srvid, 'pg_wait_sampling', 'pg_wait_sampling', 'snapshot',   'powa_wait_sampling_snapshot',   'powa_wait_sampling_src', true, true),
                    (_srvid, 'pg_wait_sampling', 'pg_wait_sampling', 'aggregate',  'powa_wait_sampling_aggregate',  NULL,                     true, true),
                    (_srvid, 'pg_wait_sampling', 'pg_wait_sampling', 'unregister', 'powa_wait_sampling_unregister', NULL,                     true, true),
@@ -4301,11 +4319,11 @@ language plpgsql; /* end of powa_wait_sampling_register */
 /*
  * unregister pg_wait_sampling extension
  */
-CREATE OR REPLACE FUNCTION public.powa_wait_sampling_unregister(_srvid integer = 0)
+CREATE OR REPLACE FUNCTION @extschema@.powa_wait_sampling_unregister(_srvid integer = 0)
 RETURNS bool AS $_$
 BEGIN
-    PERFORM powa_log('unregistering pg_wait_sampling');
-    DELETE FROM public.powa_functions
+    PERFORM @extschema@.powa_log('unregistering pg_wait_sampling');
+    DELETE FROM @extschema@.powa_functions
     WHERE module = 'pg_wait_sampling'
     AND srvid = _srvid;
     RETURN true;
@@ -4313,7 +4331,7 @@ END;
 $_$
 language plpgsql;
 
-CREATE OR REPLACE FUNCTION powa_wait_sampling_src(IN _srvid integer,
+CREATE OR REPLACE FUNCTION @extschema@.powa_wait_sampling_src(IN _srvid integer,
     OUT ts timestamp with time zone,
     OUT dbid oid,
     OUT event_type text,
@@ -4340,12 +4358,12 @@ BEGIN
                 FROM pg_stat_statements(false) s2
             ) pgss ON pgss.queryid = s.queryid
             WHERE s.event_type IS NOT NULL AND s.event IS NOT NULL
-            AND COALESCE(pgss.dbid, 0) NOT IN (SELECT oid FROM powa_databases WHERE dropped IS NOT NULL)
+            AND COALESCE(pgss.dbid, 0) NOT IN (SELECT oid FROM @extschema@.powa_databases WHERE dropped IS NOT NULL)
             GROUP BY pgss.dbid, s.event_type, s.event, s.queryid;
     ELSE
         RETURN QUERY
         SELECT s.ts, s.dbid, s.event_type, s.event, s.queryid, s.count
-        FROM powa_wait_sampling_src_tmp s
+        FROM @extschema@.powa_wait_sampling_src_tmp s
         WHERE s.srvid = _srvid;
     END IF;
 END;
@@ -4354,30 +4372,31 @@ $PROC$ LANGUAGE plpgsql; /* end of powa_wait_sampling_src */
 /*
  * powa_wait_sampling snapshot collection.
  */
-CREATE OR REPLACE FUNCTION powa_wait_sampling_snapshot(_srvid integer) RETURNS void as $PROC$
+CREATE OR REPLACE FUNCTION @extschema@.powa_wait_sampling_snapshot(_srvid integer) RETURNS void as $PROC$
 DECLARE
   result bool;
-    v_funcname    text := 'powa_wait_sampling_snapshot';
+    v_funcname    text := format('@extschema@.%I(%s)',
+                                 'powa_wait_sampling_snapshot', _srvid);
     v_rowcount    bigint;
 BEGIN
-    PERFORM powa_log(format('running %I', v_funcname));
+    PERFORM @extschema@.powa_log(format('running %s', v_funcname));
 
-    PERFORM powa_prevent_concurrent_snapshot(_srvid);
+    PERFORM @extschema@.powa_prevent_concurrent_snapshot(_srvid);
 
     WITH capture AS (
         SELECT *
-        FROM powa_wait_sampling_src(_srvid)
+        FROM @extschema@.powa_wait_sampling_src(_srvid)
     ),
 
     by_query AS (
-        INSERT INTO public.powa_wait_sampling_history_current (srvid, queryid, dbid,
+        INSERT INTO @extschema@.powa_wait_sampling_history_current (srvid, queryid, dbid,
                 event_type, event, record)
             SELECT _srvid, queryid, dbid, event_type, event, (ts, count)::wait_sampling_type
             FROM capture
     ),
 
     by_database AS (
-        INSERT INTO public.powa_wait_sampling_history_current_db (srvid, dbid,
+        INSERT INTO @extschema@.powa_wait_sampling_history_current_db (srvid, dbid,
                 event_type, event, record)
             SELECT _srvid AS srvid, dbid, event_type, event, (ts, sum(count))::wait_sampling_type
             FROM capture
@@ -4387,11 +4406,11 @@ BEGIN
     SELECT COUNT(*) into v_rowcount
     FROM capture;
 
-    perform powa_log(format('%I - rowcount: %s',
+    PERFORM @extschema@.powa_log(format('%s - rowcount: %s',
             v_funcname, v_rowcount));
 
     IF (_srvid != 0) THEN
-        DELETE FROM powa_wait_sampling_src_tmp WHERE srvid = _srvid;
+        DELETE FROM @extschema@.powa_wait_sampling_src_tmp WHERE srvid = _srvid;
     END IF;
 
     result := true;
@@ -4401,19 +4420,20 @@ $PROC$ language plpgsql; /* end of powa_wait_sampling_snapshot */
 /*
  * powa_wait_sampling aggregation
  */
-CREATE OR REPLACE FUNCTION powa_wait_sampling_aggregate(_srvid integer)
+CREATE OR REPLACE FUNCTION @extschema@.powa_wait_sampling_aggregate(_srvid integer)
 RETURNS void AS $PROC$
 DECLARE
     result     bool;
-    v_funcname text := 'powa_wait_sampling_aggregate(' || _srvid || ')';
+    v_funcname text := format('@extschema@.%I(%s)',
+                              'powa_wait_sampling_aggregate', _srvid);
     v_rowcount bigint;
 BEGIN
-    PERFORM powa_log(format('running %I', v_funcname));
+    PERFORM @extschema@.powa_log(format('running %s', v_funcname));
 
-    PERFORM powa_prevent_concurrent_snapshot(_srvid);
+    PERFORM @extschema@.powa_prevent_concurrent_snapshot(_srvid);
 
     -- aggregate history table
-    INSERT INTO public.powa_wait_sampling_history (coalesce_range, srvid, queryid,
+    INSERT INTO @extschema@.powa_wait_sampling_history (coalesce_range, srvid, queryid,
             dbid, event_type, event, records, mins_in_range, maxs_in_range)
         SELECT tstzrange(min((record).ts), max((record).ts),'[]'),
             srvid, queryid, dbid, event_type, event, array_agg(record),
@@ -4421,18 +4441,18 @@ BEGIN
             min((record).count))::wait_sampling_type,
         ROW(max((record).ts),
             max((record).count))::wait_sampling_type
-        FROM powa_wait_sampling_history_current
+        FROM @extschema@.powa_wait_sampling_history_current
         WHERE srvid = _srvid
         GROUP BY srvid, queryid, dbid, event_type, event;
 
     GET DIAGNOSTICS v_rowcount = ROW_COUNT;
-    perform powa_log(format('%I (powa_wait_sampling_history) - rowcount: %s',
+    PERFORM @extschema@.powa_log(format('%s (powa_wait_sampling_history) - rowcount: %s',
             v_funcname, v_rowcount));
 
-    DELETE FROM powa_wait_sampling_history_current WHERE srvid = _srvid;
+    DELETE FROM @extschema@.powa_wait_sampling_history_current WHERE srvid = _srvid;
 
     -- aggregate history_db table
-    INSERT INTO public.powa_wait_sampling_history_db (coalesce_range, srvid, dbid,
+    INSERT INTO @extschema@.powa_wait_sampling_history_db (coalesce_range, srvid, dbid,
             event_type, event, records, mins_in_range, maxs_in_range)
         SELECT tstzrange(min((record).ts), max((record).ts),'[]'), srvid, dbid,
             event_type, event, array_agg(record),
@@ -4440,49 +4460,50 @@ BEGIN
             min((record).count))::wait_sampling_type,
         ROW(max((record).ts),
             max((record).count))::wait_sampling_type
-        FROM powa_wait_sampling_history_current_db
+        FROM @extschema@.powa_wait_sampling_history_current_db
         WHERE srvid = _srvid
         GROUP BY srvid, dbid, event_type, event;
 
     GET DIAGNOSTICS v_rowcount = ROW_COUNT;
-    perform powa_log(format('%I (powa_wait_sampling_history_db) - rowcount: %s',
+    PERFORM @extschema@.powa_log(format('%s (powa_wait_sampling_history_db) - rowcount: %s',
             v_funcname, v_rowcount));
 
-    DELETE FROM powa_wait_sampling_history_current_db WHERE srvid = _srvid;
+    DELETE FROM @extschema@.powa_wait_sampling_history_current_db WHERE srvid = _srvid;
 END
 $PROC$ language plpgsql; /* end of powa_wait_sampling_aggregate */
 
 /*
  * powa_wait_sampling purge
  */
-CREATE OR REPLACE FUNCTION powa_wait_sampling_purge(_srvid integer)
+CREATE OR REPLACE FUNCTION @extschema@.powa_wait_sampling_purge(_srvid integer)
 RETURNS void as $PROC$
 DECLARE
-    v_funcname    text := 'powa_wait_sampling_purge(' || _srvid || ')';
+    v_funcname    text := format('@extschema.%I(%s)',
+                                 'powa_wait_sampling_purge', _srvid);
     v_rowcount    bigint;
     v_retention   interval;
 BEGIN
-    PERFORM powa_log(format('running %I', v_funcname));
+    PERFORM @extschema@.powa_log(format('running %s', v_funcname));
 
-    PERFORM powa_prevent_concurrent_snapshot(_srvid);
+    PERFORM @extschema@.powa_prevent_concurrent_snapshot(_srvid);
 
-    SELECT powa_get_server_retention(_srvid) INTO v_retention;
+    SELECT @extschema@.powa_get_server_retention(_srvid) INTO v_retention;
 
     -- Delete obsolete datas. We only bother with already coalesced data
-    DELETE FROM powa_wait_sampling_history
+    DELETE FROM @extschema@.powa_wait_sampling_history
     WHERE upper(coalesce_range) < (now() - v_retention)
     AND srvid = _srvid;
 
     GET DIAGNOSTICS v_rowcount = ROW_COUNT;
-    perform powa_log(format('%I (powa_wait_sampling_history) - rowcount: %s',
+    PERFORM @extschema@.powa_log(format('%s (powa_wait_sampling_history) - rowcount: %s',
             v_funcname, v_rowcount));
 
-    DELETE FROM powa_wait_sampling_history_db
+    DELETE FROM @extschema@.powa_wait_sampling_history_db
     WHERE upper(coalesce_range) < (now() - v_retention)
     AND srvid = _srvid;
 
     GET DIAGNOSTICS v_rowcount = ROW_COUNT;
-    perform powa_log(format('%I (powa_wait_sampling_history_db) - rowcount: %s',
+    PERFORM @extschema@.powa_log(format('%s (powa_wait_sampling_history_db) - rowcount: %s',
             v_funcname, v_rowcount));
 END;
 $PROC$ language plpgsql; /* end of powa_wait_sampling_purge */
@@ -4490,32 +4511,33 @@ $PROC$ language plpgsql; /* end of powa_wait_sampling_purge */
 /*
  * powa_wait_sampling reset
  */
-CREATE OR REPLACE FUNCTION powa_wait_sampling_reset(_srvid integer)
+CREATE OR REPLACE FUNCTION @extschema@.powa_wait_sampling_reset(_srvid integer)
 RETURNS void as $PROC$
 DECLARE
-    v_funcname    text := 'powa_wait_sampling_reset(' || _srvid || ')';
+    v_funcname    text := format('@extschema@.%I(%s)',
+                                 'powa_wait_sampling_reset', _srvid);
     v_rowcount    bigint;
 BEGIN
-    PERFORM public.powa_log(format('running %I', v_funcname));
+    PERFORM @extschema@.powa_log(format('running %s', v_funcname));
 
-    PERFORM public.powa_log('resetting powa_wait_sampling_history(' || _srvid || ')');
-    DELETE FROM public.powa_wait_sampling_history WHERE srvid = _srvid;
+    PERFORM @extschema@.powa_log('resetting powa_wait_sampling_history(' || _srvid || ')');
+    DELETE FROM @extschema@.powa_wait_sampling_history WHERE srvid = _srvid;
 
-    PERFORM public.powa_log('resetting powa_wait_sampling_history_db(' || _srvid || ')');
-    DELETE FROM public.powa_wait_sampling_history_db WHERE srvid = _srvid;
+    PERFORM @extschema@.powa_log('resetting powa_wait_sampling_history_db(' || _srvid || ')');
+    DELETE FROM @extschema@.powa_wait_sampling_history_db WHERE srvid = _srvid;
 
-    PERFORM public.powa_log('resetting powa_wait_sampling_history_current(' || _srvid || ')');
-    DELETE FROM public.powa_wait_sampling_history_current WHERE srvid = _srvid;
+    PERFORM @extschema@.powa_log('resetting powa_wait_sampling_history_current(' || _srvid || ')');
+    DELETE FROM @extschema@.powa_wait_sampling_history_current WHERE srvid = _srvid;
 
-    PERFORM public.powa_log('resetting powa_wait_sampling_history_current_db(' || _srvid || ')');
-    DELETE FROM public.powa_wait_sampling_history_current_db WHERE srvid = _srvid;
+    PERFORM @extschema@.powa_log('resetting powa_wait_sampling_history_current_db(' || _srvid || ')');
+    DELETE FROM @extschema@.powa_wait_sampling_history_current_db WHERE srvid = _srvid;
 
-    PERFORM public.powa_log('resetting powa_wait_sampling_src_tmp(' || _srvid || ')');
-    DELETE FROM public.powa_wait_sampling_src_tmp WHERE srvid = _srvid;
+    PERFORM @extschema@.powa_log('resetting powa_wait_sampling_src_tmp(' || _srvid || ')');
+    DELETE FROM @extschema@.powa_wait_sampling_src_tmp WHERE srvid = _srvid;
 END;
 $PROC$ language plpgsql; /* end of powa_wait_sampling_reset */
 
 -- By default, try to register pg_wait_sampling, in case it's alreay here
-SELECT * FROM public.powa_activate_extension(0, 'pg_wait_sampling');
+SELECT * FROM @extschema@.powa_activate_extension(0, 'pg_wait_sampling');
 
 /* end of pg_wait_sampling integration - part 2 */
