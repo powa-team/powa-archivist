@@ -5,4 +5,3 @@ module_pathname = '$libdir/powa'
 requires = 'plpgsql, pg_stat_statements, btree_gist'
 superuser = true
 relocatable = false
-schema = 'public'

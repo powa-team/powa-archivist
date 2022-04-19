@@ -3,7 +3,8 @@
 --Setup extension
 CREATE EXTENSION pg_stat_statements;
 CREATE EXTENSION btree_gist;
-CREATE EXTENSION powa;
+CREATE SCHEMA "PoWA";
+CREATE EXTENSION powa WITH SCHEMA "PoWA";
 -- Check the relations that aren't dumped
 WITH ext AS (
     SELECT c.oid, c.relname
@@ -38,10 +39,28 @@ ORDER BY ext.relname::text COLLATE "C";
  powa_wait_sampling_src_tmp
 (10 rows)
 
+-- Check for object that aren't in the "PoWA" schema
+WITH ext AS (
+    SELECT pg_describe_object(classid, objid, objsubid) AS descr
+    FROM pg_depend d
+    JOIN pg_extension e ON d.refclassid = 'pg_extension'::regclass
+        AND e.oid = d.refobjid
+        AND e.extname = 'powa'
+)
+SELECT descr
+FROM ext
+WHERE descr NOT LIKE '%"PoWA"%'
+ORDER BY descr COLLATE "C";
+                    descr                    
+---------------------------------------------
+ event trigger powa_check_created_extensions
+ event trigger powa_check_dropped_extensions
+(2 rows)
+
 -- Aggregate data every 5 snapshots
 SET powa.coalesce = 5;
 -- Test created ojects
-SELECT * FROM powa_functions ORDER BY module, operation;
+SELECT * FROM "PoWA".powa_functions ORDER BY module, operation;
  srvid |          module          | operation |         function_name         |      query_source       | query_cleanup | added_manually | enabled | priority |      extname       
 -------+--------------------------+-----------+-------------------------------+-------------------------+---------------+----------------+---------+----------+--------------------
      0 | pg_stat_bgwriter         | aggregate | powa_stat_bgwriter_aggregate  |                         |               | f              | t       |       10 | 
@@ -67,7 +86,7 @@ SELECT * FROM powa_functions ORDER BY module, operation;
 -- test C SRFs
 SELECT COUNT(*) = 0
 FROM pg_database,
-LATERAL powa_stat_user_functions(oid) f
+LATERAL "PoWA".powa_stat_user_functions(oid) f
 WHERE datname = current_database();
  ?column? 
 ----------
@@ -78,7 +97,7 @@ WHERE datname = current_database();
 -- anyway
 SELECT COUNT(*) >= 0
 FROM pg_database,
-LATERAL powa_stat_all_rel(oid)
+LATERAL "PoWA".powa_stat_all_rel(oid)
 WHERE datname = current_database();
  ?column? 
 ----------
@@ -86,328 +105,328 @@ WHERE datname = current_database();
 (1 row)
 
 -- Test snapshot
-SELECT 1, COUNT(*) = 0 FROM powa_user_functions_history_current;
+SELECT 1, COUNT(*) = 0 FROM "PoWA".powa_user_functions_history_current;
  ?column? | ?column? 
 ----------+----------
         1 | t
 (1 row)
 
-SELECT 1, COUNT(*) = 0 FROM powa_all_relations_history_current;
+SELECT 1, COUNT(*) = 0 FROM "PoWA".powa_all_relations_history_current;
  ?column? | ?column? 
 ----------+----------
         1 | t
 (1 row)
 
-SELECT 1, COUNT(*) = 0 FROM powa_statements_history_current;
+SELECT 1, COUNT(*) = 0 FROM "PoWA".powa_statements_history_current;
  ?column? | ?column? 
 ----------+----------
         1 | t
 (1 row)
 
-SELECT 1, COUNT(*) = 0 FROM powa_statements_history_current_db;
+SELECT 1, COUNT(*) = 0 FROM "PoWA".powa_statements_history_current_db;
  ?column? | ?column? 
 ----------+----------
         1 | t
 (1 row)
 
-SELECT 1, COUNT(*) = 0 FROM powa_user_functions_history;
+SELECT 1, COUNT(*) = 0 FROM "PoWA".powa_user_functions_history;
  ?column? | ?column? 
 ----------+----------
         1 | t
 (1 row)
 
-SELECT 1, COUNT(*) = 0 FROM powa_all_relations_history;
+SELECT 1, COUNT(*) = 0 FROM "PoWA".powa_all_relations_history;
  ?column? | ?column? 
 ----------+----------
         1 | t
 (1 row)
 
-SELECT 1, COUNT(*) = 0 FROM powa_statements_history;
+SELECT 1, COUNT(*) = 0 FROM "PoWA".powa_statements_history;
  ?column? | ?column? 
 ----------+----------
         1 | t
 (1 row)
 
-SELECT 1, COUNT(*) = 0 FROM powa_statements_history;
+SELECT 1, COUNT(*) = 0 FROM "PoWA".powa_statements_history;
  ?column? | ?column? 
 ----------+----------
         1 | t
 (1 row)
 
-SELECT powa_take_snapshot();
+SELECT "PoWA".powa_take_snapshot();
  powa_take_snapshot 
 --------------------
                   0
 (1 row)
 
-SELECT 2, COUNT(*) >= 0 FROM powa_user_functions_history_current;
+SELECT 2, COUNT(*) >= 0 FROM "PoWA".powa_user_functions_history_current;
  ?column? | ?column? 
 ----------+----------
         2 | t
 (1 row)
 
-SELECT 2, COUNT(*) >= 0 FROM powa_all_relations_history_current;
+SELECT 2, COUNT(*) >= 0 FROM "PoWA".powa_all_relations_history_current;
  ?column? | ?column? 
 ----------+----------
         2 | t
 (1 row)
 
-SELECT 2, COUNT(*) > 0 FROM powa_statements_history_current;
+SELECT 2, COUNT(*) > 0 FROM "PoWA".powa_statements_history_current;
  ?column? | ?column? 
 ----------+----------
         2 | t
 (1 row)
 
-SELECT 2, COUNT(*) > 0 FROM powa_statements_history_current_db;
+SELECT 2, COUNT(*) > 0 FROM "PoWA".powa_statements_history_current_db;
  ?column? | ?column? 
 ----------+----------
         2 | t
 (1 row)
 
-SELECT 2, COUNT(*) >= 0 FROM powa_user_functions_history;
+SELECT 2, COUNT(*) >= 0 FROM "PoWA".powa_user_functions_history;
  ?column? | ?column? 
 ----------+----------
         2 | t
 (1 row)
 
-SELECT 2, COUNT(*) = 0 FROM powa_all_relations_history;
+SELECT 2, COUNT(*) = 0 FROM "PoWA".powa_all_relations_history;
  ?column? | ?column? 
 ----------+----------
         2 | t
 (1 row)
 
-SELECT 2, COUNT(*) = 0 FROM powa_statements_history;
+SELECT 2, COUNT(*) = 0 FROM "PoWA".powa_statements_history;
  ?column? | ?column? 
 ----------+----------
         2 | t
 (1 row)
 
-SELECT 2, COUNT(*) = 0 FROM powa_statements_history;
+SELECT 2, COUNT(*) = 0 FROM "PoWA".powa_statements_history;
  ?column? | ?column? 
 ----------+----------
         2 | t
 (1 row)
 
-SELECT powa_take_snapshot();
+SELECT "PoWA".powa_take_snapshot();
  powa_take_snapshot 
 --------------------
                   0
 (1 row)
 
-SELECT powa_take_snapshot();
+SELECT "PoWA".powa_take_snapshot();
  powa_take_snapshot 
 --------------------
                   0
 (1 row)
 
-SELECT powa_take_snapshot();
+SELECT "PoWA".powa_take_snapshot();
  powa_take_snapshot 
 --------------------
                   0
 (1 row)
 
 -- This snapshot will trigger the aggregate
-SELECT powa_take_snapshot();
+SELECT "PoWA".powa_take_snapshot();
  powa_take_snapshot 
 --------------------
                   0
 (1 row)
 
-SELECT 3, COUNT(*) >= 0 FROM powa_user_functions_history_current;
+SELECT 3, COUNT(*) >= 0 FROM "PoWA".powa_user_functions_history_current;
  ?column? | ?column? 
 ----------+----------
         3 | t
 (1 row)
 
-SELECT 3, COUNT(*) >= 0 FROM powa_all_relations_history_current;
+SELECT 3, COUNT(*) >= 0 FROM "PoWA".powa_all_relations_history_current;
  ?column? | ?column? 
 ----------+----------
         3 | t
 (1 row)
 
-SELECT 3, COUNT(*) > 0 FROM powa_statements_history_current;
+SELECT 3, COUNT(*) > 0 FROM "PoWA".powa_statements_history_current;
  ?column? | ?column? 
 ----------+----------
         3 | t
 (1 row)
 
-SELECT 3, COUNT(*) > 0 FROM powa_statements_history_current_db;
+SELECT 3, COUNT(*) > 0 FROM "PoWA".powa_statements_history_current_db;
  ?column? | ?column? 
 ----------+----------
         3 | t
 (1 row)
 
-SELECT 3, COUNT(*) >= 0 FROM powa_user_functions_history;
+SELECT 3, COUNT(*) >= 0 FROM "PoWA".powa_user_functions_history;
  ?column? | ?column? 
 ----------+----------
         3 | t
 (1 row)
 
-SELECT 3, COUNT(*) >= 0 FROM powa_all_relations_history;
+SELECT 3, COUNT(*) >= 0 FROM "PoWA".powa_all_relations_history;
  ?column? | ?column? 
 ----------+----------
         3 | t
 (1 row)
 
-SELECT 3, COUNT(*) > 0 FROM powa_statements_history;
+SELECT 3, COUNT(*) > 0 FROM "PoWA".powa_statements_history;
  ?column? | ?column? 
 ----------+----------
         3 | t
 (1 row)
 
-SELECT 3, COUNT(*) > 0 FROM powa_statements_history;
+SELECT 3, COUNT(*) > 0 FROM "PoWA".powa_statements_history;
  ?column? | ?column? 
 ----------+----------
         3 | t
 (1 row)
 
 -- Test reset function
-SELECT * from powa_reset(0);
+SELECT * from "PoWA".powa_reset(0);
  powa_reset 
 ------------
  t
 (1 row)
 
-SELECT 4, COUNT(*) = 0 FROM powa_user_functions_history_current;
+SELECT 4, COUNT(*) = 0 FROM "PoWA".powa_user_functions_history_current;
  ?column? | ?column? 
 ----------+----------
         4 | t
 (1 row)
 
-SELECT 4, COUNT(*) = 0 FROM powa_all_relations_history_current;
+SELECT 4, COUNT(*) = 0 FROM "PoWA".powa_all_relations_history_current;
  ?column? | ?column? 
 ----------+----------
         4 | t
 (1 row)
 
-SELECT 4, COUNT(*) = 0 FROM powa_statements_history_current;
+SELECT 4, COUNT(*) = 0 FROM "PoWA".powa_statements_history_current;
  ?column? | ?column? 
 ----------+----------
         4 | t
 (1 row)
 
-SELECT 4, COUNT(*) = 0 FROM powa_statements_history_current_db;
+SELECT 4, COUNT(*) = 0 FROM "PoWA".powa_statements_history_current_db;
  ?column? | ?column? 
 ----------+----------
         4 | t
 (1 row)
 
-SELECT 4, COUNT(*) = 0 FROM powa_user_functions_history;
+SELECT 4, COUNT(*) = 0 FROM "PoWA".powa_user_functions_history;
  ?column? | ?column? 
 ----------+----------
         4 | t
 (1 row)
 
-SELECT 4, COUNT(*) = 0 FROM powa_all_relations_history;
+SELECT 4, COUNT(*) = 0 FROM "PoWA".powa_all_relations_history;
  ?column? | ?column? 
 ----------+----------
         4 | t
 (1 row)
 
-SELECT 4, COUNT(*) = 0 FROM powa_statements_history;
+SELECT 4, COUNT(*) = 0 FROM "PoWA".powa_statements_history;
  ?column? | ?column? 
 ----------+----------
         4 | t
 (1 row)
 
-SELECT 4, COUNT(*) = 0 FROM powa_statements_history;
+SELECT 4, COUNT(*) = 0 FROM "PoWA".powa_statements_history;
  ?column? | ?column? 
 ----------+----------
         4 | t
 (1 row)
 
 -- Check API
-SELECT powa_register_server(hostname => '127.0.0.1',
+SELECT "PoWA".powa_register_server(hostname => '127.0.0.1',
     extensions => '{pg_qualstats}');
  powa_register_server 
 ----------------------
  t
 (1 row)
 
-SELECT COUNT(*) FROM powa_servers;
+SELECT COUNT(*) FROM "PoWA".powa_servers;
  count 
 -------
      2
 (1 row)
 
-SELECT hostname FROM powa_servers WHERE id = 1;
+SELECT hostname FROM "PoWA".powa_servers WHERE id = 1;
  hostname  
 -----------
  127.0.0.1
 (1 row)
 
 -- Check missing powa_statements FK for pg_qualstats doesn't prevent snapshot
-INSERT INTO public.powa_qualstats_src_tmp(srvid, ts, uniquequalnodeid, dbid, userid,
+INSERT INTO "PoWA".powa_qualstats_src_tmp(srvid, ts, uniquequalnodeid, dbid, userid,
     qualnodeid, occurences, execution_count, nbfiltered,
     mean_err_estimate_ratio, mean_err_estimate_num,
     queryid, constvalues, quals)
     SELECT 1, now(), 1, 1, 1,
         1, 1000, 1, 0,
         0, 0,
-        123456789, '{}', ARRAY[(1259,1,607,'i')::qual_type];
-SELECT count(*) FROM public.powa_qualstats_src_tmp;
+        123456789, '{}', ARRAY[(1259,1,607,'i')::"PoWA".qual_type];
+SELECT count(*) FROM "PoWA".powa_qualstats_src_tmp;
  count 
 -------
      1
 (1 row)
 
-SELECT public.powa_qualstats_snapshot(1);
+SELECT "PoWA".powa_qualstats_snapshot(1);
  powa_qualstats_snapshot 
 -------------------------
  
 (1 row)
 
-SELECT count(*) FROM public.powa_qualstats_src_tmp;
+SELECT count(*) FROM "PoWA".powa_qualstats_src_tmp;
  count 
 -------
      0
 (1 row)
 
-SELECT count(*) FROM public.powa_qualstats_quals_history_current WHERE srvid = 1;
+SELECT count(*) FROM "PoWA".powa_qualstats_quals_history_current WHERE srvid = 1;
  count 
 -------
      0
 (1 row)
 
 -- Check snapshot of regular quals
-INSERT INTO public.powa_databases(srvid, oid, datname, dropped)
+INSERT INTO "PoWA".powa_databases(srvid, oid, datname, dropped)
     VALUES (1, 16384, 'postgres', NULL);
-INSERT INTO public.powa_statements(srvid, queryid, dbid, userid, query)
+INSERT INTO "PoWA".powa_statements(srvid, queryid, dbid, userid, query)
     VALUES(1, 123456789, 16384, 10, 'query with qual');
-INSERT INTO public.powa_qualstats_src_tmp(srvid, ts, uniquequalnodeid, dbid, userid,
+INSERT INTO "PoWA".powa_qualstats_src_tmp(srvid, ts, uniquequalnodeid, dbid, userid,
     qualnodeid, occurences, execution_count, nbfiltered,
     mean_err_estimate_ratio, mean_err_estimate_num,
     queryid, constvalues, quals)
     SELECT 1, now(), 1, 16384, 10,
         1, 1000, 1, 0,
         0, 0,
-        123456789, '{}', ARRAY[(1259,1,607,'i')::qual_type];
-SELECT count(*) FROM public.powa_qualstats_src_tmp;
+        123456789, '{}', ARRAY[(1259,1,607,'i')::"PoWA".qual_type];
+SELECT count(*) FROM "PoWA".powa_qualstats_src_tmp;
  count 
 -------
      1
 (1 row)
 
-SELECT public.powa_qualstats_snapshot(1);
+SELECT "PoWA".powa_qualstats_snapshot(1);
  powa_qualstats_snapshot 
 -------------------------
  
 (1 row)
 
-SELECT count(*) FROM public.powa_qualstats_src_tmp;
+SELECT count(*) FROM "PoWA".powa_qualstats_src_tmp;
  count 
 -------
      0
 (1 row)
 
-SELECT count(*) FROM public.powa_qualstats_quals_history_current WHERE srvid = 1;
+SELECT count(*) FROM "PoWA".powa_qualstats_quals_history_current WHERE srvid = 1;
  count 
 -------
      1
 (1 row)
 
 -- activate / deactivate extension
-SELECT * FROM public.powa_functions ORDER BY srvid, module, operation, function_name;
+SELECT * FROM "PoWA".powa_functions ORDER BY srvid, module, operation, function_name;
  srvid |          module          | operation  |         function_name         |      query_source       |        query_cleanup        | added_manually | enabled | priority |      extname       
 -------+--------------------------+------------+-------------------------------+-------------------------+-----------------------------+----------------+---------+----------+--------------------
      0 | pg_stat_bgwriter         | aggregate  | powa_stat_bgwriter_aggregate  |                         |                             | f              | t       |       10 | 
@@ -453,19 +472,19 @@ SELECT * FROM public.powa_functions ORDER BY srvid, module, operation, function_
      1 | powa_stat_user_functions | snapshot   | powa_user_functions_snapshot  | powa_user_functions_src |                             | t              | t       |       10 | powa
 (41 rows)
 
-SELECT * FROM public.powa_activate_extension(1, 'pg_stat_kcache');
+SELECT * FROM "PoWA".powa_activate_extension(1, 'pg_stat_kcache');
  powa_activate_extension 
 -------------------------
  t
 (1 row)
 
-SELECT * FROM public.powa_activate_extension(1, 'some_extension');
+SELECT * FROM "PoWA".powa_activate_extension(1, 'some_extension');
  powa_activate_extension 
 -------------------------
  f
 (1 row)
 
-SELECT * FROM public.powa_functions ORDER BY srvid, module, operation, function_name;
+SELECT * FROM "PoWA".powa_functions ORDER BY srvid, module, operation, function_name;
  srvid |          module          | operation  |         function_name         |      query_source       |        query_cleanup        | added_manually | enabled | priority |      extname       
 -------+--------------------------+------------+-------------------------------+-------------------------+-----------------------------+----------------+---------+----------+--------------------
      0 | pg_stat_bgwriter         | aggregate  | powa_stat_bgwriter_aggregate  |                         |                             | f              | t       |       10 | 
@@ -516,19 +535,19 @@ SELECT * FROM public.powa_functions ORDER BY srvid, module, operation, function_
      1 | powa_stat_user_functions | snapshot   | powa_user_functions_snapshot  | powa_user_functions_src |                             | t              | t       |       10 | powa
 (46 rows)
 
-SELECT * FROM public.powa_deactivate_extension(1, 'pg_stat_kcache');
+SELECT * FROM "PoWA".powa_deactivate_extension(1, 'pg_stat_kcache');
  powa_deactivate_extension 
 ---------------------------
  t
 (1 row)
 
-SELECT * FROM public.powa_deactivate_extension(1, 'some_extension');
+SELECT * FROM "PoWA".powa_deactivate_extension(1, 'some_extension');
  powa_deactivate_extension 
 ---------------------------
  t
 (1 row)
 
-SELECT * FROM public.powa_functions ORDER BY srvid, module, operation, function_name;
+SELECT * FROM "PoWA".powa_functions ORDER BY srvid, module, operation, function_name;
  srvid |          module          | operation  |         function_name         |      query_source       |        query_cleanup        | added_manually | enabled | priority |      extname       
 -------+--------------------------+------------+-------------------------------+-------------------------+-----------------------------+----------------+---------+----------+--------------------
      0 | pg_stat_bgwriter         | aggregate  | powa_stat_bgwriter_aggregate  |                         |                             | f              | t       |       10 | 
@@ -579,34 +598,34 @@ SELECT * FROM public.powa_functions ORDER BY srvid, module, operation, function_
      1 | powa_stat_user_functions | snapshot   | powa_user_functions_snapshot  | powa_user_functions_src |                             | t              | t       |       10 | powa
 (46 rows)
 
-SELECT alias FROM public.powa_servers WHERE id = 1;
+SELECT alias FROM "PoWA".powa_servers WHERE id = 1;
  alias 
 -------
  
 (1 row)
 
-SELECT * FROM public.powa_configure_server(0, '{"somekey": "someval"}');
+SELECT * FROM "PoWA".powa_configure_server(0, '{"somekey": "someval"}');
 ERROR:  Local server cannot be configured
-SELECT * FROM public.powa_configure_server(1, '{"somekey": "someval"}');
+SELECT * FROM "PoWA".powa_configure_server(1, '{"somekey": "someval"}');
 ERROR:  Unknown field: somekey
-SELECT * FROM public.powa_configure_server(1, '{"alias": "test server"}');
+SELECT * FROM "PoWA".powa_configure_server(1, '{"alias": "test server"}');
  powa_configure_server 
 -----------------------
  t
 (1 row)
 
-SELECT alias FROM public.powa_servers WHERE id = 1;
+SELECT alias FROM "PoWA".powa_servers WHERE id = 1;
     alias    
 -------------
  test server
 (1 row)
 
 -- Test reset function
-SELECT * from powa_reset(1);
+SELECT * from "PoWA".powa_reset(1);
  powa_reset 
 ------------
  t
 (1 row)
 
 -- Check remote server removal
-DELETE FROM public.powa_servers WHERE id = 1;
+DELETE FROM "PoWA".powa_servers WHERE id = 1;
