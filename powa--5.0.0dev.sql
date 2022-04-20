@@ -2479,14 +2479,17 @@ STABLE
 AS $PROC$
 DECLARE
     v_pgss integer[];
+    v_nsp text;
 BEGIN
     IF (_srvid = 0) THEN
-        SELECT regexp_split_to_array(extversion, E'\\.') INTO STRICT v_pgss
-        FROM pg_extension
-        WHERE extname = 'pg_stat_statements';
+        SELECT regexp_split_to_array(extversion, E'\\.'), nspname
+            INTO STRICT v_pgss, v_nsp
+        FROM pg_catalog.pg_extension e
+        JOIN pg_catalog.pg_namespace n ON n.oid = e.extnamespace
+        WHERE e.extname = 'pg_stat_statements';
 
         IF (v_pgss[1] = 1 AND v_pgss[2] >= 10) THEN
-            RETURN QUERY SELECT now(),
+            RETURN QUERY EXECUTE format($$SELECT now(),
                 pgss.userid, pgss.dbid, pgss.toplevel, pgss.queryid, pgss.query,
                 pgss.calls, pgss.total_exec_time,
                 pgss.rows, pgss.shared_blks_hit,
@@ -2497,15 +2500,16 @@ BEGIN
                 pgss.temp_blks_written, pgss.blk_read_time, pgss.blk_write_time,
                 pgss.plans, pgss.total_plan_time,
                 pgss.wal_records, pgss.wal_fpi, pgss.wal_bytes
-            FROM pg_stat_statements pgss
-            JOIN pg_database d ON d.oid = pgss.dbid
-            JOIN pg_roles r ON pgss.userid = r.oid
+            FROM %I.pg_stat_statements pgss
+            JOIN pg_catalog.pg_database d ON d.oid = pgss.dbid
+            JOIN pg_catalog.pg_roles r ON pgss.userid = r.oid
             WHERE pgss.query !~* '^[[:space:]]*(DEALLOCATE|BEGIN|PREPARE TRANSACTION|COMMIT PREPARED|ROLLBACK PREPARED)'
             AND NOT (r.rolname = ANY (string_to_array(
                         @extschema@.powa_get_guc('powa.ignored_users', ''),
-                        ',')));
+                        ',')))
+            $$, v_nsp);
         ELSIF (v_pgss[1] = 1 AND v_pgss[2] >= 8) THEN
-            RETURN QUERY SELECT now(),
+            RETURN QUERY EXECUTE format($$SELECT now(),
                 pgss.userid, pgss.dbid, true::boolean, pgss.queryid, pgss.query,
                 pgss.calls, pgss.total_exec_time,
                 pgss.rows, pgss.shared_blks_hit,
@@ -2516,15 +2520,16 @@ BEGIN
                 pgss.temp_blks_written, pgss.blk_read_time, pgss.blk_write_time,
                 pgss.plans, pgss.total_plan_time,
                 pgss.wal_records, pgss.wal_fpi, pgss.wal_bytes
-            FROM pg_stat_statements pgss
-            JOIN pg_database d ON d.oid = pgss.dbid
-            JOIN pg_roles r ON pgss.userid = r.oid
+            FROM %I.pg_stat_statements pgss
+            JOIN pg_catalog.pg_database d ON d.oid = pgss.dbid
+            JOIN pg_catalog.pg_roles r ON pgss.userid = r.oid
             WHERE pgss.query !~* '^[[:space:]]*(DEALLOCATE|BEGIN|PREPARE TRANSACTION|COMMIT PREPARED|ROLLBACK PREPARED)'
             AND NOT (r.rolname = ANY (string_to_array(
                         @extschema@.powa_get_guc('powa.ignored_users', ''),
-                        ',')));
+                        ',')))
+            $$, v_nsp);
         ELSE
-            RETURN QUERY SELECT now(),
+            RETURN QUERY EXECUTE format($$SELECT now(),
                 pgss.userid, pgss.dbid, true::boolean, pgss.queryid, pgss.query,
                 pgss.calls, pgss.total_time,
                 pgss.rows, pgss.shared_blks_hit,
@@ -2535,14 +2540,14 @@ BEGIN
                 pgss.temp_blks_written, pgss.blk_read_time,pgss.blk_write_time,
                 0::bigint, 0::double precision,
                 0::bigint, 0::bigint, 0::numeric
-
-            FROM pg_stat_statements pgss
-            JOIN pg_database d ON d.oid = pgss.dbid
-            JOIN pg_roles r ON pgss.userid = r.oid
+            FROM %I.pg_stat_statements pgss
+            JOIN pg_catalog.pg_database d ON d.oid = pgss.dbid
+            JOIN pg_catalog.pg_roles r ON pgss.userid = r.oid
             WHERE pgss.query !~* '^[[:space:]]*(DEALLOCATE|BEGIN|PREPARE TRANSACTION|COMMIT PREPARED|ROLLBACK PREPARED)'
             AND NOT (r.rolname = ANY (string_to_array(
                         @extschema@.powa_get_guc('powa.ignored_users', ''),
-                        ',')));
+                        ',')))
+            $$, v_nsp);
         END IF;
     ELSE
         RETURN QUERY SELECT pgss.ts,

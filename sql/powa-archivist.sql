@@ -2,7 +2,8 @@
 \set SHOW_CONTEXT never
 
 --Setup extension
-CREATE EXTENSION pg_stat_statements;
+CREATE SCHEMA "PGSS";
+CREATE EXTENSION pg_stat_statements WITH SCHEMA "PGSS";
 CREATE EXTENSION btree_gist;
 CREATE SCHEMA "PoWA";
 CREATE EXTENSION powa WITH SCHEMA "PoWA";
