@@ -3532,17 +3532,19 @@ CREATE OR REPLACE FUNCTION @extschema@.powa_kcache_src(IN _srvid integer,
 ) RETURNS SETOF record STABLE AS $PROC$
 DECLARE
   is_v2_2 bool;
+  v_nsp text;
 BEGIN
     IF (_srvid = 0) THEN
         SELECT (
             (regexp_split_to_array(extversion, E'\\.')::int[])[1] >= 2 AND
             (regexp_split_to_array(extversion, E'\\.')::int[])[2] >= 2
-        ) INTO is_v2_2
-          FROM pg_extension
+        ), nspname INTO is_v2_2, v_nsp
+          FROM pg_catalog.pg_extension e
+          JOIN pg_catalog.pg_namespace n ON n.oid = e.extnamespace
           WHERE extname = 'pg_stat_kcache';
 
         IF (is_v2_2 IS NOT DISTINCT FROM 'true'::bool) THEN
-            RETURN QUERY SELECT now(),
+            RETURN QUERY EXECUTE format($$SELECT now(),
                 k.queryid, k.top, k.userid, k.dbid,
                 k.plan_reads, k.plan_writes,
                 k.plan_user_time, k.plan_system_time,
@@ -3554,14 +3556,17 @@ BEGIN
                 k.exec_minflts, k.exec_majflts, k.exec_nswaps,
                 k.exec_msgsnds, k.exec_msgrcvs, k.exec_nsignals,
                 k.exec_nvcsws, k.exec_nivcsws
-            FROM pg_stat_kcache() k
-            JOIN pg_roles r ON r.oid = k.userid
+            FROM %I.pg_stat_kcache() k
+            JOIN pg_catalog.pg_roles r ON r.oid = k.userid
             WHERE NOT (r.rolname = ANY (string_to_array(
                         @extschema@.powa_get_guc('powa.ignored_users', ''),
                         ',')))
-            AND k.dbid NOT IN (SELECT oid FROM @extschema@.powa_databases WHERE dropped IS NOT NULL);
+            AND k.dbid NOT IN (
+                SELECT oid FROM @extschema@.powa_databases
+                WHERE dropped IS NOT NULL)
+            $$, v_nsp);
         ELSE
-            RETURN QUERY SELECT now(),
+            RETURN QUERY EXECUTE format($$SELECT now(),
                 k.queryid, 'true'::bool as top, k.userid, k.dbid,
                 NULL::bigint AS plan_reads, NULL::bigint AS plan_writes,
                 NULL::double precision AS plan_user_time,
@@ -3578,12 +3583,15 @@ BEGIN
                 k.msgsnds AS exec_msgsnds, k.msgrcvs AS exec_msgrcvs,
                 k.nsignals AS exec_nsignals,
                 k.nvcsws AS exec_nvcsws, k.nivcsws AS exec_nivcsws
-            FROM pg_stat_kcache() k
-            JOIN pg_roles r ON r.oid = k.userid
+            FROM %I.pg_stat_kcache() k
+            JOIN pg_catalog.pg_roles r ON r.oid = k.userid
             WHERE NOT (r.rolname = ANY (string_to_array(
                         @extschema@.powa_get_guc('powa.ignored_users', ''),
                         ',')))
-            AND k.dbid NOT IN (SELECT oid FROM @extschema@.powa_databases WHERE dropped IS NOT NULL);
+            AND k.dbid NOT IN (
+                SELECT oid FROM @extschema@.powa_databases
+                WHERE dropped IS NOT NULL)
+            $$, v_nsp);
         END IF;
     ELSE
         RETURN QUERY SELECT k.ts,
