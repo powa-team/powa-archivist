@@ -2371,7 +2371,7 @@ AS $PROC$
 BEGIN
     IF (_srvid = 0) THEN
         RETURN QUERY SELECT d.oid, d.datname
-        FROM pg_database d;
+        FROM pg_catalog.pg_database d;
     ELSE
         RETURN QUERY SELECT d.oid, d.datname
         FROM @extschema@.powa_databases_src_tmp d
@@ -2668,7 +2668,7 @@ BEGIN
     IF (_srvid = 0) THEN
         RETURN QUERY SELECT now(), d.oid, r.funcid, r.calls, r.total_time,
             r.self_time
-        FROM pg_database d, @extschema@.powa_stat_user_functions(oid) r;
+        FROM pg_catalog.pg_database d, @extschema@.powa_stat_user_functions(oid) r;
     ELSE
         RETURN QUERY SELECT r.ts, r.dbid, r.funcid, r.calls, r.total_time,
             r.self_time
@@ -2748,7 +2748,7 @@ BEGIN
             r.blks_hit, r.last_vacuum, r.vacuum_count, r.last_autovacuum,
             r.autovacuum_count, r.last_analyze, r.analyze_count,
             r.last_autoanalyze, r.autoanalyze_count
-        FROM pg_database d, @extschema@.powa_stat_all_rel(d.oid) as r;
+        FROM pg_catalog.pg_database d, @extschema@.powa_stat_all_rel(d.oid) as r;
     ELSE
         RETURN QUERY SELECT r.ts,
             r.dbid, r.relid, r.numscan, r.tup_returned, r.tup_fetched,
