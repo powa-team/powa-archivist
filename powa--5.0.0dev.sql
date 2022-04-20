@@ -3891,6 +3891,8 @@ BEGIN
         IF ( NOT v_func_present) THEN
             PERFORM @extschema@.powa_log('registering pg_qualstats');
 
+            -- FIXME: pg_qualstats_reset needs to be fully qualified on the
+            -- remote server
             INSERT INTO @extschema@.powa_functions (srvid, extname, module, operation, function_name, query_source, query_cleanup, added_manually, enabled)
             VALUES (_srvid, 'pg_qualstats', 'pg_qualstats', 'snapshot',   'powa_qualstats_snapshot',   'powa_qualstats_src', 'SELECT pg_qualstats_reset()', true, true),
                    (_srvid, 'pg_qualstats', 'pg_qualstats', 'aggregate',  'powa_qualstats_aggregate',  NULL,                 NULL,                          true, true),
@@ -3984,14 +3986,22 @@ CREATE OR REPLACE FUNCTION @extschema@.powa_qualstats_src(IN _srvid integer,
 ) RETURNS SETOF record STABLE AS $PROC$
 DECLARE
   is_v2 bool;
+  v_pgqs text;
+  v_pgss text;
   ratio_col text := 'qs.mean_err_estimate_ratio';
   num_col text := 'qs.mean_err_estimate_num';
   sql text;
 BEGIN
     IF (_srvid = 0) THEN
-        SELECT substr(extversion, 1, 1)::int >=2 INTO is_v2
-          FROM pg_extension
+        SELECT substr(extversion, 1, 1)::int >= 2, nspname INTO is_v2, v_pgqs
+          FROM pg_catalog.pg_extension e
+          JOIN pg_namespace n ON n.oid = e.extnamespace
           WHERE extname = 'pg_qualstats';
+
+        SELECT nspname INTO v_pgss
+          FROM pg_catalog.pg_extension e
+          JOIN pg_namespace n ON n.oid = e.extnamespace
+          WHERE extname = 'pg_stat_statements';
 
         IF is_v2 IS DISTINCT FROM 'true'::bool THEN
             ratio_col := 'NULL::double precision';
@@ -4036,7 +4046,7 @@ BEGIN
                     %s AS mean_err_estimate_num,
                     qs.eval_type,
                     qs.constant_position
-                    FROM pg_qualstats() qs
+                    FROM %I.pg_qualstats() qs
                     WHERE (qs.lrelid IS NULL) != (qs.rrelid IS NULL)
                 ) i
                 GROUP BY coalesce(i.uniquequalid, i.uniquequalnodeid),
@@ -4051,19 +4061,19 @@ BEGIN
                 -- statements sources.  Since there can (and probably) be
                 -- duplicates, we use a UNION on purpose
                 SELECT s1.queryid, s1.dbid, s1.userid
-                    FROM pg_stat_statements s1
+                    FROM %I.pg_stat_statements s1
                 UNION
                 SELECT s2.queryid, s2.dbid, s2.userid
                     FROM @extschema@.powa_statements s2 WHERE s2.srvid = 0
             ) s USING(queryid, dbid, userid)
         -- we don't gather quals for databases that have been dropped
-        JOIN pg_database d ON d.oid = s.dbid
-        JOIN pg_roles r ON s.userid = r.oid
+        JOIN pg_catalog.pg_database d ON d.oid = s.dbid
+        JOIN pg_catalog.pg_roles r ON s.userid = r.oid
           AND NOT (r.rolname = ANY (string_to_array(
                     @extschema@.powa_get_guc('powa.ignored_users', ''),
                     ',')))
         WHERE pgqs.dbid NOT IN (SELECT oid FROM @extschema@.powa_databases WHERE dropped IS NOT NULL)
-        $sql$, ratio_col, num_col);
+        $sql$, ratio_col, num_col, v_pgqs, v_pgss);
         RETURN QUERY EXECUTE sql;
     ELSE
         RETURN QUERY
@@ -4081,6 +4091,7 @@ $PROC$ LANGUAGE plpgsql; /* end of powa_qualstats_src */
 CREATE OR REPLACE FUNCTION @extschema@.powa_qualstats_snapshot(_srvid integer) RETURNS void as $PROC$
 DECLARE
     result     bool;
+    v_schema   text;
     v_funcname text := format('@extschema.%I(%s)',
                               'powa_qualstats_snapshot', _srvid);
     v_rowcount bigint;
@@ -4153,7 +4164,11 @@ BEGIN
   -- snapshot.  For local snapshot this is done here, remote snapshots will
   -- rely on the collector doing it through query_cleanup.
   IF (_srvid = 0) THEN
-    PERFORM pg_qualstats_reset();
+    SELECT n.nspname INTO STRICT v_schema
+        FROM pg_catalog.pg_extension e
+        JOIN pg_catalog.pg_namespace n ON n.oid = e.extnamespace
+        AND e.extname = 'pg_qualstats';
+    PERFORM format('%I.pg_qualstats_reset()', v_schema);
   END IF;
 END
 $PROC$ language plpgsql; /* end of powa_qualstats_snapshot */
