@@ -4388,14 +4388,27 @@ CREATE OR REPLACE FUNCTION @extschema@.powa_wait_sampling_src(IN _srvid integer,
     OUT queryid bigint,
     OUT count numeric
 ) RETURNS SETOF RECORD STABLE AS $PROC$
+DECLARE
+  v_pgws text;
+  v_pgss text;
 BEGIN
     IF (_srvid = 0) THEN
-        RETURN QUERY
+        SELECT nspname INTO STRICT v_pgws
+        FROM pg_catalog.pg_extension e
+        JOIN pg_catalog.pg_namespace n ON n.oid = e.extnamespace
+        WHERE e.extname = 'pg_wait_sampling';
+
+        SELECT nspname INTO STRICT v_pgss
+        FROM pg_catalog.pg_extension e
+        JOIN pg_catalog.pg_namespace n ON n.oid = e.extnamespace
+        WHERE e.extname = 'pg_stat_statements';
+
+        RETURN QUERY EXECUTE format($$
             -- the various background processes report wait events but don't have
             -- associated queryid.  Gather them all under a fake 0 dbid
             SELECT now(), COALESCE(pgss.dbid, 0) AS dbid, s.event_type,
                 s.event, s.queryid, sum(s.count) as count
-            FROM pg_wait_sampling_profile s
+            FROM %I.pg_wait_sampling_profile s
             -- pg_wait_sampling doesn't offer a per (userid, dbid, queryid) view,
             -- only per pid, but pid can be reused for different databases or users
             -- so we cannot deduce db or user from it.  However, queryid should be
@@ -4404,11 +4417,15 @@ BEGIN
             -- multiple users execute the query, so it's critical to retrieve a
             -- single row from pg_stat_statements per (dbid, queryid)
             LEFT JOIN (SELECT DISTINCT s2.dbid, s2.queryid
-                FROM pg_stat_statements(false) s2
+                FROM %I.pg_stat_statements(false) s2
             ) pgss ON pgss.queryid = s.queryid
             WHERE s.event_type IS NOT NULL AND s.event IS NOT NULL
-            AND COALESCE(pgss.dbid, 0) NOT IN (SELECT oid FROM @extschema@.powa_databases WHERE dropped IS NOT NULL)
-            GROUP BY pgss.dbid, s.event_type, s.event, s.queryid;
+            AND COALESCE(pgss.dbid, 0) NOT IN (
+                SELECT oid FROM @extschema@.powa_databases
+                WHERE dropped IS NOT NULL
+            )
+            GROUP BY pgss.dbid, s.event_type, s.event, s.queryid
+          $$, v_pgws, v_pgss);
     ELSE
         RETURN QUERY
         SELECT s.ts, s.dbid, s.event_type, s.event, s.queryid, s.count
@@ -4440,14 +4457,14 @@ BEGIN
     by_query AS (
         INSERT INTO @extschema@.powa_wait_sampling_history_current (srvid, queryid, dbid,
                 event_type, event, record)
-            SELECT _srvid, queryid, dbid, event_type, event, (ts, count)::wait_sampling_type
+            SELECT _srvid, queryid, dbid, event_type, event, (ts, count)::@extschema@.wait_sampling_type
             FROM capture
     ),
 
     by_database AS (
         INSERT INTO @extschema@.powa_wait_sampling_history_current_db (srvid, dbid,
                 event_type, event, record)
-            SELECT _srvid AS srvid, dbid, event_type, event, (ts, sum(count))::wait_sampling_type
+            SELECT _srvid AS srvid, dbid, event_type, event, (ts, sum(count))::@extschema@.wait_sampling_type
             FROM capture
             GROUP BY srvid, ts, dbid, event_type, event
     )
@@ -4487,9 +4504,9 @@ BEGIN
         SELECT tstzrange(min((record).ts), max((record).ts),'[]'),
             srvid, queryid, dbid, event_type, event, array_agg(record),
         ROW(min((record).ts),
-            min((record).count))::wait_sampling_type,
+            min((record).count))::@extschema@.wait_sampling_type,
         ROW(max((record).ts),
-            max((record).count))::wait_sampling_type
+            max((record).count))::@extschema@.wait_sampling_type
         FROM @extschema@.powa_wait_sampling_history_current
         WHERE srvid = _srvid
         GROUP BY srvid, queryid, dbid, event_type, event;
@@ -4506,9 +4523,9 @@ BEGIN
         SELECT tstzrange(min((record).ts), max((record).ts),'[]'), srvid, dbid,
             event_type, event, array_agg(record),
         ROW(min((record).ts),
-            min((record).count))::wait_sampling_type,
+            min((record).count))::@extschema@.wait_sampling_type,
         ROW(max((record).ts),
-            max((record).count))::wait_sampling_type
+            max((record).count))::@extschema@.wait_sampling_type
         FROM @extschema@.powa_wait_sampling_history_current_db
         WHERE srvid = _srvid
         GROUP BY srvid, dbid, event_type, event;
