@@ -37,6 +37,9 @@
 #include "catalog/pg_type.h"
 #include "utils/timestamp.h"
 
+/* For CacheMemoryContext */
+#include "utils/catcache.h"
+
 /* There is a GUC */
 #include "utils/guc.h"
 
@@ -55,6 +58,12 @@ PG_MODULE_MAGIC;
 #define POWA_STAT_TAB_COLS	21	/* # of cols for relations stat SRF */
 #define MIN_POWA_FREQUENCY	5000 /* minimum ms between two snapshots */
 
+#define QUERY_NSP	"SELECT quote_ident(nspname) FROM pg_extension e" \
+					" JOIN pg_namespace n ON n.oid = e.extnamespace" \
+					" WHERE e.extname = 'powa'"
+
+#define QUERY_APPNAME	"SET application_name = 'PoWA - collector'"
+
 typedef enum
 {
 	POWA_STAT_FUNCTION,
@@ -65,6 +74,7 @@ void			_PG_init(void);
 static bool		powa_check_frequency_hook(int *newval, void **extra, GucSource source);
 static void		compute_powa_frequency(void);
 static int64	compute_next_wakeup(void);
+static void		powa_get_snapshot_query(StringInfo query);
 
 Datum		powa_stat_user_functions(PG_FUNCTION_ARGS);
 Datum		powa_stat_all_rel(PG_FUNCTION_ARGS);
@@ -157,6 +167,63 @@ compute_next_wakeup(void)
 	INSTR_TIME_SUBTRACT(time_to_wait, now);
 
 	return INSTR_TIME_GET_MICROSEC(time_to_wait);
+}
+
+/*
+ * Generate the needed statement to perform a local snapshot.
+ * The only needed dynamic part is the powa schema to qualify the function.
+ */
+static void
+powa_get_snapshot_query(StringInfo query)
+{
+	char	   *nsp = NULL;
+	int			ret;
+
+	SetCurrentStatementStartTimestamp();
+	StartTransactionCommand();
+	SPI_connect();
+	PushActiveSnapshot(GetTransactionSnapshot());
+	pgstat_report_activity(STATE_RUNNING, QUERY_NSP);
+
+	ret = SPI_execute(QUERY_NSP, false, 0);
+	if ((ret == SPI_OK_SELECT) && (SPI_processed == 1))
+	{
+		MemoryContext	oldcxt;
+		SPITupleTable  *spi_tuptable = SPI_tuptable;
+		TupleDesc		spi_tupdesc = spi_tuptable->tupdesc;
+		HeapTuple		spi_tuple = spi_tuptable->vals[0];
+		char		   *tmp;
+
+		Assert(spi_tupdesc->natts == 1);
+
+		tmp = SPI_getvalue(spi_tuple, spi_tupdesc, 1);
+		/* There should always be a value */
+		Assert(tmp);
+
+		oldcxt = MemoryContextSwitchTo(CacheMemoryContext);
+		nsp = pstrdup(tmp);
+		MemoryContextSwitchTo(oldcxt);
+	}
+	else
+		elog(ERROR, "Could not find PoWA schema");
+
+	SPI_finish();
+	PopActiveSnapshot();
+	CommitTransactionCommand();
+	pgstat_report_stat(false);
+	pgstat_report_activity(STATE_IDLE, NULL);
+	set_ps_display("idle"
+#if PG_VERSION_NUM < 130000
+			, false
+#endif
+			);
+
+	Assert(nsp);
+	elog(LOG,"Found PoWA in schema %s", nsp);
+
+	initStringInfo(query);
+	appendStringInfo(query, "SELECT %s.powa_take_snapshot()", nsp);
+	pfree(nsp);
 }
 
 /*
@@ -260,8 +327,7 @@ _PG_init(void)
 void
 powa_main(Datum main_arg)
 {
-	char	   *query_snapshot = "SELECT public.powa_take_snapshot()";
-	static char *query_appname = "SET application_name = 'PoWA - collector'";
+	StringInfoData query_snapshot;
 	int64		us_to_wait; /* Should be uint64 per postgresql's spec, but we
 							   may have negative result, in our tests */
 
@@ -332,8 +398,8 @@ powa_main(Datum main_arg)
 	SetCurrentStatementStartTimestamp();
 	SPI_connect();
 	PushActiveSnapshot(GetTransactionSnapshot());
-	pgstat_report_activity(STATE_RUNNING, query_appname);
-	SPI_execute(query_appname, false, 0);
+	pgstat_report_activity(STATE_RUNNING, QUERY_APPNAME);
+	SPI_execute(QUERY_APPNAME, false, 0);
 	SPI_finish();
 	PopActiveSnapshot();
 	CommitTransactionCommand();
@@ -343,6 +409,9 @@ powa_main(Datum main_arg)
 			, false
 #endif
 			);
+
+	/* Generate the schema-qualified snapshot query. */
+	powa_get_snapshot_query(&query_snapshot);
 
 	/*------------------
 	 * Main loop of POWA
@@ -366,10 +435,10 @@ powa_main(Datum main_arg)
 			StartTransactionCommand();
 			SPI_connect();
 			PushActiveSnapshot(GetTransactionSnapshot());
-			pgstat_report_activity(STATE_RUNNING, query_snapshot);
-			SPI_execute(query_snapshot, false, 0);
-			pgstat_report_activity(STATE_RUNNING, query_appname);
-			SPI_execute(query_appname, false, 0);
+			pgstat_report_activity(STATE_RUNNING, query_snapshot.data);
+			SPI_execute(query_snapshot.data, false, 0);
+			pgstat_report_activity(STATE_RUNNING, QUERY_APPNAME);
+			SPI_execute(QUERY_APPNAME, false, 0);
 			SPI_finish();
 			PopActiveSnapshot();
 			CommitTransactionCommand();
