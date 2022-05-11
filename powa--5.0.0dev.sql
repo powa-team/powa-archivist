@@ -3891,14 +3891,16 @@ BEGIN
         IF ( NOT v_func_present) THEN
             PERFORM @extschema@.powa_log('registering pg_qualstats');
 
-            -- FIXME: pg_qualstats_reset needs to be fully qualified on the
-            -- remote server
+            -- pg_qualstats_reset uses a python format pattern as query_cleanup
+            -- is only used for remote snapshot, which is done by
+            -- powa-collector which handles it.  For local snapshots this is
+            -- done explicitly in powa_qualstats_snapshot().
             INSERT INTO @extschema@.powa_functions (srvid, extname, module, operation, function_name, query_source, query_cleanup, added_manually, enabled)
-            VALUES (_srvid, 'pg_qualstats', 'pg_qualstats', 'snapshot',   'powa_qualstats_snapshot',   'powa_qualstats_src', 'SELECT pg_qualstats_reset()', true, true),
-                   (_srvid, 'pg_qualstats', 'pg_qualstats', 'aggregate',  'powa_qualstats_aggregate',  NULL,                 NULL,                          true, true),
-                   (_srvid, 'pg_qualstats', 'pg_qualstats', 'unregister', 'powa_qualstats_unregister', NULL,                 NULL,                          true, true),
-                   (_srvid, 'pg_qualstats', 'pg_qualstats', 'purge',      'powa_qualstats_purge',      NULL,                 NULL,                          true, true),
-                   (_srvid, 'pg_qualstats', 'pg_qualstats', 'reset',      'powa_qualstats_reset',      NULL,                 NULL,                          true, true);
+            VALUES (_srvid, 'pg_qualstats', 'pg_qualstats', 'snapshot',   'powa_qualstats_snapshot',   'powa_qualstats_src', 'SELECT {pg_qualstats}.pg_qualstats_reset()', true, true),
+                   (_srvid, 'pg_qualstats', 'pg_qualstats', 'aggregate',  'powa_qualstats_aggregate',  NULL,                 NULL,                                         true, true),
+                   (_srvid, 'pg_qualstats', 'pg_qualstats', 'unregister', 'powa_qualstats_unregister', NULL,                 NULL,                                         true, true),
+                   (_srvid, 'pg_qualstats', 'pg_qualstats', 'purge',      'powa_qualstats_purge',      NULL,                 NULL,                                         true, true),
+                   (_srvid, 'pg_qualstats', 'pg_qualstats', 'reset',      'powa_qualstats_reset',      NULL,                 NULL,                                         true, true);
         END IF;
     END IF;
 
