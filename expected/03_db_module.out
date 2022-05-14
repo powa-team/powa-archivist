@@ -1,0 +1,173 @@
+-- General setup
+\set SHOW_CONTEXT never
+-- registering a remote server should have registered all default db modules
+SELECT * FROM "PoWA".powa_db_module_config
+ORDER BY srvid, db_module COLLATE "C";
+ srvid |       db_module        | dbnames | enabled 
+-------+------------------------+---------+---------
+     1 | pg_stat_all_indexes    |         | t
+     1 | pg_stat_all_tables     |         | t
+     1 | pg_stat_user_functions |         | t
+(3 rows)
+
+-- Can't deactivate a specific db on an "all databases" config
+SELECT * FROM "PoWA".powa_deactivate_db_module(1, 'pg_stat_user_functions', ARRAY['test']);
+ERROR:  cannot deactivate a db module for a specific database if no specific database is configured
+SELECT enabled, dbnames FROM "PoWA".powa_db_module_config WHERE srvid = 1 AND db_module = 'pg_stat_user_functions';
+ enabled | dbnames 
+---------+---------
+ t       | 
+(1 row)
+
+-- Activating a specifc db on an "all databases" config switch to that db only
+SELECT * FROM "PoWA".powa_activate_db_module(1, 'pg_stat_user_functions', ARRAY['d1']);
+ powa_activate_db_module 
+-------------------------
+ t
+(1 row)
+
+SELECT enabled, dbnames FROM "PoWA".powa_db_module_config WHERE srvid = 1 AND db_module = 'pg_stat_user_functions';
+ enabled | dbnames 
+---------+---------
+ t       | {d1}
+(1 row)
+
+-- Activating a specifc db on an specific db config replace that database
+SELECT * FROM "PoWA".powa_activate_db_module(1, 'pg_stat_user_functions', ARRAY['d2']);
+ powa_activate_db_module 
+-------------------------
+ t
+(1 row)
+
+SELECT enabled, dbnames FROM "PoWA".powa_db_module_config WHERE srvid = 1 AND db_module = 'pg_stat_user_functions';
+ enabled | dbnames 
+---------+---------
+ t       | {d2}
+(1 row)
+
+-- Deactivating without specific database switches back to "all db", and mark it as disabled
+SELECT * FROM "PoWA".powa_deactivate_db_module(1, 'pg_stat_user_functions');
+ powa_deactivate_db_module 
+---------------------------
+ t
+(1 row)
+
+SELECT enabled, dbnames FROM "PoWA".powa_db_module_config WHERE srvid = 1 AND db_module = 'pg_stat_user_functions';
+ enabled | dbnames 
+---------+---------
+ f       | 
+(1 row)
+
+-- Activating with multiple db switches back to enabled and setup the datbases
+SELECT * FROM "PoWA".powa_activate_db_module(1, 'pg_stat_user_functions', ARRAY['d1', 'd3', 'd4']);
+ powa_activate_db_module 
+-------------------------
+ t
+(1 row)
+
+SELECT enabled, dbnames FROM "PoWA".powa_db_module_config WHERE srvid = 1 AND db_module = 'pg_stat_user_functions';
+ enabled |  dbnames   
+---------+------------
+ t       | {d1,d3,d4}
+(1 row)
+
+-- Deactivating a specific db will just remove that db
+SELECT * FROM "PoWA".powa_deactivate_db_module(1, 'pg_stat_user_functions', ARRAY['d3']);
+ powa_deactivate_db_module 
+---------------------------
+ t
+(1 row)
+
+SELECT enabled, dbnames FROM "PoWA".powa_db_module_config WHERE srvid = 1 AND db_module = 'pg_stat_user_functions';
+ enabled | dbnames 
+---------+---------
+ t       | {d1,d4}
+(1 row)
+
+-- Can't deactivate a non existing specific db
+SELECT * FROM "PoWA".powa_deactivate_db_module(1, 'pg_stat_user_functions', ARRAY['d3']);
+ERROR:  cannot deactivate a db module for a specific database if not already activated on that database
+SELECT enabled, dbnames FROM "PoWA".powa_db_module_config WHERE srvid = 1 AND db_module = 'pg_stat_user_functions';
+ enabled | dbnames 
+---------+---------
+ t       | {d1,d4}
+(1 row)
+
+-- Deactivating all remaining db will switch back to "all db", and mark it as disabled
+SELECT * FROM "PoWA".powa_deactivate_db_module(1, 'pg_stat_user_functions', ARRAY['d1', 'd4']);
+ powa_deactivate_db_module 
+---------------------------
+ t
+(1 row)
+
+SELECT enabled, dbnames FROM "PoWA".powa_db_module_config WHERE srvid = 1 AND db_module = 'pg_stat_user_functions';
+ enabled | dbnames 
+---------+---------
+ f       | 
+(1 row)
+
+-- Deactivating a deactivated db module is a noop
+SELECT * FROM "PoWA".powa_deactivate_db_module(1, 'pg_stat_user_functions', ARRAY['d1', 'd4']);
+ powa_deactivate_db_module 
+---------------------------
+ t
+(1 row)
+
+SELECT enabled, dbnames FROM "PoWA".powa_db_module_config WHERE srvid = 1 AND db_module = 'pg_stat_user_functions';
+ enabled | dbnames 
+---------+---------
+ f       | 
+(1 row)
+
+-- Deactivating a known but not configured db module isn't supported
+DELETE FROM "PoWA".powa_db_module_config WHERE srvid = 1 AND db_module = 'pg_stat_all_indexes';
+SELECT * FROM "PoWA".powa_deactivate_db_module(1, 'pg_stat_all_indexes');
+ERROR:  db module "pg_stat_all_indexes" is not configured
+-----------------------------------------------------------
+-- Test the query source API, with different major versions
+-----------------------------------------------------------
+-- pg 13.1 should see n_ins_since_vacuum but not last_seq_scan and other fields
+-- introduced in pg16
+SELECT * FROM "PoWA".powa_db_functions(1, 130001)
+ORDER BY db_module COLLATE "C", operation COLLATE "C";
+ srvid |       db_module        | operation |         function_name         | dbnames |                                  query_source                                   |             tmp_table              | enabled | priority 
+-------+------------------------+-----------+-------------------------------+---------+---------------------------------------------------------------------------------+------------------------------------+---------+----------
+     1 | pg_stat_all_tables     | aggregate | powa_all_tables_aggregate     |         |                                                                                 |                                    | t       |       10
+     1 | pg_stat_all_tables     | purge     | powa_all_tables_purge         |         |                                                                                 |                                    | t       |       10
+     1 | pg_stat_all_tables     | reset     | powa_all_tables_reset         |         |                                                                                 |                                    | t       |       10
+     1 | pg_stat_all_tables     | snapshot  | powa_all_tables_snapshot      |         | SELECT relid,                                                                  +| "PoWA".powa_all_tables_src_tmp     | t       |       10
+       |                        |           |                               |         |         seq_scan, NULL AS last_seq_scan, seq_tup_read,                         +|                                    |         | 
+       |                        |           |                               |         |         idx_scan, NULL AS last_idx_scan, idx_tup_fetch,                        +|                                    |         | 
+       |                        |           |                               |         |         n_tup_ins, n_tup_upd, n_tup_del, n_tup_hot_upd, 0 AS n_tup_newpage_upd,+|                                    |         | 
+       |                        |           |                               |         |         n_live_tup, n_dead_tup, n_mod_since_analyze, n_ins_since_vacuum,       +|                                    |         | 
+       |                        |           |                               |         |         last_vacuum, last_autovacuum, last_analyze, last_autoanalyze,          +|                                    |         | 
+       |                        |           |                               |         |         vacuum_count, autovacuum_count, analyze_count, autoanalyze_count,      +|                                    |         | 
+       |                        |           |                               |         |         heap_blks_read, heap_blks_hit, idx_blks_read, idx_blks_hit,            +|                                    |         | 
+       |                        |           |                               |         |         toast_blks_read, toast_blks_hit, tidx_blks_read, tidx_blks_hit         +|                                    |         | 
+       |                        |           |                               |         |      FROM pg_catalog.pg_stat_all_tables st                                     +|                                    |         | 
+       |                        |           |                               |         |      JOIN pg_catalog.pg_statio_all_tables sit USING (relid)                     |                                    |         | 
+     1 | pg_stat_user_functions | aggregate | powa_user_functions_aggregate |         |                                                                                 |                                    | f       |       10
+     1 | pg_stat_user_functions | purge     | powa_user_functions_purge     |         |                                                                                 |                                    | f       |       10
+     1 | pg_stat_user_functions | reset     | powa_user_functions_reset     |         |                                                                                 |                                    | f       |       10
+     1 | pg_stat_user_functions | snapshot  | powa_user_functions_snapshot  |         | SELECT funcid, calls, total_time, self_time                                    +| "PoWA".powa_user_functions_src_tmp | f       |       10
+       |                        |           |                               |         |       FROM pg_catalog.pg_stat_user_functions                                    |                                    |         | 
+(8 rows)
+
+-- Check that we don't see n_ins_since_vacuum on pg13-
+SELECT query_source FROM "PoWA".powa_db_functions(1, 120012)
+WHERE db_module = 'pg_stat_all_tables' AND operation = 'snapshot';
+                                  query_source                                   
+---------------------------------------------------------------------------------
+ SELECT relid,                                                                  +
+         seq_scan, NULL AS last_seq_scan, seq_tup_read,                         +
+         idx_scan, NULL AS last_idx_scan, idx_tup_fetch,                        +
+         n_tup_ins, n_tup_upd, n_tup_del, n_tup_hot_upd, 0 AS n_tup_newpage_upd,+
+         n_live_tup, n_dead_tup, n_mod_since_analyze, 0 AS n_ins_since_vacuum,  +
+         last_vacuum, last_autovacuum, last_analyze, last_autoanalyze,          +
+         vacuum_count, autovacuum_count, analyze_count, autoanalyze_count,      +
+         heap_blks_read, heap_blks_hit, idx_blks_read, idx_blks_hit,            +
+         toast_blks_read, toast_blks_hit, tidx_blks_read, tidx_blks_hit         +
+      FROM pg_catalog.pg_stat_all_tables st                                     +
+      JOIN pg_catalog.pg_statio_all_tables sit USING (relid)
+(1 row)
+
