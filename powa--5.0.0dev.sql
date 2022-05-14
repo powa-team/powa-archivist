@@ -150,7 +150,166 @@ CREATE VIEW @extschema@.powa_functions AS
     FROM @extschema@.powa_module_functions f
     JOIN @extschema@.powa_module_config c USING (module);
 
-CREATE TABLE @extschema@.powa_snapshot_metas(
+CREATE TABLE @extschema@.powa_db_modules (
+    db_module text NOT NULL PRIMARY KEY,
+    tmp_table text NOT NULL,
+    external boolean NOT NULL default true,
+    added_manually boolean NOT NULL default true
+);
+
+INSERT INTO @extschema@.powa_db_modules (db_module, tmp_table, external, added_manually) VALUES
+    ('pg_stat_all_indexes', '@extschema@.powa_all_indexes_src_tmp', false, false),
+    ('pg_stat_all_tables', '@extschema@.powa_all_tables_src_tmp', false, false),
+    ('pg_stat_user_functions', '@extschema@.powa_user_functions_src_tmp', false, false);
+
+-- No default rows for this table as this is a remote-server only feature.
+-- A NULL dbnames means that the module is activated for all databases,
+-- otherwise the module is only activated for the specified database names.
+CREATE TABLE @extschema@.powa_db_module_config (
+    srvid integer NOT NULL,
+    db_module text NOT NULL,
+    dbnames text[],
+    enabled boolean NOT NULL default true,
+    PRIMARY KEY (srvid, db_module),
+    FOREIGN KEY (srvid) REFERENCES @extschema@.powa_servers(id)
+      MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE,
+    FOREIGN KEY (db_module) REFERENCES @extschema@.powa_db_modules(db_module)
+      MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
+);
+
+CREATE TABLE @extschema@.powa_db_module_functions (
+    db_module text NOT NULL,
+    operation text NOT NULL,
+    function_name text NOT NULL,
+    added_manually boolean NOT NULL default true,
+    priority numeric NOT NULL default 10,
+    CHECK (operation IN ('snapshot','aggregate','purge','reset')),
+    PRIMARY KEY (db_module, operation),
+    FOREIGN KEY (db_module) REFERENCES @extschema@.powa_db_modules(db_module)
+      MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
+);
+
+INSERT INTO @extschema@.powa_db_module_functions
+    (db_module,                operation,   function_name,                   added_manually) VALUES
+    ('pg_stat_all_tables',     'snapshot',  'powa_all_tables_snapshot',      false),
+    ('pg_stat_all_tables',     'aggregate', 'powa_all_tables_aggregate',     false),
+    ('pg_stat_all_tables',     'purge',     'powa_all_tables_purge',         false),
+    ('pg_stat_all_tables',     'reset',     'powa_all_tables_reset',         false),
+    ('pg_stat_all_indexes',    'snapshot',  'powa_all_indexes_snapshot',     false),
+    ('pg_stat_all_indexes',    'aggregate', 'powa_all_indexes_aggregate',    false),
+    ('pg_stat_all_indexes',    'purge',     'powa_all_indexes_purge',        false),
+    ('pg_stat_all_indexes',    'reset',     'powa_all_indexes_reset',        false),
+    ('pg_stat_user_functions', 'snapshot',  'powa_user_functions_snapshot',  false),
+    ('pg_stat_user_functions', 'aggregate', 'powa_user_functions_aggregate', false),
+    ('pg_stat_user_functions', 'purge',     'powa_user_functions_purge',     false),
+    ('pg_stat_user_functions', 'reset',     'powa_user_functions_reset',     false);
+
+CREATE TABLE @extschema@.powa_db_module_src_queries (
+    db_module text NOT NULL,
+    min_version integer NOT NULL,
+    added_manually boolean NOT NULL default true,
+    query_source text NOT NULL,
+    PRIMARY KEY (db_module, min_version),
+    FOREIGN KEY (db_module) REFERENCES @extschema@.powa_db_modules(db_module)
+      MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
+);
+
+INSERT INTO @extschema@.powa_db_module_src_queries
+    (db_module, min_version, added_manually, query_source) VALUES
+    -- pg_stat_all_tables
+    ('pg_stat_all_tables', 0, false,
+     'SELECT relid,
+        seq_scan, NULL AS last_seq_scan, seq_tup_read,
+        idx_scan, NULL AS last_idx_scan, idx_tup_fetch,
+        n_tup_ins, n_tup_upd, n_tup_del, n_tup_hot_upd, 0 AS n_tup_newpage_upd,
+        n_live_tup, n_dead_tup, n_mod_since_analyze, 0 AS n_ins_since_vacuum,
+        last_vacuum, last_autovacuum, last_analyze, last_autoanalyze,
+        vacuum_count, autovacuum_count, analyze_count, autoanalyze_count,
+        heap_blks_read, heap_blks_hit, idx_blks_read, idx_blks_hit,
+        toast_blks_read, toast_blks_hit, tidx_blks_read, tidx_blks_hit
+     FROM pg_catalog.pg_stat_all_tables st
+     JOIN pg_catalog.pg_statio_all_tables sit USING (relid)'),
+    -- pg_stat_all_tables pg13+, n_ins_since_vacuum added
+    ('pg_stat_all_tables', 130000, false,
+     'SELECT relid,
+        seq_scan, NULL AS last_seq_scan, seq_tup_read,
+        idx_scan, NULL AS last_idx_scan, idx_tup_fetch,
+        n_tup_ins, n_tup_upd, n_tup_del, n_tup_hot_upd, 0 AS n_tup_newpage_upd,
+        n_live_tup, n_dead_tup, n_mod_since_analyze, n_ins_since_vacuum,
+        last_vacuum, last_autovacuum, last_analyze, last_autoanalyze,
+        vacuum_count, autovacuum_count, analyze_count, autoanalyze_count,
+        heap_blks_read, heap_blks_hit, idx_blks_read, idx_blks_hit,
+        toast_blks_read, toast_blks_hit, tidx_blks_read, tidx_blks_hit
+     FROM pg_catalog.pg_stat_all_tables st
+     JOIN pg_catalog.pg_statio_all_tables sit USING (relid)'),
+    -- pg_stat_all_tables pg16+, last_seq_scan, last_idx_scan and
+    -- n_tup_newpage_upd added
+    ('pg_stat_all_tables', 160000, false,
+     'SELECT relid,
+        seq_scan,  last_seq_scan, seq_tup_read,
+        idx_scan,  last_idx_scan, idx_tup_fetch,
+        n_tup_ins, n_tup_upd, n_tup_del, n_tup_hot_upd, n_tup_newpage_upd,
+        n_live_tup, n_dead_tup, n_mod_since_analyze, n_ins_since_vacuum,
+        last_vacuum, last_autovacuum, last_analyze, last_autoanalyze,
+        vacuum_count, autovacuum_count, analyze_count, autoanalyze_count,
+        heap_blks_read, heap_blks_hit, idx_blks_read, idx_blks_hit,
+        toast_blks_read, toast_blks_hit, tidx_blks_read, tidx_blks_hit
+     FROM pg_catalog.pg_stat_all_tables st
+     JOIN pg_catalog.pg_statio_all_tables sit USING (relid)'),
+    -- pg_stat_all_indexes
+    ('pg_stat_all_indexes', 0, false,
+     'SELECT si.relid, indexrelid, idx_scan, NULL AS last_idx_scan,
+        idx_tup_read, idx_tup_fetch, idx_blks_read, idx_blks_hit
+      FROM pg_catalog.pg_stat_all_indexes si
+      JOIN pg_catalog.pg_statio_all_indexes sit USING (indexrelid)'),
+    -- pg_stat_all_indexes pg16+
+    ('pg_stat_all_indexes', 160000, false,
+     'SELECT si.relid, indexrelid, idx_scan, last_idx_scan,
+        idx_tup_read, idx_tup_fetch, idx_blks_read, idx_blks_hit
+      FROM pg_catalog.pg_stat_all_indexes si
+      JOIN pg_catalog.pg_statio_all_indexes sit USING (indexrelid)'),
+    -- pg_stat_user_functions
+    ('pg_stat_user_functions', 0, false,
+     'SELECT funcid, calls, total_time, self_time
+      FROM pg_catalog.pg_stat_user_functions');
+
+CREATE FUNCTION @extschema@.powa_db_functions(_srvid integer,
+                                              _server_version_num integer)
+RETURNS TABLE (srvid integer, db_module text, operation text,
+               function_name text, dbnames text[], query_source text,
+               tmp_table text, enabled bool, priority numeric)
+AS $_$
+    SELECT srvid, db_module, operation, function_name, dbnames, query_source,
+        CASE WHEN f.operation = 'snapshot'
+            THEN tmp_table
+            ELSE NULL
+        END AS tmp_table, enabled, priority
+    FROM @extschema@.powa_db_modules m
+    JOIN @extschema@.powa_db_module_functions f USING (db_module)
+    JOIN @extschema@.powa_db_module_config c USING (db_module)
+    LEFT JOIN LATERAL (
+        SELECT query_source
+        FROM @extschema@.powa_db_module_src_queries q
+        WHERE q.db_module = m.db_module
+        AND min_version <= _server_version_num
+        ORDER BY min_version DESC
+        LIMIT 1
+    ) q ON f.operation = 'snapshot'
+    WHERE srvid = _srvid;
+$_$ LANGUAGE sql;
+
+CREATE VIEW @extschema@.powa_all_functions AS
+    SELECT *
+    FROM @extschema@.powa_functions
+    UNION ALL
+    SELECT srvid, 'db_module' AS kind, db_module AS name, operation, external,
+        function_name, NULL as query_source, NULL AS query_cleanup, enabled,
+        priority
+    FROM @extschema@.powa_db_modules pdm
+    JOIN @extschema@.powa_db_module_config pdmc USING (db_module)
+    JOIN @extschema@.powa_db_module_functions pdmf USING (db_module);
+
+CREATE TABLE @extschema@.powa_snapshot_metas (
     srvid integer PRIMARY KEY,
     coalesce_seq bigint NOT NULL default (1),
     snapts timestamp with time zone NOT NULL default '-infinity'::timestamptz,
@@ -466,76 +625,43 @@ CREATE OPERATOR @extschema@./ (
 );
 /* end of pg_stat_user_functions operator support */
 
-CREATE TYPE @extschema@.powa_all_relations_history_record AS (
+-- It combines info from pg_stat_all_indexes and pg_statio_all_indexes
+CREATE TYPE @extschema@.powa_all_indexes_history_record AS (
     ts timestamp with time zone,
-    numscan bigint,
-    tup_returned bigint,
-    tup_fetched bigint,
-    n_tup_ins bigint,
-    n_tup_upd bigint,
-    n_tup_del bigint,
-    n_tup_hot_upd bigint,
-    n_liv_tup bigint,
-    n_dead_tup bigint,
-    n_mod_since_analyze bigint,
-    blks_read bigint,
-    blks_hit bigint,
-    last_vacuum timestamp with time zone,
-    vacuum_count bigint,
-    last_autovacuum timestamp with time zone,
-    autovacuum_count bigint,
-    last_analyze timestamp with time zone,
-    analyze_count bigint,
-    last_autoanalyze timestamp with time zone,
-    autoanalyze_count bigint
+    -- pg_stat_all_indexes fields
+    idx_scan bigint,
+    last_idx_scan timestamp with time zone,
+    idx_tup_read bigint,
+    idx_tup_fetch bigint,
+    -- pg_statio_all_indexes fields
+    idx_blks_read bigint,
+    idx_blks_hit bigint
 );
 
-/* pg_stat_all_relations operator support */
-CREATE TYPE @extschema@.powa_all_relations_history_diff AS (
+/* pg_stat_all_indexes operator support */
+CREATE TYPE @extschema@.powa_all_indexes_history_diff AS (
     intvl interval,
-    numscan bigint,
-    tup_returned bigint,
-    tup_fetched bigint,
-    n_tup_ins bigint,
-    n_tup_upd bigint,
-    n_tup_del bigint,
-    n_tup_hot_upd bigint,
-    n_liv_tup bigint,
-    n_dead_tup bigint,
-    n_mod_since_analyze bigint,
-    blks_read bigint,
-    blks_hit bigint,
-    vacuum_count bigint,
-    autovacuum_count bigint,
-    analyze_count bigint,
-    autoanalyze_count bigint
+    idx_scan bigint,
+    idx_tup_read bigint,
+    idx_tup_fetch bigint,
+    idx_blks_read bigint,
+    idx_blks_hit bigint
 );
 
-CREATE OR REPLACE FUNCTION @extschema@.powa_all_relations_history_mi(
-    a @extschema@.powa_all_relations_history_record,
-    b @extschema@.powa_all_relations_history_record)
-RETURNS @extschema@.powa_all_relations_history_diff AS
+CREATE OR REPLACE FUNCTION @extschema@.powa_all_indexes_history_mi(
+    a @extschema@.powa_all_indexes_history_record,
+    b @extschema@.powa_all_indexes_history_record)
+RETURNS @extschema@.powa_all_indexes_history_diff AS
 $_$
 DECLARE
-    res @extschema@.powa_all_relations_history_diff;
+    res @extschema@.powa_all_indexes_history_diff;
 BEGIN
     res.intvl = a.ts - b.ts;
-    res.numscan = a.numscan - b.numscan;
-    res.tup_returned = a.tup_returned - b.tup_returned;
-    res.tup_fetched = a.tup_fetched - b.tup_fetched;
-    res.n_tup_ins = a.n_tup_ins - b.n_tup_ins;
-    res.n_tup_upd = a.n_tup_upd - b.n_tup_upd;
-    res.n_tup_del = a.n_tup_del - b.n_tup_del;
-    res.n_tup_hot_upd = a.n_tup_hot_upd - b.n_tup_hot_upd;
-    res.n_liv_tup = a.n_liv_tup - b.n_liv_tup;
-    res.n_dead_tup = a.n_dead_tup - b.n_dead_tup;
-    res.n_mod_since_analyze = a.n_mod_since_analyze - b.n_mod_since_analyze;
-    res.blks_read = a.blks_read - b.blks_read;
-    res.blks_hit = a.blks_hit - b.blks_hit;
-    res.vacuum_count = a.vacuum_count - b.vacuum_count;
-    res.autovacuum_count = a.autovacuum_count - b.autovacuum_count;
-    res.analyze_count = a.analyze_count - b.analyze_count;
-    res.autoanalyze_count = a.autoanalyze_count - b.autoanalyze_count;
+    res.idx_scan = a.idx_scan - b.idx_scan;
+    res.idx_tup_read = a.idx_tup_read - b.idx_tup_read;
+    res.idx_tup_fetch = a.idx_tup_fetch - b.idx_tup_fetch;
+    res.idx_blks_read = a.idx_blks_read - b.idx_blks_read;
+    res.idx_blks_hit = a.idx_blks_hit - b.idx_blks_hit;
 
     return res;
 END;
@@ -543,38 +669,27 @@ $_$
 LANGUAGE plpgsql IMMUTABLE STRICT;
 
 CREATE OPERATOR @extschema@.- (
-    PROCEDURE = @extschema@.powa_all_relations_history_mi,
-    LEFTARG = @extschema@.powa_all_relations_history_record,
-    RIGHTARG = @extschema@.powa_all_relations_history_record
+    PROCEDURE = @extschema@.powa_all_indexes_history_mi,
+    LEFTARG = @extschema@.powa_all_indexes_history_record,
+    RIGHTARG = @extschema@.powa_all_indexes_history_record
 );
 
-CREATE TYPE @extschema@.powa_all_relations_history_rate AS (
+CREATE TYPE @extschema@.powa_all_indexes_history_rate AS (
     sec integer,
-    numscan_per_sec double precision,
-    tup_returned_per_sec double precision,
-    tup_fetched_per_sec double precision,
-    n_tup_ins_per_sec double precision,
-    n_tup_upd_per_sec double precision,
-    n_tup_del_per_sec double precision,
-    n_tup_hot_upd_per_sec double precision,
-    n_liv_tup_per_sec double precision,
-    n_dead_tup_per_sec double precision,
-    n_mod_since_analyze_per_sec double precision,
-    blks_read_per_sec double precision,
-    blks_hit_per_sec double precision,
-    vacuum_count_per_sec double precision,
-    autovacuum_count_per_sec double precision,
-    analyze_count_per_sec double precision,
-    autoanalyze_count_per_sec double precision
+    idx_scan_per_sec double precision,
+    idx_tup_read_per_sec double precision,
+    idx_tup_fetch_per_sec double precision,
+    idx_blks_read_per_sec double precision,
+    idx_blks_hit_per_sec double precision
 );
 
-CREATE OR REPLACE FUNCTION @extschema@.powa_all_relations_history_div(
-    a @extschema@.powa_all_relations_history_record,
-    b @extschema@.powa_all_relations_history_record)
-RETURNS @extschema@.powa_all_relations_history_rate AS
+CREATE OR REPLACE FUNCTION @extschema@.powa_all_indexes_history_div(
+    a @extschema@.powa_all_indexes_history_record,
+    b @extschema@.powa_all_indexes_history_record)
+RETURNS @extschema@.powa_all_indexes_history_rate AS
 $_$
 DECLARE
-    res @extschema@.powa_all_relations_history_rate;
+    res @extschema@.powa_all_indexes_history_rate;
     sec integer;
 BEGIN
     res.sec = extract(EPOCH FROM (a.ts - b.ts));
@@ -583,22 +698,11 @@ BEGIN
     ELSE
         sec = res.sec;
     END IF;
-    res.numscan_per_sec = (a.numscan - b.numscan)::double precision / sec;
-    res.tup_returned_per_sec = (a.tup_returned - b.tup_returned)::double precision / sec;
-    res.tup_fetched_per_sec = (a.tup_fetched - b.tup_fetched)::double precision / sec;
-    res.n_tup_ins_per_sec = (a.n_tup_ins - b.n_tup_ins)::double precision / sec;
-    res.n_tup_upd_per_sec = (a.n_tup_upd - b.n_tup_upd)::double precision / sec;
-    res.n_tup_del_per_sec = (a.n_tup_del - b.n_tup_del)::double precision / sec;
-    res.n_tup_hot_upd_per_sec = (a.n_tup_hot_upd - b.n_tup_hot_upd)::double precision / sec;
-    res.n_liv_tup_per_sec = (a.n_liv_tup - b.n_liv_tup)::double precision / sec;
-    res.n_dead_tup_per_sec = (a.n_dead_tup - b.n_dead_tup)::double precision / sec;
-    res.n_mod_since_analyze_per_sec = (a.n_mod_since_analyze - b.n_mod_since_analyze)::double precision / sec;
-    res.blks_read_per_sec = (a.blks_read - b.blks_read)::double precision / sec;
-    res.blks_hit_per_sec = (a.blks_hit - b.blks_hit)::double precision / sec;
-    res.vacuum_count_per_sec = (a.vacuum_count - b.vacuum_count)::double precision / sec;
-    res.autovacuum_count_per_sec = (a.autovacuum_count - b.autovacuum_count)::double precision / sec;
-    res.analyze_count_per_sec = (a.analyze_count - b.analyze_count)::double precision / sec;
-    res.autoanalyze_count_per_sec = (a.autoanalyze_count - b.autoanalyze_count)::double precision / sec;
+    res.idx_scan_per_sec = (a.idx_scan - b.idx_scan)::double precision / sec;
+    res.idx_tup_read_per_sec = (a.idx_tup_read - b.idx_tup_read)::double precision / sec;
+    res.idx_tup_fetch_per_sec = (a.idx_tup_fetch - b.idx_tup_fetch)::double precision / sec;
+    res.idx_blks_read_per_sec = (a.idx_blks_read - b.idx_blks_read)::double precision / sec;
+    res.idx_blks_hit_per_sec = (a.idx_blks_hit - b.idx_blks_hit)::double precision / sec;
 
     return res;
 END;
@@ -606,81 +710,40 @@ $_$
 LANGUAGE plpgsql IMMUTABLE STRICT;
 
 CREATE OPERATOR @extschema@./ (
-    PROCEDURE = @extschema@.powa_all_relations_history_div,
-    LEFTARG = @extschema@.powa_all_relations_history_record,
-    RIGHTARG = @extschema@.powa_all_relations_history_record
+    PROCEDURE = @extschema@.powa_all_indexes_history_div,
+    LEFTARG = @extschema@.powa_all_indexes_history_record,
+    RIGHTARG = @extschema@.powa_all_indexes_history_record
 );
-/* end of pg_stat_all_relations operator support */
+/* end of pg_stat_all_indexes operator support */
 
-CREATE TYPE @extschema@.powa_all_relations_history_db_record AS (
+-- We need a type different than powa_all_indexes_history_record as we can't
+-- aggregate the last last_* timestamps
+CREATE TYPE @extschema@.powa_all_indexes_history_db_record AS (
     ts timestamp with time zone,
-    seq_scan bigint,
+    -- pg_stat_all_indexes fields
     idx_scan bigint,
-    tup_returned bigint,
-    tup_fetched bigint,
-    n_tup_ins bigint,
-    n_tup_upd bigint,
-    n_tup_del bigint,
-    n_tup_hot_upd bigint,
-    n_liv_tup bigint,
-    n_dead_tup bigint,
-    n_mod_since_analyze bigint,
-    blks_read bigint,
-    blks_hit bigint,
-    vacuum_count bigint,
-    autovacuum_count bigint,
-    analyze_count bigint,
-    autoanalyze_count bigint
+    idx_tup_read bigint,
+    idx_tup_fetch bigint,
+    -- pg_statio_all_indexes fields
+    idx_blks_read bigint,
+    idx_blks_hit bigint
 );
 
-/* pg_stat_all_relations_db operator support */
-CREATE TYPE @extschema@.powa_all_relations_history_db_diff AS (
-    intvl interval,
-    seq_scan bigint,
-    idx_scan bigint,
-    tup_returned bigint,
-    tup_fetched bigint,
-    n_tup_ins bigint,
-    n_tup_upd bigint,
-    n_tup_del bigint,
-    n_tup_hot_upd bigint,
-    n_liv_tup bigint,
-    n_dead_tup bigint,
-    n_mod_since_analyze bigint,
-    blks_read bigint,
-    blks_hit bigint,
-    vacuum_count bigint,
-    autovacuum_count bigint,
-    analyze_count bigint,
-    autoanalyze_count bigint
-);
-
-CREATE OR REPLACE FUNCTION @extschema@.powa_all_relations_history_db_mi(
-    a @extschema@.powa_all_relations_history_db_record,
-    b @extschema@.powa_all_relations_history_db_record)
-RETURNS @extschema@.powa_all_relations_history_db_diff AS
+/* pg_stat_all_indexes_db operator support */
+CREATE OR REPLACE FUNCTION @extschema@.powa_all_indexes_history_db_mi(
+    a @extschema@.powa_all_indexes_history_db_record,
+    b @extschema@.powa_all_indexes_history_db_record)
+RETURNS @extschema@.powa_all_indexes_history_diff AS
 $_$
 DECLARE
-    res @extschema@.powa_all_relations_history_db_diff;
+    res @extschema@.powa_all_indexes_history_diff;
 BEGIN
     res.intvl = a.ts - b.ts;
-    res.seq_scan = a.seq_scan - b.seq_scan;
     res.idx_scan = a.idx_scan - b.idx_scan;
-    res.tup_returned = a.tup_returned - b.tup_returned;
-    res.tup_fetched = a.tup_fetched - b.tup_fetched;
-    res.n_tup_ins = a.n_tup_ins - b.n_tup_ins;
-    res.n_tup_upd = a.n_tup_upd - b.n_tup_upd;
-    res.n_tup_del = a.n_tup_del - b.n_tup_del;
-    res.n_tup_hot_upd = a.n_tup_hot_upd - b.n_tup_hot_upd;
-    res.n_liv_tup = a.n_liv_tup - b.n_liv_tup;
-    res.n_dead_tup = a.n_dead_tup - b.n_dead_tup;
-    res.n_mod_since_analyze = a.n_mod_since_analyze - b.n_mod_since_analyze;
-    res.blks_read = a.blks_read - b.blks_read;
-    res.blks_hit = a.blks_hit - b.blks_hit;
-    res.vacuum_count = a.vacuum_count - b.vacuum_count;
-    res.autovacuum_count = a.autovacuum_count - b.autovacuum_count;
-    res.analyze_count = a.analyze_count - b.analyze_count;
-    res.autoanalyze_count = a.autoanalyze_count - b.autoanalyze_count;
+    res.idx_tup_read = a.idx_tup_read - b.idx_tup_read;
+    res.idx_tup_fetch = a.idx_tup_fetch - b.idx_tup_fetch;
+    res.idx_blks_read = a.idx_blks_read - b.idx_blks_read;
+    res.idx_blks_hit = a.idx_blks_hit - b.idx_blks_hit;
 
     return res;
 END;
@@ -688,39 +751,190 @@ $_$
 LANGUAGE plpgsql IMMUTABLE STRICT;
 
 CREATE OPERATOR @extschema@.- (
-    PROCEDURE = @extschema@.powa_all_relations_history_db_mi,
-    LEFTARG = @extschema@.powa_all_relations_history_db_record,
-    RIGHTARG = @extschema@.powa_all_relations_history_db_record
+    PROCEDURE = @extschema@.powa_all_indexes_history_db_mi,
+    LEFTARG = @extschema@.powa_all_indexes_history_db_record,
+    RIGHTARG = @extschema@.powa_all_indexes_history_db_record
 );
 
-CREATE TYPE @extschema@.powa_all_relations_history_db_rate AS (
+CREATE OR REPLACE FUNCTION @extschema@.powa_all_indexes_history_db_div(
+    a @extschema@.powa_all_indexes_history_db_record,
+    b @extschema@.powa_all_indexes_history_db_record)
+RETURNS @extschema@.powa_all_indexes_history_rate AS
+$_$
+DECLARE
+    res @extschema@.powa_all_indexes_history_rate;
+    sec integer;
+BEGIN
+    res.sec = extract(EPOCH FROM (a.ts - b.ts));
+    IF res.sec = 0 THEN
+        sec = 1;
+    ELSE
+        sec = res.sec;
+    END IF;
+    res.idx_scan_per_sec = (a.idx_scan - b.idx_scan)::double precision / sec;
+    res.idx_tup_read_per_sec = (a.idx_tup_read - b.idx_tup_read)::double precision / sec;
+    res.idx_tup_fetch_per_sec = (a.idx_tup_fetch - b.idx_tup_fetch)::double precision / sec;
+    res.idx_blks_read_per_sec = (a.idx_blks_read - b.idx_blks_read)::double precision / sec;
+    res.idx_blks_hit_per_sec = (a.idx_blks_hit - b.idx_blks_hit)::double precision / sec;
+
+    return res;
+END;
+$_$
+LANGUAGE plpgsql IMMUTABLE STRICT;
+
+CREATE OPERATOR @extschema@./ (
+    PROCEDURE = @extschema@.powa_all_indexes_history_db_div,
+    LEFTARG = @extschema@.powa_all_indexes_history_db_record,
+    RIGHTARG = @extschema@.powa_all_indexes_history_db_record
+);
+/* end of pg_stat_all_indexes_db operator support */
+
+-- It combines info from pg_stat_all_tables and pg_statio_all_tables
+CREATE TYPE @extschema@.powa_all_tables_history_record AS (
+    ts timestamp with time zone,
+    -- pg_stat_all_tables fields
+    seq_scan bigint,
+    last_seq_scan timestamp with time zone,
+    seq_tup_read bigint,
+    idx_scan bigint,
+    last_idx_scan timestamp with time zone,
+    n_tup_ins bigint,
+    n_tup_upd bigint,
+    n_tup_del bigint,
+    n_tup_hot_upd bigint,
+    n_tup_newpage_upd bigint,
+    n_liv_tup bigint,
+    n_dead_tup bigint,
+    n_mod_since_analyze bigint,
+    n_ins_since_vacuum bigint,
+    last_vacuum timestamp with time zone,
+    last_autovacuum timestamp with time zone,
+    last_analyze timestamp with time zone,
+    last_autoanalyze timestamp with time zone,
+    vacuum_count bigint,
+    autovacuum_count bigint,
+    analyze_count bigint,
+    autoanalyze_count bigint,
+    -- pg_statio_all_tables fields
+    heap_blks_read bigint,
+    heap_blks_hit bigint,
+    idx_blks_read bigint,
+    idx_blks_hit bigint,
+    toast_blks_read bigint,
+    toast_blks_hit bigint,
+    tidx_blks_read bigint,
+    tidx_blks_hit bigint
+);
+
+/* pg_stat_all_tables operator support */
+CREATE TYPE @extschema@.powa_all_tables_history_diff AS (
+    intvl interval,
+    seq_scan bigint,
+    seq_tup_read bigint,
+    idx_scan bigint,
+    n_tup_ins bigint,
+    n_tup_upd bigint,
+    n_tup_del bigint,
+    n_tup_hot_upd bigint,
+    n_tup_newpage_upd bigint,
+    n_liv_tup bigint,
+    n_dead_tup bigint,
+    n_mod_since_analyze bigint,
+    n_ins_since_vacuum bigint,
+    vacuum_count bigint,
+    autovacuum_count bigint,
+    analyze_count bigint,
+    autoanalyze_count bigint,
+    heap_blks_read bigint,
+    heap_blks_hit bigint,
+    idx_blks_read bigint,
+    idx_blks_hit bigint,
+    toast_blks_read bigint,
+    toast_blks_hit bigint,
+    tidx_blks_read bigint,
+    tidx_blks_hit bigint
+);
+
+CREATE OR REPLACE FUNCTION @extschema@.powa_all_tables_history_mi(
+    a @extschema@.powa_all_tables_history_record,
+    b @extschema@.powa_all_tables_history_record)
+RETURNS @extschema@.powa_all_tables_history_diff AS
+$_$
+DECLARE
+    res @extschema@.powa_all_tables_history_diff;
+BEGIN
+    res.intvl = a.ts - b.ts;
+    res.seq_scan = a.seq_scan - b.seq_scan;
+    res.seq_tup_read = a.seq_tup_read - b.seq_tup_read;
+    res.idx_scan = a.idx_scan - b.idx_scan;
+    res.n_tup_ins = a.n_tup_ins - b.n_tup_ins;
+    res.n_tup_upd = a.n_tup_upd - b.n_tup_upd;
+    res.n_tup_del = a.n_tup_del - b.n_tup_del;
+    res.n_tup_hot_upd = a.n_tup_hot_upd - b.n_tup_hot_upd;
+    res.n_tup_newpage_upd = a.n_tup_newpage_upd - b.n_tup_newpage_upd;
+    res.n_liv_tup = a.n_liv_tup - b.n_liv_tup;
+    res.n_dead_tup = a.n_dead_tup - b.n_dead_tup;
+    res.n_mod_since_analyze = a.n_mod_since_analyze - b.n_mod_since_analyze;
+    res.n_ins_since_vacuum = a.n_ins_since_vacuum - b.n_ins_since_vacuum;
+    res.vacuum_count = a.vacuum_count - b.vacuum_count;
+    res.autovacuum_count = a.autovacuum_count - b.autovacuum_count;
+    res.analyze_count = a.analyze_count - b.analyze_count;
+    res.autoanalyze_count = a.autoanalyze_count - b.autoanalyze_count;
+    res.heap_blks_read = a.heap_blks_read - b.heap_blks_read;
+    res.heap_blks_hit = a.heap_blks_hit - b.heap_blks_hit;
+    res.idx_blks_read = a.idx_blks_read - b.idx_blks_read;
+    res.idx_blks_hit = a.idx_blks_hit - b.idx_blks_hit;
+    res.toast_blks_read = a.toast_blks_read - b.toast_blks_read;
+    res.toast_blks_hit = a.toast_blks_hit - b.toast_blks_hit;
+    res.tidx_blks_read = a.tidx_blks_read - b.tidx_blks_read;
+    res.tidx_blks_hit = a.tidx_blks_hit - b.tidx_blks_hit;
+
+    return res;
+END;
+$_$
+LANGUAGE plpgsql IMMUTABLE STRICT;
+
+CREATE OPERATOR @extschema@.- (
+    PROCEDURE = @extschema@.powa_all_tables_history_mi,
+    LEFTARG = @extschema@.powa_all_tables_history_record,
+    RIGHTARG = @extschema@.powa_all_tables_history_record
+);
+
+CREATE TYPE @extschema@.powa_all_tables_history_rate AS (
     sec integer,
     seq_scan_per_sec double precision,
+    seq_tup_read_per_sec double precision,
     idx_scan_per_sec double precision,
-    tup_returned_per_sec double precision,
-    tup_fetched_per_sec double precision,
     n_tup_ins_per_sec double precision,
     n_tup_upd_per_sec double precision,
     n_tup_del_per_sec double precision,
     n_tup_hot_upd_per_sec double precision,
+    n_tup_newpage_upd_per_sec double precision,
     n_liv_tup_per_sec double precision,
     n_dead_tup_per_sec double precision,
     n_mod_since_analyze_per_sec double precision,
-    blks_read_per_sec double precision,
-    blks_hit_per_sec double precision,
+    n_ins_since_vacuum_per_sec double precision,
     vacuum_count_per_sec double precision,
     autovacuum_count_per_sec double precision,
     analyze_count_per_sec double precision,
-    autoanalyze_count_per_sec double precision
+    autoanalyze_count_per_sec double precision,
+    heap_blks_read_per_sec double precision,
+    heap_blks_hit_per_sec double precision,
+    idx_blks_read_per_sec double precision,
+    idx_blks_hit_per_sec double precision,
+    toast_blks_read_per_sec double precision,
+    toast_blks_hit_per_sec double precision,
+    tidx_blks_read_per_sec double precision,
+    tidx_blks_hit_per_sec double precision
 );
 
-CREATE OR REPLACE FUNCTION @extschema@.powa_all_relations_history_db_div(
-    a @extschema@.powa_all_relations_history_db_record,
-    b @extschema@.powa_all_relations_history_db_record)
-RETURNS @extschema@.powa_all_relations_history_db_rate AS
+CREATE OR REPLACE FUNCTION @extschema@.powa_all_tables_history_div(
+    a @extschema@.powa_all_tables_history_record,
+    b @extschema@.powa_all_tables_history_record)
+RETURNS @extschema@.powa_all_tables_history_rate AS
 $_$
 DECLARE
-    res @extschema@.powa_all_relations_history_db_rate;
+    res @extschema@.powa_all_tables_history_rate;
     sec integer;
 BEGIN
     res.sec = extract(EPOCH FROM (a.ts - b.ts));
@@ -730,22 +944,29 @@ BEGIN
         sec = res.sec;
     END IF;
     res.seq_scan_per_sec = (a.seq_scan - b.seq_scan)::double precision / sec;
+    res.seq_tup_read_per_sec = (a.seq_tup_read - b.seq_tup_read)::double precision / sec;
     res.idx_scan_per_sec = (a.idx_scan - b.idx_scan)::double precision / sec;
-    res.tup_returned_per_sec = (a.tup_returned - b.tup_returned)::double precision / sec;
-    res.tup_fetched_per_sec = (a.tup_fetched - b.tup_fetched)::double precision / sec;
     res.n_tup_ins_per_sec = (a.n_tup_ins - b.n_tup_ins)::double precision / sec;
     res.n_tup_upd_per_sec = (a.n_tup_upd - b.n_tup_upd)::double precision / sec;
     res.n_tup_del_per_sec = (a.n_tup_del - b.n_tup_del)::double precision / sec;
     res.n_tup_hot_upd_per_sec = (a.n_tup_hot_upd - b.n_tup_hot_upd)::double precision / sec;
+    res.n_tup_newpage_upd_per_sec = (a.n_tup_newpage_upd - b.n_tup_newpage_upd)::double precision / sec;
     res.n_liv_tup_per_sec = (a.n_liv_tup - b.n_liv_tup)::double precision / sec;
     res.n_dead_tup_per_sec = (a.n_dead_tup - b.n_dead_tup)::double precision / sec;
     res.n_mod_since_analyze_per_sec = (a.n_mod_since_analyze - b.n_mod_since_analyze)::double precision / sec;
-    res.blks_read_per_sec = (a.blks_read - b.blks_read)::double precision / sec;
-    res.blks_hit_per_sec = (a.blks_hit - b.blks_hit)::double precision / sec;
+    res.n_ins_since_vacuum_per_sec = (a.n_ins_since_vacuum - b.n_ins_since_vacuum)::double precision / sec;
     res.vacuum_count_per_sec = (a.vacuum_count - b.vacuum_count)::double precision / sec;
     res.autovacuum_count_per_sec = (a.autovacuum_count - b.autovacuum_count)::double precision / sec;
     res.analyze_count_per_sec = (a.analyze_count - b.analyze_count)::double precision / sec;
     res.autoanalyze_count_per_sec = (a.autoanalyze_count - b.autoanalyze_count)::double precision / sec;
+    res.heap_blks_read_per_sec = (a.heap_blks_read - b.heap_blks_read)::double precision / sec;
+    res.heap_blks_hit_per_sec = (a.heap_blks_hit - b.heap_blks_hit)::double precision / sec;
+    res.idx_blks_read_per_sec = (a.idx_blks_read - b.idx_blks_read)::double precision / sec;
+    res.idx_blks_hit_per_sec = (a.idx_blks_hit - b.idx_blks_hit)::double precision / sec;
+    res.toast_blks_read_per_sec = (a.toast_blks_read - b.toast_blks_read)::double precision / sec;
+    res.toast_blks_hit_per_sec = (a.toast_blks_hit - b.toast_blks_hit)::double precision / sec;
+    res.tidx_blks_read_per_sec = (a.tidx_blks_read - b.tidx_blks_read)::double precision / sec;
+    res.tidx_blks_hit_per_sec = (a.tidx_blks_hit - b.tidx_blks_hit)::double precision / sec;
 
     return res;
 END;
@@ -753,11 +974,141 @@ $_$
 LANGUAGE plpgsql IMMUTABLE STRICT;
 
 CREATE OPERATOR @extschema@./ (
-    PROCEDURE = @extschema@.powa_all_relations_history_db_div,
-    LEFTARG = @extschema@.powa_all_relations_history_db_record,
-    RIGHTARG = @extschema@.powa_all_relations_history_db_record
+    PROCEDURE = @extschema@.powa_all_tables_history_div,
+    LEFTARG = @extschema@.powa_all_tables_history_record,
+    RIGHTARG = @extschema@.powa_all_tables_history_record
 );
-/* end of pg_stat_all_relations_db operator support */
+/* end of pg_stat_all_tables operator support */
+
+-- We need a type different than powa_all_tables_history_record as we can't
+-- aggregate the last last_* timestamps
+CREATE TYPE @extschema@.powa_all_tables_history_db_record AS (
+    ts timestamp with time zone,
+    -- pg_stat_all_tables fields
+    seq_scan bigint,
+    seq_tup_read bigint,
+    idx_scan bigint,
+    n_tup_ins bigint,
+    n_tup_upd bigint,
+    n_tup_del bigint,
+    n_tup_hot_upd bigint,
+    n_tup_newpage_upd bigint,
+    n_liv_tup bigint,
+    n_dead_tup bigint,
+    n_mod_since_analyze bigint,
+    n_ins_since_vacuum bigint,
+    vacuum_count bigint,
+    autovacuum_count bigint,
+    analyze_count bigint,
+    autoanalyze_count bigint,
+    -- pg_statio_all_tables fields
+    heap_blks_read bigint,
+    heap_blks_hit bigint,
+    idx_blks_read bigint,
+    idx_blks_hit bigint,
+    toast_blks_read bigint,
+    toast_blks_hit bigint,
+    tidx_blks_read bigint,
+    tidx_blks_hit bigint
+);
+
+/* pg_stat_all_tables_db operator support */
+CREATE OR REPLACE FUNCTION @extschema@.powa_all_tables_history_db_mi(
+    a @extschema@.powa_all_tables_history_db_record,
+    b @extschema@.powa_all_tables_history_db_record)
+RETURNS @extschema@.powa_all_tables_history_diff AS
+$_$
+DECLARE
+    res @extschema@.powa_all_tables_history_diff;
+BEGIN
+    res.intvl = a.ts - b.ts;
+    res.seq_scan = a.seq_scan - b.seq_scan;
+    res.seq_tup_read = a.seq_tup_read - b.seq_tup_read;
+    res.idx_scan = a.idx_scan - b.idx_scan;
+    res.n_tup_ins = a.n_tup_ins - b.n_tup_ins;
+    res.n_tup_upd = a.n_tup_upd - b.n_tup_upd;
+    res.n_tup_del = a.n_tup_del - b.n_tup_del;
+    res.n_tup_hot_upd = a.n_tup_hot_upd - b.n_tup_hot_upd;
+    res.n_tup_newpage_upd = a.n_tup_newpage_upd - b.n_tup_newpage_upd;
+    res.n_liv_tup = a.n_liv_tup - b.n_liv_tup;
+    res.n_dead_tup = a.n_dead_tup - b.n_dead_tup;
+    res.n_mod_since_analyze = a.n_mod_since_analyze - b.n_mod_since_analyze;
+    res.n_ins_since_vacuum = a.n_ins_since_vacuum - b.n_ins_since_vacuum;
+    res.vacuum_count = a.vacuum_count - b.vacuum_count;
+    res.autovacuum_count = a.autovacuum_count - b.autovacuum_count;
+    res.analyze_count = a.analyze_count - b.analyze_count;
+    res.autoanalyze_count = a.autoanalyze_count - b.autoanalyze_count;
+    res.heap_blks_read = a.heap_blks_read - b.heap_blks_read;
+    res.heap_blks_hit = a.heap_blks_hit - b.heap_blks_hit;
+    res.idx_blks_read = a.idx_blks_read - b.idx_blks_read;
+    res.idx_blks_hit = a.idx_blks_hit - b.idx_blks_hit;
+    res.toast_blks_read = a.toast_blks_read - b.toast_blks_read;
+    res.toast_blks_hit = a.toast_blks_hit - b.toast_blks_hit;
+    res.tidx_blks_read = a.tidx_blks_read - b.tidx_blks_read;
+    res.tidx_blks_hit = a.tidx_blks_hit - b.tidx_blks_hit;
+
+    return res;
+END;
+$_$
+LANGUAGE plpgsql IMMUTABLE STRICT;
+
+CREATE OPERATOR @extschema@.- (
+    PROCEDURE = @extschema@.powa_all_tables_history_db_mi,
+    LEFTARG = @extschema@.powa_all_tables_history_db_record,
+    RIGHTARG = @extschema@.powa_all_tables_history_db_record
+);
+
+CREATE OR REPLACE FUNCTION @extschema@.powa_all_tables_history_db_div(
+    a @extschema@.powa_all_tables_history_db_record,
+    b @extschema@.powa_all_tables_history_db_record)
+RETURNS @extschema@.powa_all_tables_history_rate AS
+$_$
+DECLARE
+    res @extschema@.powa_all_tables_history_rate;
+    sec integer;
+BEGIN
+    res.sec = extract(EPOCH FROM (a.ts - b.ts));
+    IF res.sec = 0 THEN
+        sec = 1;
+    ELSE
+        sec = res.sec;
+    END IF;
+    res.seq_scan_per_sec = (a.seq_scan - b.seq_scan)::double precision / sec;
+    res.seq_tup_read_per_sec = (a.seq_tup_read - b.seq_tup_read)::double precision / sec;
+    res.idx_scan_per_sec = (a.idx_scan - b.idx_scan)::double precision / sec;
+    res.n_tup_ins_per_sec = (a.n_tup_ins - b.n_tup_ins)::double precision / sec;
+    res.n_tup_upd_per_sec = (a.n_tup_upd - b.n_tup_upd)::double precision / sec;
+    res.n_tup_del_per_sec = (a.n_tup_del - b.n_tup_del)::double precision / sec;
+    res.n_tup_hot_upd_per_sec = (a.n_tup_hot_upd - b.n_tup_hot_upd)::double precision / sec;
+    res.n_tup_newpage_upd_per_sec = (a.n_tup_newpage_upd - b.n_tup_newpage_upd)::double precision / sec;
+    res.n_liv_tup_per_sec = (a.n_liv_tup - b.n_liv_tup)::double precision / sec;
+    res.n_dead_tup_per_sec = (a.n_dead_tup - b.n_dead_tup)::double precision / sec;
+    res.n_mod_since_analyze_per_sec = (a.n_mod_since_analyze - b.n_mod_since_analyze)::double precision / sec;
+    res.n_ins_since_vacuum_per_sec = (a.n_ins_since_vacuum - b.n_ins_since_vacuum)::double precision / sec;
+    res.vacuum_count_per_sec = (a.vacuum_count - b.vacuum_count)::double precision / sec;
+    res.autovacuum_count_per_sec = (a.autovacuum_count - b.autovacuum_count)::double precision / sec;
+    res.analyze_count_per_sec = (a.analyze_count - b.analyze_count)::double precision / sec;
+    res.autoanalyze_count_per_sec = (a.autoanalyze_count - b.autoanalyze_count)::double precision / sec;
+    res.heap_blks_read_per_sec = (a.heap_blks_read - b.heap_blks_read)::double precision / sec;
+    res.heap_blks_hit_per_sec = (a.heap_blks_hit - b.heap_blks_hit)::double precision / sec;
+    res.idx_blks_read_per_sec = (a.idx_blks_read - b.idx_blks_read)::double precision / sec;
+    res.idx_blks_hit_per_sec = (a.idx_blks_hit - b.idx_blks_hit)::double precision / sec;
+    res.toast_blks_read_per_sec = (a.toast_blks_read - b.toast_blks_read)::double precision / sec;
+    res.toast_blks_hit_per_sec = (a.toast_blks_hit - b.toast_blks_hit)::double precision / sec;
+    res.tidx_blks_read_per_sec = (a.tidx_blks_read - b.tidx_blks_read)::double precision / sec;
+    res.tidx_blks_hit_per_sec = (a.tidx_blks_hit - b.tidx_blks_hit)::double precision / sec;
+
+    return res;
+END;
+$_$
+LANGUAGE plpgsql IMMUTABLE STRICT;
+
+CREATE OPERATOR @extschema@./ (
+    PROCEDURE = @extschema@.powa_all_tables_history_db_div,
+    LEFTARG = @extschema@.powa_all_tables_history_db_record,
+    RIGHTARG = @extschema@.powa_all_tables_history_db_record
+);
+/* end of pg_stat_all_tables_db operator support */
 
 CREATE TYPE @extschema@.powa_stat_bgwriter_history_record AS (
     ts timestamp with time zone,
@@ -872,7 +1223,7 @@ CREATE OPERATOR @extschema@./ (
 /* end of pg_stat_bgwriter operator support */
 
 
-CREATE UNLOGGED TABLE @extschema@.powa_databases_src_tmp(
+CREATE UNLOGGED TABLE @extschema@.powa_databases_src_tmp (
     srvid integer NOT NULL,
     oid oid NOT NULL,
     datname name NOT NULL
@@ -908,7 +1259,7 @@ CREATE UNLOGGED TABLE @extschema@.powa_statements_src_tmp (
     wal_bytes numeric NOT NULL
 );
 
-CREATE UNLOGGED TABLE @extschema@.powa_user_functions_src_tmp(
+CREATE UNLOGGED TABLE @extschema@.powa_user_functions_src_tmp (
     srvid integer NOT NULL,
     ts  timestamp with time zone NOT NULL,
     dbid oid NOT NULL,
@@ -918,34 +1269,59 @@ CREATE UNLOGGED TABLE @extschema@.powa_user_functions_src_tmp(
     self_time double precision NOT NULL
 );
 
-CREATE UNLOGGED TABLE @extschema@.powa_all_relations_src_tmp(
+CREATE UNLOGGED TABLE @extschema@.powa_all_indexes_src_tmp (
     srvid integer NOT NULL,
     ts  timestamp with time zone NOT NULL,
     dbid oid NOT NULL,
     relid oid NOT NULL,
-    numscan bigint NOT NULL,
-    tup_returned bigint NOT NULL,
-    tup_fetched bigint NOT NULL,
-    n_tup_ins bigint NOT NULL,
-    n_tup_upd bigint NOT NULL,
-    n_tup_del bigint NOT NULL,
-    n_tup_hot_upd bigint NOT NULL,
-    n_liv_tup bigint NOT NULL,
-    n_dead_tup bigint NOT NULL,
-    n_mod_since_analyze bigint NOT NULL,
-    blks_read bigint NOT NULL,
-    blks_hit bigint NOT NULL,
-    last_vacuum timestamp with time zone,
-    vacuum_count bigint NOT NULL,
-    last_autovacuum timestamp with time zone,
-    autovacuum_count bigint NOT NULL,
-    last_analyze timestamp with time zone,
-    analyze_count bigint NOT NULL,
-    last_autoanalyze timestamp with time zone,
-    autoanalyze_count bigint NOT NULL
+    indexrelid oid NOT NULL,
+    idx_scan bigint,
+    last_idx_scan timestamp with time zone,
+    idx_tup_read bigint,
+    idx_tup_fetch bigint,
+    idx_blks_read bigint,
+    idx_blks_hit bigint
 );
 
-CREATE UNLOGGED TABLE @extschema@.powa_stat_bgwriter_src_tmp(
+CREATE UNLOGGED TABLE @extschema@.powa_all_tables_src_tmp (
+    srvid integer NOT NULL,
+    ts  timestamp with time zone NOT NULL,
+    dbid oid NOT NULL,
+    relid oid NOT NULL,
+    seq_scan bigint,
+    last_seq_scan timestamp with time zone,
+    seq_tup_read bigint,
+    idx_scan bigint,
+    last_idx_scan timestamp with time zone,
+    idx_tup_fetch bigint,
+    n_tup_ins bigint,
+    n_tup_upd bigint,
+    n_tup_del bigint,
+    n_tup_hot_upd bigint,
+    n_tup_newpage_upd bigint,
+    n_liv_tup bigint,
+    n_dead_tup bigint,
+    n_mod_since_analyze bigint,
+    n_ins_since_vacuum bigint,
+    last_vacuum timestamp with time zone,
+    last_autovacuum timestamp with time zone,
+    last_analyze timestamp with time zone,
+    last_autoanalyze timestamp with time zone,
+    vacuum_count bigint,
+    autovacuum_count bigint,
+    analyze_count bigint,
+    autoanalyze_count bigint,
+    heap_blks_read bigint,
+    heap_blks_hit bigint,
+    idx_blks_read bigint,
+    idx_blks_hit bigint,
+    toast_blks_read bigint,
+    toast_blks_hit bigint,
+    tidx_blks_read bigint,
+    tidx_blks_hit bigint
+);
+
+CREATE UNLOGGED TABLE @extschema@.powa_stat_bgwriter_src_tmp (
     srvid integer NOT NULL,
     ts timestamp with time zone NOT NULL,
     checkpoints_timed bigint NOT NULL,
@@ -1034,51 +1410,99 @@ CREATE TABLE @extschema@.powa_user_functions_history_current (
 );
 CREATE INDEX ON @extschema@.powa_user_functions_history_current(srvid);
 
-CREATE TABLE @extschema@.powa_all_relations_history (
+CREATE TABLE @extschema@.powa_all_indexes_history (
+    srvid integer NOT NULL,
+    dbid oid NOT NULL,
+    relid oid NOT NULL,
+    indexrelid oid NOT NULL,
+    coalesce_range tstzrange NOT NULL,
+    records @extschema@.powa_all_indexes_history_record[] NOT NULL,
+    mins_in_range @extschema@.powa_all_indexes_history_record NOT NULL,
+    maxs_in_range @extschema@.powa_all_indexes_history_record NOT NULL,
+    FOREIGN KEY (srvid) REFERENCES @extschema@.powa_servers(id)
+      MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
+);
+
+CREATE INDEX powa_all_indexes_history_relid_ts ON @extschema@.powa_all_indexes_history USING gist (srvid, relid, coalesce_range);
+
+CREATE TABLE @extschema@.powa_all_indexes_history_db (
+    srvid integer NOT NULL,
+    dbid oid NOT NULL,
+    coalesce_range tstzrange NOT NULL,
+    records @extschema@.powa_all_indexes_history_db_record[] NOT NULL,
+    mins_in_range @extschema@.powa_all_indexes_history_db_record NOT NULL,
+    maxs_in_range @extschema@.powa_all_indexes_history_db_record NOT NULL,
+    FOREIGN KEY (srvid) REFERENCES @extschema@.powa_servers(id)
+      MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
+);
+
+CREATE INDEX powa_all_indexes_history_db_dbid_ts ON @extschema@.powa_all_indexes_history_db USING gist (srvid, dbid, coalesce_range);
+
+CREATE TABLE @extschema@.powa_all_indexes_history_current (
+    srvid integer NOT NULL,
+    dbid oid NOT NULL,
+    relid oid NOT NULL,
+    indexrelid oid NOT NULL,
+    record @extschema@.powa_all_indexes_history_record NOT NULL,
+    FOREIGN KEY (srvid) REFERENCES @extschema@.powa_servers(id)
+      MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
+);
+CREATE INDEX ON @extschema@.powa_all_indexes_history_current(srvid);
+
+CREATE TABLE @extschema@.powa_all_indexes_history_current_db (
+    srvid integer NOT NULL,
+    dbid oid NOT NULL,
+    record @extschema@.powa_all_indexes_history_db_record NOT NULL,
+    FOREIGN KEY (srvid) REFERENCES @extschema@.powa_servers(id)
+      MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
+);
+CREATE INDEX ON @extschema@.powa_all_indexes_history_current_db(srvid);
+
+CREATE TABLE @extschema@.powa_all_tables_history (
     srvid integer NOT NULL,
     dbid oid NOT NULL,
     relid oid NOT NULL,
     coalesce_range tstzrange NOT NULL,
-    records @extschema@.powa_all_relations_history_record[] NOT NULL,
-    mins_in_range @extschema@.powa_all_relations_history_record NOT NULL,
-    maxs_in_range @extschema@.powa_all_relations_history_record NOT NULL,
+    records @extschema@.powa_all_tables_history_record[] NOT NULL,
+    mins_in_range @extschema@.powa_all_tables_history_record NOT NULL,
+    maxs_in_range @extschema@.powa_all_tables_history_record NOT NULL,
     FOREIGN KEY (srvid) REFERENCES @extschema@.powa_servers(id)
       MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
 );
 
-CREATE INDEX powa_all_relations_history_relid_ts ON @extschema@.powa_all_relations_history USING gist (srvid, relid, coalesce_range);
+CREATE INDEX powa_all_tables_history_relid_ts ON @extschema@.powa_all_tables_history USING gist (srvid, relid, coalesce_range);
 
-CREATE TABLE @extschema@.powa_all_relations_history_db (
+CREATE TABLE @extschema@.powa_all_tables_history_db (
     srvid integer NOT NULL,
     dbid oid NOT NULL,
     coalesce_range tstzrange NOT NULL,
-    records @extschema@.powa_all_relations_history_db_record[] NOT NULL,
-    mins_in_range @extschema@.powa_all_relations_history_db_record NOT NULL,
-    maxs_in_range @extschema@.powa_all_relations_history_db_record NOT NULL,
+    records @extschema@.powa_all_tables_history_db_record[] NOT NULL,
+    mins_in_range @extschema@.powa_all_tables_history_db_record NOT NULL,
+    maxs_in_range @extschema@.powa_all_tables_history_db_record NOT NULL,
     FOREIGN KEY (srvid) REFERENCES @extschema@.powa_servers(id)
       MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
 );
 
-CREATE INDEX powa_all_relations_history_db_dbid_ts ON @extschema@.powa_all_relations_history_db USING gist (srvid, dbid, coalesce_range);
+CREATE INDEX powa_all_tables_history_db_dbid_ts ON @extschema@.powa_all_tables_history_db USING gist (srvid, dbid, coalesce_range);
 
-CREATE TABLE @extschema@.powa_all_relations_history_current (
+CREATE TABLE @extschema@.powa_all_tables_history_current (
     srvid integer NOT NULL,
     dbid oid NOT NULL,
     relid oid NOT NULL,
-    record @extschema@.powa_all_relations_history_record NOT NULL,
+    record @extschema@.powa_all_tables_history_record NOT NULL,
     FOREIGN KEY (srvid) REFERENCES @extschema@.powa_servers(id)
       MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
 );
-CREATE INDEX ON @extschema@.powa_all_relations_history_current(srvid);
+CREATE INDEX ON @extschema@.powa_all_tables_history_current(srvid);
 
-CREATE TABLE @extschema@.powa_all_relations_history_current_db (
+CREATE TABLE @extschema@.powa_all_tables_history_current_db (
     srvid integer NOT NULL,
     dbid oid NOT NULL,
-    record @extschema@.powa_all_relations_history_db_record NOT NULL,
+    record @extschema@.powa_all_tables_history_db_record NOT NULL,
     FOREIGN KEY (srvid) REFERENCES @extschema@.powa_servers(id)
       MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
 );
-CREATE INDEX ON @extschema@.powa_all_relations_history_current_db(srvid);
+CREATE INDEX ON @extschema@.powa_all_tables_history_current_db(srvid);
 
 CREATE TABLE @extschema@.powa_stat_bgwriter_history (
     srvid integer NOT NULL,
@@ -1180,6 +1604,177 @@ BEGIN
 END;
 $_$ LANGUAGE plpgsql; /* end of powa_deactivate_module */
 
+-- Register the given db module if needed.
+CREATE FUNCTION @extschema@.powa_activate_db_module(_srvid int, _db_module text,
+                                                    databases text[] DEFAULT NULL)
+RETURNS boolean
+AS $_$
+DECLARE
+    v_res bool;
+    v_enabled bool;
+    v_dbnames text[];
+BEGIN
+    IF (_srvid IS NULL) THEN
+        RAISE EXCEPTION 'powa_activate_db_module: no server id provided';
+    END IF;
+
+    IF (_db_module IS NULL) THEN
+        RAISE EXCEPTION 'powa_activate_db_module: no module provided';
+    END IF;
+
+    -- Check that the module is known.
+    SELECT COUNT(*) = 1 INTO v_res
+    FROM @extschema@.powa_db_modules
+    WHERE db_module = _db_module;
+
+    IF (NOT v_res) THEN
+        RAISE EXCEPTION 'Database module "%" is not known', _db_module;
+    END IF;
+
+    -- We need to check if there's an existing row or not, and if yes what is
+    -- the current dbnames value.  As dbnames is NULLable, also retrieve the
+    -- enabled field: we can use it to know if the row already exist and also
+    -- to avoid a useless UPDATE.
+    SELECT enabled, dbnames INTO v_enabled, v_dbnames
+    FROM @extschema@.powa_db_module_config
+    WHERE db_module = _db_module
+    AND srvid = _srvid;
+
+    IF (v_enabled IS NOT NULL) THEN
+        -- There's an existing row.  Update the dbnames and enable the db
+        -- module if needed.  Note that we don't try hard to detect whether the
+        -- dbnames are semantically equivalent.
+        IF (v_enabled AND v_dbnames IS NOT DISTINCT FROM databases) THEN
+            -- existing info already matches, bail out
+            RETURN true;
+        END IF;
+        UPDATE @extschema@.powa_db_module_config
+        SET enabled = true, dbnames = databases
+        WHERE srvid = _srvid
+        AND db_module = _db_module;
+    ELSE
+        -- Just insert the wanted informations
+        INSERT INTO @extschema@.powa_db_module_config
+            (srvid, db_module, dbnames)
+        VALUES
+            (_srvid, _db_module, databases);
+    END IF;
+
+    RETURN true;
+END;
+$_$ LANGUAGE plpgsql; /* end of powa_activate_db_module */
+
+-- Deactivate a db module: leave the record in powa_db_module_config but
+-- remove the enabled flag.
+CREATE FUNCTION @extschema@.powa_deactivate_db_module(_srvid int,
+                                                      _db_module text,
+                                                      databases text[] DEFAULT NULL)
+RETURNS boolean
+AS $_$
+DECLARE
+    v_res bool;
+    v_enabled bool;
+    v_dbnames text[];
+    v_new_dbnames text[];
+BEGIN
+    IF (_srvid IS NULL) THEN
+        RAISE EXCEPTION 'powa_deactivate_db_module: no server id provided';
+    END IF;
+
+    IF (_db_module IS NULL) THEN
+        RAISE EXCEPTION 'powa_deactivate_db_module: no module provided';
+    END IF;
+
+    -- Check that the module is known.
+    SELECT COUNT(*) = 1 INTO v_res
+    FROM @extschema@.powa_db_modules
+    WHERE db_module = _db_module;
+
+    IF (NOT v_res) THEN
+        RAISE EXCEPTION 'db module "%" is not known', _db_module;
+    END IF;
+
+    -- We need to check if there's an existing row or not, and if yes what is
+    -- the current dbnames value.  As dbnames is NULLable, also retrieve the
+    -- enabled field: we can use it to know if the row already exist and also
+    -- to avoid a useless UPDATE.
+    SELECT enabled, dbnames INTO v_enabled, v_dbnames
+    FROM @extschema@.powa_db_module_config
+    WHERE db_module = _db_module
+    AND srvid = _srvid;
+
+    -- Deactivating a non configured db module is a not allowed
+    IF (v_enabled IS NULL) THEN
+        RAISE EXCEPTION 'db module "%" is not configured', _db_module;
+    END IF;
+
+    -- Deactivating a deactivated db module is a noop, as in that case there
+    -- shouldn't dbnames
+    IF (v_enabled IS FALSE) THEN
+        ASSERT v_dbnames IS NULL, 'A deactivated db module shouldn''t contain db names';
+        RETURN true;
+    END IF;
+
+    -- We don't support deactivating only some databases if this is an "all-db"
+    -- record
+    IF (databases IS NOT NULL AND v_dbnames IS NULL) THEN
+        RAISE EXCEPTION 'cannot deactivate a db module for a specific database if no specific database is configured';
+    END IF;
+
+    -- If users asked to deactivate only for some databases, error out if any
+    -- of the wanted datbase isn't already activated
+    IF (databases IS NOT NULL AND NOT databases <@ v_dbnames) THEN
+        RAISE EXCEPTION 'cannot deactivate a db module for a specific database if not already activated on that database';
+    END IF;
+
+    -- If there's no record dbname, simply deactivate the module
+    IF (databases IS NULL) THEN
+        -- existing info already matches, bail out
+        IF (NOT v_enabled AND v_dbnames IS NULL) THEN
+            RETURN true;
+        END IF;
+        UPDATE @extschema@.powa_db_module_config
+        SET enabled = false, dbnames = NULL
+        WHERE srvid = _srvid
+        AND db_module = _db_module;
+    ELSIF (v_dbnames IS NULL) THEN
+        -- stored dbnames isn't NULL but user didn't provide any.  Reset all
+        UPDATE @extschema@.powa_db_module_config
+        SET enabled = false, dbnames = NULL
+        WHERE srvid = _srvid
+        AND db_module = _db_module;
+    ELSE
+        -- There are stored dbnames and users provided some.  Keep the module
+        -- activated and simply remove the specified dbnames
+        ASSERT v_enabled IS TRUE, 'Module should be enabled';
+        SELECT array_agg(dbname)
+        FROM (
+            SELECT unnest(v_dbnames)
+            EXCEPT
+            SELECT unnest(databases)
+        ) s(dbname) INTO v_new_dbnames;
+
+        IF (coalesce(cardinality(v_new_dbnames), 0) = 0) THEN
+            -- If everything was removed, clear all dbnames and disable the db
+            -- module
+            UPDATE @extschema@.powa_db_module_config
+            SET enabled = false, dbnames = NULL
+            WHERE srvid = _srvid
+            AND db_module = _db_module;
+        ELSE
+            ASSERT v_enabled IS TRUE, 'Module should be enabled';
+            -- otherwise just save the new data
+            UPDATE @extschema@.powa_db_module_config
+            SET dbnames = v_new_dbnames
+            WHERE srvid = _srvid
+            AND db_module = _db_module;
+        END IF;
+    END IF;
+
+    RETURN true;
+END;
+$_$ LANGUAGE plpgsql; /* end of powa_deactivate_db_module */
+
 -- Register the given extension if needed, and set the enabled flag to on.
 CREATE FUNCTION @extschema@.powa_activate_extension(_srvid integer, _extname text) RETURNS boolean
 AS $_$
@@ -1220,11 +1815,20 @@ BEGIN
     END IF;
 
     -- Activating the "powa" extension is an alias for activating all the
-    -- underlying modules
+    -- underlying (default) modules.  We don't activate db modules for the
+    -- local server though, as those are only process by powa-collector, which
+    -- ignores the local server.
     IF (_extname = 'powa') THEN
-        SELECT bool_and(@extschema@.powa_activate_module(_srvid, module))
-            INTO v_res
-        FROM @extschema@.powa_modules;
+        SELECT bool_and(v)
+        FROM (
+            SELECT @extschema@.powa_activate_module(_srvid, module)
+            FROM @extschema@.powa_modules
+            UNION ALL
+            SELECT @extschema@.powa_activate_db_module(_srvid, db_module)
+            FROM @extschema@.powa_db_modules
+            WHERE _srvid != 0
+            AND NOT added_manually
+        ) s(v) INTO v_res;
 
         RETURN v_res;
     END IF;
@@ -1337,13 +1941,15 @@ BEGIN
 
     FOREACH v_extname IN ARRAY extensions
     LOOP
-        IF (v_extname != 'pg_stat_statements') THEN
-            SELECT @extschema@.powa_activate_extension(v_srvid, v_extname) INTO v_ok;
+        -- don't process pg_stat_statements or powa extensions as those are
+        -- already forced
+        CONTINUE WHEN v_extname IN ('pg_stat_statements', 'powa');
 
-            IF (NOT v_ok) THEN
-                RAISE WARNING 'Could not activate extension % on server %:%',
-                    v_extname, hostname, port;
-            END IF;
+        SELECT @extschema@.powa_activate_extension(v_srvid, v_extname) INTO v_ok;
+
+        IF (v_ok IS DISTINCT FROM true) THEN
+            RAISE WARNING 'Could not activate extension % on server %:%',
+                v_extname, hostname, port;
         END IF;
     END LOOP;
     RETURN true;
@@ -1508,7 +2114,7 @@ $_$ LANGUAGE plpgsql; /* end of powa_get_server_retention */
 
 /* pg_stat_kcache integration - part 1 */
 
-CREATE UNLOGGED TABLE @extschema@.powa_kcache_src_tmp(
+CREATE UNLOGGED TABLE @extschema@.powa_kcache_src_tmp (
     srvid            integer NOT NULL,
     ts               timestamp with time zone NOT NULL,
     queryid          bigint NOT NULL,
@@ -1804,7 +2410,7 @@ CREATE TYPE @extschema@.powa_qualstats_history_record AS (
   mean_err_estimate_num double precision
 );
 
-CREATE UNLOGGED TABLE @extschema@.powa_qualstats_src_tmp(
+CREATE UNLOGGED TABLE @extschema@.powa_qualstats_src_tmp (
     srvid integer NOT NULL,
     ts timestamp with time zone NOT NULL,
     uniquequalnodeid bigint NOT NULL,
@@ -1984,7 +2590,7 @@ CREATE INDEX ON @extschema@.powa_qualstats_constvalues_history_current(srvid);
 
 /* pg_wait_sampling integration - part 1 */
 
-CREATE UNLOGGED TABLE @extschema@.powa_wait_sampling_src_tmp(
+CREATE UNLOGGED TABLE @extschema@.powa_wait_sampling_src_tmp (
     srvid integer NOT NULL,
     ts timestamp with time zone NOT NULL,
     dbid oid NOT NULL,
@@ -2127,10 +2733,14 @@ SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_statements_history_
 SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_statements_history_current_db','');
 SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_user_functions_history','');
 SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_user_functions_history_current','');
-SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_all_relations_history','');
-SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_all_relations_history_db','');
-SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_all_relations_history_current','');
-SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_all_relations_history_current_db','');
+SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_all_indexes_history','');
+SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_all_indexes_history_db','');
+SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_all_indexes_history_current','');
+SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_all_indexes_history_current_db','');
+SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_all_tables_history','');
+SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_all_tables_history_db','');
+SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_all_tables_history_current','');
+SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_all_tables_history_current_db','');
 SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_stat_bgwriter_history','');
 SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_stat_bgwriter_history_current','');
 SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_extensions','WHERE added_manually');
@@ -2138,6 +2748,10 @@ SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_extension_functions
 SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_extension_config','WHERE added_manually');
 SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_module_functions','WHERE added_manually');
 SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_module_config','WHERE added_manually');
+SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_db_modules','WHERE added_manually');
+SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_db_module_functions','WHERE added_manually');
+SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_db_module_config', '');
+SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_db_module_src_queries','WHERE added_manually');
 SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_kcache_metrics','');
 SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_kcache_metrics_db','');
 SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_kcache_metrics_current','');
@@ -2338,7 +2952,7 @@ BEGIN
                 WHEN true THEN quote_ident(nsp.nspname)
                 ELSE '@extschema@'
              END AS schema, function_name AS funcname
-             FROM @extschema@.powa_functions AS pf
+             FROM @extschema@.powa_all_functions AS pf
              LEFT JOIN pg_extension AS ext ON pf.kind = 'extension'
                 AND ext.extname = pf.name
              LEFT JOIN pg_namespace AS nsp ON nsp.oid = ext.extnamespace
@@ -2385,7 +2999,7 @@ BEGIN
                   WHEN true THEN quote_ident(nsp.nspname)
                   ELSE '@extschema@'
                END AS schema, function_name AS funcname
-               FROM @extschema@.powa_functions AS pf
+               FROM @extschema@.powa_all_functions AS pf
                LEFT JOIN pg_extension AS ext ON pf.kind = 'extension'
                   AND ext.extname = pf.name
                LEFT JOIN pg_namespace AS nsp ON nsp.oid = ext.extnamespace
@@ -2442,7 +3056,7 @@ BEGIN
                     WHEN true THEN quote_ident(nsp.nspname)
                     ELSE '@extschema@'
                END AS schema, function_name AS funcname
-               FROM @extschema@.powa_functions AS pf
+               FROM @extschema@.powa_all_functions AS pf
                LEFT JOIN pg_extension AS ext ON pf.kind = 'extension'
                   AND ext.extname = pf.name
                LEFT JOIN pg_namespace AS nsp ON nsp.oid = ext.extnamespace
@@ -2854,106 +3468,43 @@ BEGIN
 END;
 $PROC$ language plpgsql; /* end of powa_user_functions_snapshot */
 
-CREATE OR REPLACE FUNCTION @extschema@.powa_all_relations_src(IN _srvid integer,
-    OUT ts timestamp with time zone,
-    OUT dbid oid,
-    OUT relid oid,
-    OUT numscan bigint,
-    OUT tup_returned bigint,
-    OUT tup_fetched bigint,
-    OUT n_tup_ins bigint,
-    OUT n_tup_upd bigint,
-    OUT n_tup_del bigint,
-    OUT n_tup_hot_upd bigint,
-    OUT n_liv_tup bigint,
-    OUT n_dead_tup bigint,
-    OUT n_mod_since_analyze bigint,
-    OUT blks_read bigint,
-    OUT blks_hit bigint,
-    OUT last_vacuum timestamp with time zone,
-    OUT vacuum_count bigint,
-    OUT last_autovacuum timestamp with time zone,
-    OUT autovacuum_count bigint,
-    OUT last_analyze timestamp with time zone,
-    OUT analyze_count bigint,
-    OUT last_autoanalyze timestamp with time zone,
-    OUT autoanalyze_count bigint
-) RETURNS SETOF record STABLE AS $PROC$
-BEGIN
-    IF (_srvid = 0) THEN
-        RETURN QUERY SELECT now(),
-            d.oid AS dbid, r.relid, r.numscan, r.tup_returned, r.tup_fetched,
-            r.n_tup_ins, r.n_tup_upd, r.n_tup_del, r.n_tup_hot_upd,
-            r.n_liv_tup, r.n_dead_tup, r.n_mod_since_analyze, r.blks_read,
-            r.blks_hit, r.last_vacuum, r.vacuum_count, r.last_autovacuum,
-            r.autovacuum_count, r.last_analyze, r.analyze_count,
-            r.last_autoanalyze, r.autoanalyze_count
-        FROM pg_catalog.pg_database d, @extschema@.powa_stat_all_rel(d.oid) as r;
-    ELSE
-        RETURN QUERY SELECT r.ts,
-            r.dbid, r.relid, r.numscan, r.tup_returned, r.tup_fetched,
-            r.n_tup_ins, r.n_tup_upd, r.n_tup_del, r.n_tup_hot_upd,
-            r.n_liv_tup, r.n_dead_tup, r.n_mod_since_analyze, r.blks_read,
-            r.blks_hit, r.last_vacuum, r.vacuum_count, r.last_autovacuum,
-            r.autovacuum_count, r.last_analyze, r.analyze_count,
-            r.last_autoanalyze, r.autoanalyze_count
-        FROM @extschema@.powa_all_relations_src_tmp AS r
-        WHERE r.srvid = _srvid;
-    END IF;
-END;
-$PROC$ LANGUAGE plpgsql; /* end of powa_all_relations_src */
-
-CREATE OR REPLACE FUNCTION @extschema@.powa_all_relations_snapshot(_srvid integer) RETURNS void AS $PROC$
+CREATE OR REPLACE FUNCTION @extschema@.powa_all_indexes_snapshot(_srvid integer) RETURNS void AS $PROC$
 DECLARE
     result boolean;
     v_funcname    text := format('@extschema@.%I(%s)',
-                                 'powa_all_relations_snapshot', _srvid);
+                                 'powa_all_indexes_snapshot', _srvid);
     v_rowcount    bigint;
 BEGIN
+    ASSERT _srvid != 0, 'db module functions can only be called for remote servers';
+
     PERFORM @extschema@.powa_log(format('running %s', v_funcname));
 
     PERFORM @extschema@.powa_prevent_concurrent_snapshot(_srvid);
 
-    -- Insert cluster-wide relation statistics
+    -- Insert cluster-wide index statistics
     WITH rel AS (
         SELECT *
-        FROM @extschema@.powa_all_relations_src(_srvid)
+        FROM @extschema@.powa_all_indexes_src_tmp
     ),
 
     by_relation AS (
-        INSERT INTO @extschema@.powa_all_relations_history_current
-            SELECT _srvid, dbid, relid,
-            ROW(ts,numscan, tup_returned, tup_fetched,
-                n_tup_ins, n_tup_upd, n_tup_del, n_tup_hot_upd,
-                n_liv_tup, n_dead_tup, n_mod_since_analyze,
-                blks_read, blks_hit, last_vacuum, vacuum_count,
-                last_autovacuum, autovacuum_count, last_analyze,
-                analyze_count, last_autoanalyze,
-                autoanalyze_count)::@extschema@.powa_all_relations_history_record AS record
+        INSERT INTO @extschema@.powa_all_indexes_history_current
+            (srvid, dbid, relid, indexrelid, record)
+            SELECT _srvid, dbid, relid, indexrelid,
+            ROW(ts, idx_scan, last_idx_scan, idx_tup_read, idx_tup_fetch,
+                idx_blks_read, idx_blks_hit
+            )::@extschema@.powa_all_indexes_history_record AS record
             FROM rel
     ),
 
     by_database AS (
-        INSERT INTO @extschema@.powa_all_relations_history_current_db (srvid, dbid, record)
+        INSERT INTO @extschema@.powa_all_indexes_history_current_db
+        (srvid, dbid, record)
             SELECT _srvid AS srvid, dbid,
             ROW(ts,
-                sum(CASE WHEN
-                        (n_tup_ins + n_tup_upd + n_tup_del + n_tup_hot_upd +
-                         n_liv_tup + n_dead_tup + n_mod_since_analyze + vacuum_count +
-                         autovacuum_count + analyze_count + autoanalyze_count) = 0
-                    THEN 0 ELSE numscan END),
-                sum(CASE WHEN
-                        (n_tup_ins + n_tup_upd + n_tup_del + n_tup_hot_upd +
-                         n_liv_tup + n_dead_tup + n_mod_since_analyze + vacuum_count +
-                         autovacuum_count + analyze_count + autoanalyze_count) = 0
-                    THEN numscan ELSE 0 END),
-                sum(rel.tup_returned), sum(rel.tup_fetched),
-                sum(n_tup_ins), sum(n_tup_upd), sum(n_tup_del), sum(n_tup_hot_upd),
-                sum(n_liv_tup), sum(n_dead_tup), sum(n_mod_since_analyze),
-                sum(rel.blks_read), sum(rel.blks_hit),
-                sum(vacuum_count), sum(autovacuum_count),
-                sum(analyze_count), sum(autoanalyze_count)
-            )::@extschema@.powa_all_relations_history_db_record
+                sum(idx_scan), sum(idx_tup_read), sum(idx_tup_fetch),
+                sum(idx_blks_read), sum(idx_blks_hit)
+            )::@extschema@.powa_all_indexes_history_db_record
             FROM rel
             GROUP BY srvid, dbid, ts
     )
@@ -2964,13 +3515,80 @@ BEGIN
     PERFORM @extschema@.powa_log(format('%s - rowcount: %s',
             v_funcname, v_rowcount));
 
-    IF (_srvid != 0) THEN
-        DELETE FROM @extschema@.powa_all_relations_src_tmp WHERE srvid = _srvid;
-    END IF;
+    DELETE FROM @extschema@.powa_all_indexes_src_tmp WHERE srvid = _srvid;
 
     result := true;
 END;
-$PROC$ language plpgsql; /* end of powa_all_relations_snapshot */
+$PROC$ language plpgsql; /* end of powa_all_indexes_snapshot */
+
+CREATE OR REPLACE FUNCTION @extschema@.powa_all_tables_snapshot(_srvid integer) RETURNS void AS $PROC$
+DECLARE
+    result boolean;
+    v_funcname    text := format('@extschema@.%I(%s)',
+                                 'powa_all_tables_snapshot', _srvid);
+    v_rowcount    bigint;
+BEGIN
+    ASSERT _srvid != 0, 'db module functions can only be called for remote servers';
+
+    PERFORM @extschema@.powa_log(format('running %s', v_funcname));
+
+    PERFORM @extschema@.powa_prevent_concurrent_snapshot(_srvid);
+
+    -- Insert cluster-wide relation statistics
+    WITH rel AS (
+        SELECT *
+        FROM @extschema@.powa_all_tables_src_tmp
+    ),
+
+    by_relation AS (
+        INSERT INTO @extschema@.powa_all_tables_history_current
+            (srvid, dbid, relid, record)
+            SELECT _srvid, dbid, relid,
+            ROW(ts,
+                seq_scan, last_seq_scan, seq_tup_read, idx_scan,
+                last_idx_scan, n_tup_ins, n_tup_upd, n_tup_del, n_tup_hot_upd,
+                n_tup_newpage_upd, n_liv_tup, n_dead_tup, n_mod_since_analyze,
+                n_ins_since_vacuum, last_vacuum, last_autovacuum, last_analyze,
+                last_autoanalyze, vacuum_count, autovacuum_count,
+                analyze_count, autoanalyze_count, heap_blks_read,
+                heap_blks_hit, idx_blks_read, idx_blks_hit, toast_blks_read,
+                toast_blks_hit, tidx_blks_read,
+                tidx_blks_hit
+            )::@extschema@.powa_all_tables_history_record AS record
+            FROM rel
+    ),
+
+    by_database AS (
+        INSERT INTO @extschema@.powa_all_tables_history_current_db
+            (srvid, dbid, record)
+            SELECT _srvid AS srvid, dbid,
+            ROW(ts,
+                sum(seq_scan), sum(seq_tup_read), sum(idx_scan),
+                sum(n_tup_ins), sum(n_tup_upd), sum(n_tup_del),
+                sum(n_tup_hot_upd), sum(n_tup_newpage_upd), sum(n_liv_tup),
+                sum(n_dead_tup), sum(n_mod_since_analyze),
+                sum(n_ins_since_vacuum), sum(vacuum_count),
+                sum(autovacuum_count), sum(analyze_count),
+                sum(autoanalyze_count), sum(heap_blks_read),
+                sum(heap_blks_hit), sum(idx_blks_read), sum(idx_blks_hit),
+                sum(toast_blks_read), sum(toast_blks_hit), sum(tidx_blks_read),
+                sum(tidx_blks_hit)
+            )::@extschema@.powa_all_tables_history_db_record
+            FROM rel
+            GROUP BY srvid, dbid, ts
+    )
+
+    SELECT COUNT(*) into v_rowcount
+    FROM rel;
+
+    PERFORM @extschema@.powa_log(format('%s - rowcount: %s',
+            v_funcname, v_rowcount));
+
+    DELETE FROM @extschema@.powa_all_tables_src_tmp WHERE srvid = _srvid;
+
+    result := true;
+END;
+$PROC$ language plpgsql; /* end of powa_all_tables_snapshot */
 
 CREATE OR REPLACE FUNCTION @extschema@.powa_stat_bgwriter_src(IN _srvid integer,
     OUT ts timestamp with time zone,
@@ -3139,11 +3757,11 @@ BEGIN
 END;
 $PROC$ LANGUAGE plpgsql; /* end of powa_user_functions_purge */
 
-CREATE OR REPLACE FUNCTION @extschema@.powa_all_relations_purge(_srvid integer)
+CREATE OR REPLACE FUNCTION @extschema@.powa_all_indexes_purge(_srvid integer)
 RETURNS void AS $PROC$
 DECLARE
     v_funcname    text := format('@extschema@.%I(%s)',
-                                 'powa_all_relations_purge', _srvid);
+                                 'powa_all_indexes_purge', _srvid);
     v_rowcount    bigint;
     v_retention   interval;
 BEGIN
@@ -3154,23 +3772,56 @@ BEGIN
     SELECT @extschema@.powa_get_server_retention(_srvid) INTO v_retention;
 
     -- Delete obsolete datas. We only bother with already coalesced data
-    DELETE FROM @extschema@.powa_all_relations_history
+    DELETE FROM @extschema@.powa_all_indexes_history
     WHERE upper(coalesce_range)< (now() - v_retention)
     AND srvid = _srvid;
 
     GET DIAGNOSTICS v_rowcount = ROW_COUNT;
-    PERFORM @extschema@.powa_log(format('%s - (powa_all_relations_history) rowcount: %s',
+    PERFORM @extschema@.powa_log(format('%s - (powa_all_indexes_history) rowcount: %s',
             v_funcname, v_rowcount));
 
-    DELETE FROM @extschema@.powa_all_relations_history_db
+    DELETE FROM @extschema@.powa_all_indexes_history_db
     WHERE upper(coalesce_range)< (now() - v_retention)
     AND srvid = _srvid;
 
     GET DIAGNOSTICS v_rowcount = ROW_COUNT;
-    PERFORM @extschema@.powa_log(format('%s - (powa_all_relations_history_db) rowcount: %s',
+    PERFORM @extschema@.powa_log(format('%s - (powa_all_indexes_history_db) rowcount: %s',
             v_funcname, v_rowcount));
 END;
-$PROC$ LANGUAGE plpgsql; /* end of powa_all_relations_purge */
+$PROC$ LANGUAGE plpgsql; /* end of powa_all_indexes_purge */
+
+CREATE OR REPLACE FUNCTION @extschema@.powa_all_tables_purge(_srvid integer)
+RETURNS void AS $PROC$
+DECLARE
+    v_funcname    text := format('@extschema@.%I(%s)',
+                                 'powa_all_tables_purge', _srvid);
+    v_rowcount    bigint;
+    v_retention   interval;
+BEGIN
+    PERFORM @extschema@.powa_log(format('running %s', v_funcname));
+
+    PERFORM @extschema@.powa_prevent_concurrent_snapshot(_srvid);
+
+    SELECT @extschema@.powa_get_server_retention(_srvid) INTO v_retention;
+
+    -- Delete obsolete datas. We only bother with already coalesced data
+    DELETE FROM @extschema@.powa_all_tables_history
+    WHERE upper(coalesce_range)< (now() - v_retention)
+    AND srvid = _srvid;
+
+    GET DIAGNOSTICS v_rowcount = ROW_COUNT;
+    PERFORM @extschema@.powa_log(format('%s - (powa_all_tables_history) rowcount: %s',
+            v_funcname, v_rowcount));
+
+    DELETE FROM @extschema@.powa_all_tables_history_db
+    WHERE upper(coalesce_range)< (now() - v_retention)
+    AND srvid = _srvid;
+
+    GET DIAGNOSTICS v_rowcount = ROW_COUNT;
+    PERFORM @extschema@.powa_log(format('%s - (powa_all_tables_history_db) rowcount: %s',
+            v_funcname, v_rowcount));
+END;
+$PROC$ LANGUAGE plpgsql; /* end of powa_all_tables_purge */
 
 CREATE OR REPLACE FUNCTION @extschema@.powa_stat_bgwriter_purge(_srvid integer)
 RETURNS void AS $PROC$
@@ -3319,92 +3970,183 @@ BEGIN
  END;
 $PROC$ LANGUAGE plpgsql; /* end of powa_user_functions_aggregate */
 
-CREATE OR REPLACE FUNCTION @extschema@.powa_all_relations_aggregate(_srvid integer)
+CREATE OR REPLACE FUNCTION @extschema@.powa_all_indexes_aggregate(_srvid integer)
 RETURNS void AS $PROC$
 DECLARE
     v_funcname    text := format('@extschema@.%I(%s)',
-                                 'powa_all_relations_aggregate', _srvid);
+                                 'powa_all_indexes_aggregate', _srvid);
     v_rowcount    bigint;
 BEGIN
     PERFORM @extschema@.powa_log(format('running %s', v_funcname));
 
     PERFORM @extschema@.powa_prevent_concurrent_snapshot(_srvid);
 
-    -- aggregate all_relations table
-    INSERT INTO @extschema@.powa_all_relations_history
-        SELECT srvid, dbid, relid,
+    -- aggregate all_indexes table
+    INSERT INTO @extschema@.powa_all_indexes_history
+        (srvid, dbid, relid, indexrelid, coalesce_range, records,
+                mins_in_range, maxs_in_range)
+        SELECT srvid, dbid, relid, indexrelid,
             tstzrange(min((record).ts), max((record).ts),'[]'),
             array_agg(record),
             ROW(min((record).ts),
-                min((record).numscan),min((record).tup_returned),min((record).tup_fetched),
-                min((record).n_tup_ins),min((record).n_tup_upd),
-                min((record).n_tup_del),min((record).n_tup_hot_upd),
-                min((record).n_liv_tup),min((record).n_dead_tup),
-                min((record).n_mod_since_analyze),min((record).blks_read),
-                min((record).blks_hit),min((record).last_vacuum),
-                min((record).vacuum_count),min((record).last_autovacuum),
-                min((record).autovacuum_count),min((record).last_analyze),
-                min((record).analyze_count),min((record).last_autoanalyze),
-                min((record).autoanalyze_count))::@extschema@.powa_all_relations_history_record,
+                min((record).idx_scan), min((record).last_idx_scan),
+                min((record).idx_tup_read), min((record).idx_tup_fetch),
+                min((record).idx_blks_read), min((record).idx_blks_hit)
+            )::@extschema@.powa_all_indexes_history_record,
             ROW(max((record).ts),
-                max((record).numscan),max((record).tup_returned),max((record).tup_fetched),
-                max((record).n_tup_ins),max((record).n_tup_upd),
-                max((record).n_tup_del),max((record).n_tup_hot_upd),
-                max((record).n_liv_tup),max((record).n_dead_tup),
-                max((record).n_mod_since_analyze),max((record).blks_read),
-                max((record).blks_hit),max((record).last_vacuum),
-                max((record).vacuum_count),max((record).last_autovacuum),
-                max((record).autovacuum_count),max((record).last_analyze),
-                max((record).analyze_count),max((record).last_autoanalyze),
-                max((record).autoanalyze_count))::@extschema@.powa_all_relations_history_record
-        FROM @extschema@.powa_all_relations_history_current
+                max((record).idx_scan), max((record).last_idx_scan),
+                max((record).idx_tup_read), max((record).idx_tup_fetch),
+                max((record).idx_blks_read), max((record).idx_blks_hit)
+            )::@extschema@.powa_all_indexes_history_record
+        FROM @extschema@.powa_all_indexes_history_current
         WHERE srvid = _srvid
-        GROUP BY srvid, dbid, relid;
+        GROUP BY srvid, dbid, relid, indexrelid;
 
     GET DIAGNOSTICS v_rowcount = ROW_COUNT;
-    PERFORM @extschema@.powa_log(format('%s - (powa_all_relations_history_current) rowcount: %s',
+    PERFORM @extschema@.powa_log(format('%s - (powa_all_indexes_history_current) rowcount: %s',
             v_funcname, v_rowcount));
 
-    DELETE FROM @extschema@.powa_all_relations_history_current WHERE srvid = _srvid;
+    DELETE FROM @extschema@.powa_all_indexes_history_current WHERE srvid = _srvid;
 
-    -- aggregate all_relations_db table
-    INSERT INTO @extschema@.powa_all_relations_history_db
+    -- aggregate all_indexes_db table
+    INSERT INTO @extschema@.powa_all_indexes_history_db
+        (srvid, dbid, coalesce_range, records, mins_in_range, maxs_in_range)
         SELECT srvid, dbid,
             tstzrange(min((record).ts), max((record).ts),'[]'),
             array_agg(record),
             ROW(min((record).ts),
-                min((record).seq_scan),min((record).idx_scan),
-                min((record).tup_returned),min((record).tup_fetched),
-                min((record).n_tup_ins),min((record).n_tup_upd),
-                min((record).n_tup_del),min((record).n_tup_hot_upd),
-                min((record).n_liv_tup),min((record).n_dead_tup),
-                min((record).n_mod_since_analyze),
-                min((record).blks_read),min((record).blks_hit),
-                min((record).vacuum_count),min((record).autovacuum_count),
-                min((record).analyze_count),min((record).autoanalyze_count)
-            )::@extschema@.powa_all_relations_history_db_record,
+                min((record).idx_scan),
+                min((record).idx_tup_read), min((record).idx_tup_fetch),
+                min((record).idx_blks_read), min((record).idx_blks_hit)
+            )::@extschema@.powa_all_indexes_history_db_record,
             ROW(max((record).ts),
-                max((record).seq_scan),max((record).idx_scan),
-                max((record).tup_returned),max((record).tup_fetched),
-                max((record).n_tup_ins),max((record).n_tup_upd),
-                max((record).n_tup_del),max((record).n_tup_hot_upd),
-                max((record).n_liv_tup),max((record).n_dead_tup),
-                max((record).n_mod_since_analyze),
-                max((record).blks_read),max((record).blks_hit),
-                max((record).vacuum_count),max((record).autovacuum_count),
-                max((record).analyze_count),max((record).autoanalyze_count)
-            )::@extschema@.powa_all_relations_history_db_record
-        FROM @extschema@.powa_all_relations_history_current_db
+                max((record).idx_scan),
+                max((record).idx_tup_read), max((record).idx_tup_fetch),
+                max((record).idx_blks_read), max((record).idx_blks_hit)
+            )::@extschema@.powa_all_indexes_history_db_record
+        FROM @extschema@.powa_all_indexes_history_current_db
         WHERE srvid = _srvid
         GROUP BY srvid, dbid;
 
     GET DIAGNOSTICS v_rowcount = ROW_COUNT;
-    PERFORM @extschema@.powa_log(format('%s (powa_all_relations_history_db) - rowcount: %s',
+    PERFORM @extschema@.powa_log(format('%s (powa_all_indexes_history_db) - rowcount: %s',
             v_funcname, v_rowcount));
 
-    DELETE FROM @extschema@.powa_all_relations_history_current_db WHERE srvid = _srvid;
+    DELETE FROM @extschema@.powa_all_indexes_history_current_db WHERE srvid = _srvid;
  END;
-$PROC$ LANGUAGE plpgsql; /* end of powa_all_relations_aggregate */
+$PROC$ LANGUAGE plpgsql; /* end of powa_all_indexes_aggregate */
+
+CREATE OR REPLACE FUNCTION @extschema@.powa_all_tables_aggregate(_srvid integer)
+RETURNS void AS $PROC$
+DECLARE
+    v_funcname    text := format('@extschema@.%I(%s)',
+                                 'powa_all_tables_aggregate', _srvid);
+    v_rowcount    bigint;
+BEGIN
+    PERFORM @extschema@.powa_log(format('running %s', v_funcname));
+
+    PERFORM @extschema@.powa_prevent_concurrent_snapshot(_srvid);
+
+    -- aggregate all_tables table
+    INSERT INTO @extschema@.powa_all_tables_history
+        (srvid, dbid, relid, coalesce_range, records,
+                mins_in_range, maxs_in_range)
+        SELECT srvid, dbid, relid,
+            tstzrange(min((record).ts), max((record).ts),'[]'),
+            array_agg(record),
+            ROW(min((record).ts),
+                min((record).seq_scan), min((record).last_seq_scan),
+                min((record).seq_tup_read), min((record).idx_scan),
+                min((record).last_idx_scan), min((record).n_tup_ins),
+                min((record).n_tup_upd), min((record).n_tup_del),
+                min((record).n_tup_hot_upd), min((record).n_tup_newpage_upd),
+                min((record).n_liv_tup), min((record).n_dead_tup),
+                min((record).n_mod_since_analyze),
+                min((record).n_ins_since_vacuum), min((record).last_vacuum),
+                min((record).last_autovacuum), min((record).last_analyze),
+                min((record).last_autoanalyze), min((record).vacuum_count),
+                min((record).autovacuum_count), min((record).analyze_count),
+                min((record).autoanalyze_count), min((record).heap_blks_read),
+                min((record).heap_blks_hit), min((record).idx_blks_read),
+                min((record).idx_blks_hit), min((record).toast_blks_read),
+                min((record).toast_blks_hit), min((record).tidx_blks_read),
+                min((record).tidx_blks_hit)
+            )::@extschema@.powa_all_tables_history_record,
+            ROW(max((record).ts),
+                max((record).seq_scan), max((record).last_seq_scan),
+                max((record).seq_tup_read), max((record).idx_scan),
+                max((record).last_idx_scan), max((record).n_tup_ins),
+                max((record).n_tup_upd), max((record).n_tup_del),
+                max((record).n_tup_hot_upd), max((record).n_tup_newpage_upd),
+                max((record).n_liv_tup), max((record).n_dead_tup),
+                max((record).n_mod_since_analyze),
+                max((record).n_ins_since_vacuum), max((record).last_vacuum),
+                max((record).last_autovacuum), max((record).last_analyze),
+                max((record).last_autoanalyze), max((record).vacuum_count),
+                max((record).autovacuum_count), max((record).analyze_count),
+                max((record).autoanalyze_count), max((record).heap_blks_read),
+                max((record).heap_blks_hit), max((record).idx_blks_read),
+                max((record).idx_blks_hit), max((record).toast_blks_read),
+                max((record).toast_blks_hit), max((record).tidx_blks_read),
+                max((record).tidx_blks_hit)
+            )::@extschema@.powa_all_tables_history_record
+        FROM @extschema@.powa_all_tables_history_current
+        WHERE srvid = _srvid
+        GROUP BY srvid, dbid, relid;
+
+    GET DIAGNOSTICS v_rowcount = ROW_COUNT;
+    PERFORM @extschema@.powa_log(format('%s - (powa_all_tables_history_current) rowcount: %s',
+            v_funcname, v_rowcount));
+
+    DELETE FROM @extschema@.powa_all_tables_history_current WHERE srvid = _srvid;
+
+    -- aggregate all_tables_db table
+    INSERT INTO @extschema@.powa_all_tables_history_db
+        (srvid, dbid, coalesce_range, records, mins_in_range, maxs_in_range)
+        SELECT srvid, dbid,
+            tstzrange(min((record).ts), max((record).ts),'[]'),
+            array_agg(record),
+            ROW(min((record).ts),
+                min((record).seq_scan), min((record).seq_tup_read),
+                min((record).idx_scan), min((record).n_tup_ins),
+                min((record).n_tup_upd), min((record).n_tup_del),
+                min((record).n_tup_hot_upd), min((record).n_tup_newpage_upd),
+                min((record).n_liv_tup), min((record).n_dead_tup),
+                min((record).n_mod_since_analyze),
+                min((record).n_ins_since_vacuum), min((record).vacuum_count),
+                min((record).autovacuum_count), min((record).analyze_count),
+                min((record).autoanalyze_count), min((record).heap_blks_read),
+                min((record).heap_blks_hit), min((record).idx_blks_read),
+                min((record).idx_blks_hit), min((record).toast_blks_read),
+                min((record).toast_blks_hit), min((record).tidx_blks_read),
+                min((record).tidx_blks_hit)
+            )::@extschema@.powa_all_tables_history_db_record,
+            ROW(max((record).ts),
+                max((record).seq_scan), max((record).seq_tup_read),
+                max((record).idx_scan), max((record).n_tup_ins),
+                max((record).n_tup_upd), max((record).n_tup_del),
+                max((record).n_tup_hot_upd), max((record).n_tup_newpage_upd),
+                max((record).n_liv_tup), max((record).n_dead_tup),
+                max((record).n_mod_since_analyze),
+                max((record).n_ins_since_vacuum), max((record).vacuum_count),
+                max((record).autovacuum_count), max((record).analyze_count),
+                max((record).autoanalyze_count), max((record).heap_blks_read),
+                max((record).heap_blks_hit), max((record).idx_blks_read),
+                max((record).idx_blks_hit), max((record).toast_blks_read),
+                max((record).toast_blks_hit), max((record).tidx_blks_read),
+                max((record).tidx_blks_hit)
+            )::@extschema@.powa_all_tables_history_db_record
+        FROM @extschema@.powa_all_tables_history_current_db
+        WHERE srvid = _srvid
+        GROUP BY srvid, dbid;
+
+    GET DIAGNOSTICS v_rowcount = ROW_COUNT;
+    PERFORM @extschema@.powa_log(format('%s (powa_all_tables_history_db) - rowcount: %s',
+            v_funcname, v_rowcount));
+
+    DELETE FROM @extschema@.powa_all_tables_history_current_db WHERE srvid = _srvid;
+ END;
+$PROC$ LANGUAGE plpgsql; /* end of powa_all_tables_aggregate */
 
 CREATE OR REPLACE FUNCTION @extschema@.powa_stat_bgwriter_aggregate(_srvid integer)
 RETURNS void AS $PROC$
@@ -3473,7 +4215,7 @@ BEGIN
                 WHEN true THEN quote_ident(nsp.nspname)
                 ELSE '@extschema@'
             END AS schema, function_name AS funcname
-            FROM @extschema@.powa_functions AS pf
+            FROM @extschema@.powa_all_functions AS pf
             LEFT JOIN pg_extension AS ext ON pf.kind = 'extension'
                AND ext.extname = pf.name
             LEFT JOIN pg_namespace AS nsp ON nsp.oid = ext.extnamespace
@@ -3552,29 +4294,53 @@ BEGIN
 END;
 $function$; /* end of powa_user_functions_reset */
 
-CREATE OR REPLACE FUNCTION @extschema@.powa_all_relations_reset(_srvid integer)
+CREATE OR REPLACE FUNCTION @extschema@.powa_all_indexes_reset(_srvid integer)
  RETURNS boolean
  LANGUAGE plpgsql
 AS $function$
 BEGIN
-    PERFORM @extschema@.powa_log('Resetting powa_all_relations_history(' || _srvid || ')');
-    DELETE FROM @extschema@.powa_all_relations_history WHERE srvid = _srvid;
+    PERFORM @extschema@.powa_log('Resetting powa_all_indexes_history(' || _srvid || ')');
+    DELETE FROM @extschema@.powa_all_indexes_history WHERE srvid = _srvid;
 
-    PERFORM @extschema@.powa_log('Resetting powa_all_relations_history_db(' || _srvid || ')');
-    DELETE FROM @extschema@.powa_all_relations_history_db WHERE srvid = _srvid;
+    PERFORM @extschema@.powa_log('Resetting powa_all_indexes_history_db(' || _srvid || ')');
+    DELETE FROM @extschema@.powa_all_indexes_history_db WHERE srvid = _srvid;
 
-    PERFORM @extschema@.powa_log('Resetting powa_all_relations_history_current(' || _srvid || ')');
-    DELETE FROM @extschema@.powa_all_relations_history_current WHERE srvid = _srvid;
+    PERFORM @extschema@.powa_log('Resetting powa_all_indexes_history_current(' || _srvid || ')');
+    DELETE FROM @extschema@.powa_all_indexes_history_current WHERE srvid = _srvid;
 
-    PERFORM @extschema@.powa_log('Resetting powa_all_relations_history_current_db(' || _srvid || ')');
-    DELETE FROM @extschema@.powa_all_relations_history_current_db WHERE srvid = _srvid;
+    PERFORM @extschema@.powa_log('Resetting powa_all_indexes_history_current_db(' || _srvid || ')');
+    DELETE FROM @extschema@.powa_all_indexes_history_current_db WHERE srvid = _srvid;
 
-    PERFORM @extschema@.powa_log('Resetting powa_all_relations_src_tmp(' || _srvid || ')');
-    DELETE FROM @extschema@.powa_all_relations_src_tmp WHERE srvid = _srvid;
+    PERFORM @extschema@.powa_log('Resetting powa_all_indexes_src_tmp(' || _srvid || ')');
+    DELETE FROM @extschema@.powa_all_indexes_src_tmp WHERE srvid = _srvid;
 
     RETURN true;
 END;
-$function$; /* end of powa_all_relations_reset */
+$function$; /* end of powa_all_indexes_reset */
+
+CREATE OR REPLACE FUNCTION @extschema@.powa_all_tables_reset(_srvid integer)
+ RETURNS boolean
+ LANGUAGE plpgsql
+AS $function$
+BEGIN
+    PERFORM @extschema@.powa_log('Resetting powa_all_tables_history(' || _srvid || ')');
+    DELETE FROM @extschema@.powa_all_tables_history WHERE srvid = _srvid;
+
+    PERFORM @extschema@.powa_log('Resetting powa_all_tables_history_db(' || _srvid || ')');
+    DELETE FROM @extschema@.powa_all_tables_history_db WHERE srvid = _srvid;
+
+    PERFORM @extschema@.powa_log('Resetting powa_all_tables_history_current(' || _srvid || ')');
+    DELETE FROM @extschema@.powa_all_tables_history_current WHERE srvid = _srvid;
+
+    PERFORM @extschema@.powa_log('Resetting powa_all_tables_history_current_db(' || _srvid || ')');
+    DELETE FROM @extschema@.powa_all_tables_history_current_db WHERE srvid = _srvid;
+
+    PERFORM @extschema@.powa_log('Resetting powa_all_tables_src_tmp(' || _srvid || ')');
+    DELETE FROM @extschema@.powa_all_tables_src_tmp WHERE srvid = _srvid;
+
+    RETURN true;
+END;
+$function$; /* end of powa_all_tables_reset */
 
 CREATE OR REPLACE FUNCTION @extschema@.powa_stat_bgwriter_reset(_srvid integer)
  RETURNS boolean
