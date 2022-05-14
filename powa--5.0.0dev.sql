@@ -1011,21 +1011,13 @@ CREATE TABLE @extschema@.powa_functions (
 INSERT INTO @extschema@.powa_functions (srvid, extname, module, operation, function_name, query_source, added_manually, enabled, priority) VALUES
     (0, 'pg_stat_statements', 'pg_stat_statements',       'snapshot',  'powa_databases_snapshot',       'powa_databases_src',      false, true, -3),
     (0, 'pg_stat_statements', 'pg_stat_statements',       'snapshot',  'powa_statements_snapshot',      'powa_statements_src',     false, true, -2),
-    (0, 'powa',               'powa_stat_user_functions', 'snapshot',  'powa_user_functions_snapshot',  'powa_user_functions_src', false, true, default),
-    (0, 'powa',               'powa_stat_all_relations',  'snapshot',  'powa_all_relations_snapshot',   'powa_all_relations_src',  false, true, default),
     (0, NULL,                 'pg_stat_bgwriter',         'snapshot',  'powa_stat_bgwriter_snapshot',   'powa_stat_bgwriter_src',  false, true, default),
     (0, 'pg_stat_statements', 'pg_stat_statements',       'aggregate', 'powa_statements_aggregate',     NULL,                      false, true, default),
-    (0, 'powa',               'powa_stat_user_functions', 'aggregate', 'powa_user_functions_aggregate', NULL,                      false, true, default),
-    (0, 'powa',               'powa_stat_all_relations',  'aggregate', 'powa_all_relations_aggregate',  NULL,                      false, true, default),
     (0, NULL,                 'pg_stat_bgwriter',         'aggregate', 'powa_stat_bgwriter_aggregate',  NULL,                      false, true, default),
     (0, 'pg_stat_statements', 'pg_stat_statements',       'purge',     'powa_statements_purge',         NULL,                      false, true, default),
     (0, 'pg_stat_statements', 'pg_stat_statements',       'purge',     'powa_databases_purge',          NULL,                      false, true, default),
-    (0, 'powa',               'powa_stat_user_functions', 'purge',     'powa_user_functions_purge',     NULL,                      false, true, default),
-    (0, 'powa',               'powa_stat_all_relations',  'purge',     'powa_all_relations_purge',      NULL,                      false, true, default),
     (0, NULL,                 'pg_stat_bgwriter',         'purge',     'powa_stat_bgwriter_purge',      NULL,                      false, true, default),
     (0, 'pg_stat_statements', 'pg_stat_statements',       'reset',     'powa_statements_reset',         NULL,                      false, true, default),
-    (0, 'powa',               'powa_stat_user_functions', 'reset',     'powa_user_functions_reset',     NULL,                      false, true, default),
-    (0, 'powa',               'powa_stat_all_relations',  'reset',     'powa_all_relations_reset',      NULL,                      false, true, default),
     (0, NULL,                 'pg_stat_bgwriter',         'reset',     'powa_stat_bgwriter_reset',      NULL,                      false, true, default);
 
 -- Register the module if needed, and set the enabled flag to on.  This
@@ -1093,24 +1085,6 @@ BEGIN
         (_srvid, 'pg_stat_statements', 'pg_stat_statements', 'purge',     'powa_statements_purge',     NULL,                  v_manually, true, default),
         (_srvid, 'pg_stat_statements', 'pg_stat_statements', 'purge',     'powa_databases_purge',      NULL,                  v_manually, true, default),
         (_srvid, 'pg_stat_statements', 'pg_stat_statements', 'reset',     'powa_statements_reset',     NULL,                  v_manually, true, default);
-    ELSIF (_module = 'powa_stat_user_functions') THEN
-        INSERT INTO @extschema@.powa_functions(srvid, extname, module,
-            operation, function_name, query_source, added_manually, enabled,
-            priority)
-        VALUES
-         (_srvid, 'powa', 'powa_stat_user_functions', 'snapshot',  'powa_user_functions_snapshot',  'powa_user_functions_src', v_manually, true, default),
-         (_srvid, 'powa', 'powa_stat_user_functions', 'aggregate', 'powa_user_functions_aggregate', NULL,                      v_manually, true, default),
-         (_srvid, 'powa', 'powa_stat_user_functions', 'purge',     'powa_user_functions_purge',     NULL,                      v_manually, true, default),
-         (_srvid, 'powa', 'powa_stat_user_functions', 'reset',     'powa_user_functions_reset',     NULL,                      v_manually, true, default);
-    ELSIF (_module = 'powa_stat_all_relations') THEN
-        INSERT INTO @extschema@.powa_functions(srvid, extname, module,
-            operation, function_name, query_source, added_manually, enabled,
-            priority)
-        VALUES
-        (_srvid, 'powa', 'powa_stat_all_relations',  'snapshot',  'powa_all_relations_snapshot',   'powa_all_relations_src',  v_manually, true, default),
-        (_srvid, 'powa', 'powa_stat_all_relations',  'aggregate', 'powa_all_relations_aggregate',  NULL,                      v_manually, true, default),
-        (_srvid, 'powa', 'powa_stat_all_relations',  'purge',     'powa_all_relations_purge',      NULL,                      v_manually, true, default),
-        (_srvid, 'powa', 'powa_stat_all_relations',  'reset',     'powa_all_relations_reset',      NULL,                      v_manually, true, default);
     ELSIF (_module = 'pg_stat_bgwriter') THEN
         INSERT INTO @extschema@.powa_functions(srvid, extname, module,
             operation, function_name, query_source, added_manually, enabled,
@@ -1191,15 +1165,7 @@ BEGIN
     IF (NOT v_ok) THEN
         RAISE EXCEPTION 'Could not activate pg_stat_statements';
     END IF;
-    -- and also the powa stats functions
-    SELECT @extschema@.powa_activate_extension(v_srvid, 'powa_stat_user_functions') INTO v_ok;
-    IF (NOT v_ok) THEN
-        RAISE EXCEPTION 'Could not activate pg_stat_statements';
-    END IF;
-    SELECT @extschema@.powa_activate_extension(v_srvid, 'powa_stat_all_relations') INTO v_ok;
-    IF (NOT v_ok) THEN
-        RAISE EXCEPTION 'Could not activate pg_stat_statements';
-    END IF;
+    -- and also the pg_stat_bgwriter functions
     SELECT @extschema@.powa_activate_extension(v_srvid, 'pg_stat_bgwriter') INTO v_ok;
     IF (NOT v_ok) THEN
         RAISE EXCEPTION 'Could not activate pg_stat_statements';
