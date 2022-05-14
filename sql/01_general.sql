@@ -57,22 +57,22 @@ WHERE datname = current_database();
 
 -- Test snapshot
 SELECT 1, COUNT(*) = 0 FROM "PoWA".powa_user_functions_history_current;
-SELECT 1, COUNT(*) = 0 FROM "PoWA".powa_all_relations_history_current;
+SELECT 1, COUNT(*) = 0 FROM "PoWA".powa_all_tables_history_current;
 SELECT 1, COUNT(*) = 0 FROM "PoWA".powa_statements_history_current;
 SELECT 1, COUNT(*) = 0 FROM "PoWA".powa_statements_history_current_db;
 SELECT 1, COUNT(*) = 0 FROM "PoWA".powa_user_functions_history;
-SELECT 1, COUNT(*) = 0 FROM "PoWA".powa_all_relations_history;
+SELECT 1, COUNT(*) = 0 FROM "PoWA".powa_all_tables_history;
 SELECT 1, COUNT(*) = 0 FROM "PoWA".powa_statements_history;
 SELECT 1, COUNT(*) = 0 FROM "PoWA".powa_statements_history;
 
 SELECT "PoWA".powa_take_snapshot();
 
 SELECT 2, COUNT(*) >= 0 FROM "PoWA".powa_user_functions_history_current;
-SELECT 2, COUNT(*) >= 0 FROM "PoWA".powa_all_relations_history_current;
+SELECT 2, COUNT(*) >= 0 FROM "PoWA".powa_all_tables_history_current;
 SELECT 2, COUNT(*) > 0 FROM "PoWA".powa_statements_history_current;
 SELECT 2, COUNT(*) > 0 FROM "PoWA".powa_statements_history_current_db;
 SELECT 2, COUNT(*) >= 0 FROM "PoWA".powa_user_functions_history;
-SELECT 2, COUNT(*) = 0 FROM "PoWA".powa_all_relations_history;
+SELECT 2, COUNT(*) = 0 FROM "PoWA".powa_all_tables_history;
 SELECT 2, COUNT(*) = 0 FROM "PoWA".powa_statements_history;
 SELECT 2, COUNT(*) = 0 FROM "PoWA".powa_statements_history;
 
@@ -83,11 +83,11 @@ SELECT "PoWA".powa_take_snapshot();
 SELECT "PoWA".powa_take_snapshot();
 
 SELECT 3, COUNT(*) >= 0 FROM "PoWA".powa_user_functions_history_current;
-SELECT 3, COUNT(*) >= 0 FROM "PoWA".powa_all_relations_history_current;
+SELECT 3, COUNT(*) >= 0 FROM "PoWA".powa_all_tables_history_current;
 SELECT 3, COUNT(*) > 0 FROM "PoWA".powa_statements_history_current;
 SELECT 3, COUNT(*) > 0 FROM "PoWA".powa_statements_history_current_db;
 SELECT 3, COUNT(*) >= 0 FROM "PoWA".powa_user_functions_history;
-SELECT 3, COUNT(*) >= 0 FROM "PoWA".powa_all_relations_history;
+SELECT 3, COUNT(*) >= 0 FROM "PoWA".powa_all_tables_history;
 SELECT 3, COUNT(*) > 0 FROM "PoWA".powa_statements_history;
 SELECT 3, COUNT(*) > 0 FROM "PoWA".powa_statements_history;
 
@@ -95,10 +95,10 @@ SELECT 3, COUNT(*) > 0 FROM "PoWA".powa_statements_history;
 SELECT * from "PoWA".powa_reset(0);
 
 SELECT 4, COUNT(*) = 0 FROM "PoWA".powa_user_functions_history_current;
-SELECT 4, COUNT(*) = 0 FROM "PoWA".powa_all_relations_history_current;
+SELECT 4, COUNT(*) = 0 FROM "PoWA".powa_all_tables_history_current;
 SELECT 4, COUNT(*) = 0 FROM "PoWA".powa_statements_history_current;
 SELECT 4, COUNT(*) = 0 FROM "PoWA".powa_statements_history_current_db;
 SELECT 4, COUNT(*) = 0 FROM "PoWA".powa_user_functions_history;
-SELECT 4, COUNT(*) = 0 FROM "PoWA".powa_all_relations_history;
+SELECT 4, COUNT(*) = 0 FROM "PoWA".powa_all_tables_history;
 SELECT 4, COUNT(*) = 0 FROM "PoWA".powa_statements_history;
 SELECT 4, COUNT(*) = 0 FROM "PoWA".powa_statements_history;

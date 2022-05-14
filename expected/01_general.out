@@ -23,7 +23,8 @@ WHERE dmp.oid IS NULL
 ORDER BY ext.relname::text COLLATE "C";
            relname           
 -----------------------------
- powa_all_relations_src_tmp
+ powa_all_indexes_src_tmp
+ powa_all_tables_src_tmp
  powa_databases_src_tmp
  powa_kcache_src_tmp
  powa_modules
@@ -33,7 +34,7 @@ ORDER BY ext.relname::text COLLATE "C";
  powa_statements_src_tmp
  powa_user_functions_src_tmp
  powa_wait_sampling_src_tmp
-(10 rows)
+(11 rows)
 
 -- Check for object that aren't in the "PoWA" schema
 WITH ext AS (
@@ -99,7 +100,7 @@ SELECT 1, COUNT(*) = 0 FROM "PoWA".powa_user_functions_history_current;
         1 | t
 (1 row)
 
-SELECT 1, COUNT(*) = 0 FROM "PoWA".powa_all_relations_history_current;
+SELECT 1, COUNT(*) = 0 FROM "PoWA".powa_all_tables_history_current;
  ?column? | ?column? 
 ----------+----------
         1 | t
@@ -123,7 +124,7 @@ SELECT 1, COUNT(*) = 0 FROM "PoWA".powa_user_functions_history;
         1 | t
 (1 row)
 
-SELECT 1, COUNT(*) = 0 FROM "PoWA".powa_all_relations_history;
+SELECT 1, COUNT(*) = 0 FROM "PoWA".powa_all_tables_history;
  ?column? | ?column? 
 ----------+----------
         1 | t
@@ -153,7 +154,7 @@ SELECT 2, COUNT(*) >= 0 FROM "PoWA".powa_user_functions_history_current;
         2 | t
 (1 row)
 
-SELECT 2, COUNT(*) >= 0 FROM "PoWA".powa_all_relations_history_current;
+SELECT 2, COUNT(*) >= 0 FROM "PoWA".powa_all_tables_history_current;
  ?column? | ?column? 
 ----------+----------
         2 | t
@@ -177,7 +178,7 @@ SELECT 2, COUNT(*) >= 0 FROM "PoWA".powa_user_functions_history;
         2 | t
 (1 row)
 
-SELECT 2, COUNT(*) = 0 FROM "PoWA".powa_all_relations_history;
+SELECT 2, COUNT(*) = 0 FROM "PoWA".powa_all_tables_history;
  ?column? | ?column? 
 ----------+----------
         2 | t
@@ -226,7 +227,7 @@ SELECT 3, COUNT(*) >= 0 FROM "PoWA".powa_user_functions_history_current;
         3 | t
 (1 row)
 
-SELECT 3, COUNT(*) >= 0 FROM "PoWA".powa_all_relations_history_current;
+SELECT 3, COUNT(*) >= 0 FROM "PoWA".powa_all_tables_history_current;
  ?column? | ?column? 
 ----------+----------
         3 | t
@@ -250,7 +251,7 @@ SELECT 3, COUNT(*) >= 0 FROM "PoWA".powa_user_functions_history;
         3 | t
 (1 row)
 
-SELECT 3, COUNT(*) >= 0 FROM "PoWA".powa_all_relations_history;
+SELECT 3, COUNT(*) >= 0 FROM "PoWA".powa_all_tables_history;
  ?column? | ?column? 
 ----------+----------
         3 | t
@@ -281,7 +282,7 @@ SELECT 4, COUNT(*) = 0 FROM "PoWA".powa_user_functions_history_current;
         4 | t
 (1 row)
 
-SELECT 4, COUNT(*) = 0 FROM "PoWA".powa_all_relations_history_current;
+SELECT 4, COUNT(*) = 0 FROM "PoWA".powa_all_tables_history_current;
  ?column? | ?column? 
 ----------+----------
         4 | t
@@ -305,7 +306,7 @@ SELECT 4, COUNT(*) = 0 FROM "PoWA".powa_user_functions_history;
         4 | t
 (1 row)
 
-SELECT 4, COUNT(*) = 0 FROM "PoWA".powa_all_relations_history;
+SELECT 4, COUNT(*) = 0 FROM "PoWA".powa_all_tables_history;
  ?column? | ?column? 
 ----------+----------
         4 | t
