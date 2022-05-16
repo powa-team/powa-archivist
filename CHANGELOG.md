@@ -1,3 +1,11 @@
+## 4.1.4
+
+  - Bugfixes
+    - Fix compatibility with standard_conforming_strings = off (Julien Rouhaud,
+      per report from github user arnobnq)
+  - Misc
+    - Add compatibility with postgres 15
+
 ## 4.1.3
 
   - Bugfixes
