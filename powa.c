@@ -119,17 +119,11 @@ compute_powa_frequency(void)
 
 	/* Initialize time_powa_frequency to do maths with it */
 #ifndef WIN32
-#ifdef HAVE_CLOCK_GETTIME
+	INSTR_TIME_SET_ZERO(time_powa_frequency);
 	time_powa_frequency.tv_sec = local_frequency / 1000; /* Seconds */
-	time_powa_frequency.tv_nsec = 0;
-#else		/* !HAVE_CLOCK_GETTIME */
-	time_powa_frequency.tv_sec = local_frequency / 1000; /* Seconds */
-	time_powa_frequency.tv_usec = 0;
-#endif		/* HAVE_CLOCK_GETTIME */
-
-#else		/* WIN32 */
+#else
 	time_powa_frequency.QuadPart = local_frequency / 1000 * GetTimerFrequency();
-#endif		/* WIN32 */
+#endif
 }
 
 static int64
