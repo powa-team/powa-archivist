@@ -5,6 +5,8 @@
  * This program is open source, licensed under the PostgreSQL license.
  * For license terms, see the LICENSE file.
  *
+ * Copyright (c) 2014-2017, DALIBO
+ * Copyright (c) 2018-2023, The PoWA-team
  *-------------------------------------------------------------------------
  */
 
