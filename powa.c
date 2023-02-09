@@ -381,6 +381,12 @@ powa_main(Datum main_arg)
 			powa_process_sighup();
 
 			/*
+			 * We might be in this loop for a long time, so we need to call
+			 * CFI() to promptly respond to any pending event
+			 */
+			CHECK_FOR_INTERRUPTS();
+
+			/*
 			 * Compute if there is still some time to wait (we could have been
 			 * woken up by a latch, or snapshot took more than frequency)
 			 */
