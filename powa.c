@@ -120,12 +120,16 @@ compute_powa_frequency(void)
 		local_frequency = 3600000;
 
 	/* Initialize time_powa_frequency to do maths with it */
+#if PG_VERSION_NUM >= 160000
+	time_powa_frequency.ticks = local_frequency / 1000 * NS_PER_S;
+#else
 #ifndef WIN32
 	INSTR_TIME_SET_ZERO(time_powa_frequency);
 	time_powa_frequency.tv_sec = local_frequency / 1000; /* Seconds */
 #else
 	time_powa_frequency.QuadPart = local_frequency / 1000 * GetTimerFrequency();
-#endif
+#endif		/* WIN32 */
+#endif		/* pg16+ */
 }
 
 static int64
