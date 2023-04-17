@@ -988,8 +988,13 @@ INSERT INTO @extschema@.powa_extensions(srvid, extname) VALUES
     (0, 'pg_stat_statements'),
     (0, 'powa');
 
+-- We have both a "module" and an "extname".  This gives the ability to have a
+-- single extension providing multiple dataset.  This is the case for "powa"
+-- extension itself, as it contains the necessary functions to handle sampling
+-- of postgres core things, like pg_stat_bgwriter.
 CREATE TABLE @extschema@.powa_functions (
     srvid integer NOT NULL,
+    extname text NOT NULL,
     module text NOT NULL,
     operation text NOT NULL,
     external bool NOT NULL default false,
@@ -999,7 +1004,6 @@ CREATE TABLE @extschema@.powa_functions (
     added_manually boolean NOT NULL default true,
     enabled boolean NOT NULL default true,
     priority numeric NOT NULL default 10,
-    extname text,
     CHECK (operation IN ('snapshot','aggregate','purge','unregister','reset')),
     FOREIGN KEY (srvid) REFERENCES @extschema@.powa_servers(id)
       MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE,
@@ -1011,14 +1015,14 @@ CREATE TABLE @extschema@.powa_functions (
 INSERT INTO @extschema@.powa_functions (srvid, extname, module, operation, function_name, query_source, added_manually, enabled, priority) VALUES
     (0, 'pg_stat_statements', 'pg_stat_statements',       'snapshot',  'powa_databases_snapshot',       'powa_databases_src',      false, true, -3),
     (0, 'pg_stat_statements', 'pg_stat_statements',       'snapshot',  'powa_statements_snapshot',      'powa_statements_src',     false, true, -2),
-    (0, NULL,                 'pg_stat_bgwriter',         'snapshot',  'powa_stat_bgwriter_snapshot',   'powa_stat_bgwriter_src',  false, true, default),
+    (0, 'powa',               'pg_stat_bgwriter',         'snapshot',  'powa_stat_bgwriter_snapshot',   'powa_stat_bgwriter_src',  false, true, default),
     (0, 'pg_stat_statements', 'pg_stat_statements',       'aggregate', 'powa_statements_aggregate',     NULL,                      false, true, default),
-    (0, NULL,                 'pg_stat_bgwriter',         'aggregate', 'powa_stat_bgwriter_aggregate',  NULL,                      false, true, default),
+    (0, 'powa',               'pg_stat_bgwriter',         'aggregate', 'powa_stat_bgwriter_aggregate',  NULL,                      false, true, default),
     (0, 'pg_stat_statements', 'pg_stat_statements',       'purge',     'powa_statements_purge',         NULL,                      false, true, default),
     (0, 'pg_stat_statements', 'pg_stat_statements',       'purge',     'powa_databases_purge',          NULL,                      false, true, default),
-    (0, NULL,                 'pg_stat_bgwriter',         'purge',     'powa_stat_bgwriter_purge',      NULL,                      false, true, default),
+    (0, 'powa',               'pg_stat_bgwriter',         'purge',     'powa_stat_bgwriter_purge',      NULL,                      false, true, default),
     (0, 'pg_stat_statements', 'pg_stat_statements',       'reset',     'powa_statements_reset',         NULL,                      false, true, default),
-    (0, NULL,                 'pg_stat_bgwriter',         'reset',     'powa_stat_bgwriter_reset',      NULL,                      false, true, default);
+    (0, 'powa',               'pg_stat_bgwriter',         'reset',     'powa_stat_bgwriter_reset',      NULL,                      false, true, default);
 
 -- Register the module if needed, and set the enabled flag to on.  This
 -- function should only be called by powa_register_server.
@@ -1038,7 +1042,7 @@ BEGIN
     IF (_module LIKE 'powa%') THEN
         v_extname = 'powa';
     ELSIF (_module = 'pg_stat_bgwriter') THEN
-        v_extname = NULL;
+        v_extname = 'powa';
     ELSE
         v_extname = _module;
     END IF;
@@ -1090,10 +1094,10 @@ BEGIN
             operation, function_name, query_source, added_manually, enabled,
             priority)
         VALUES
-        (_srvid, NULL, 'pg_stat_bgwriter', 'snapshot',  'powa_stat_bgwriter_snapshot',  'powa_stat_bgwriter_src', v_manually, true, default),
-        (_srvid, NULL, 'pg_stat_bgwriter', 'aggregate', 'powa_stat_bgwriter_aggregate', NULL,                     v_manually, true, default),
-        (_srvid, NULL, 'pg_stat_bgwriter', 'purge',     'powa_stat_bgwriter_purge',     NULL,                     v_manually, true, default),
-        (_srvid, NULL, 'pg_stat_bgwriter', 'reset',     'powa_stat_bgwriter_reset',     NULL,                     v_manually, true, default);
+        (_srvid, 'powa', 'pg_stat_bgwriter', 'snapshot',  'powa_stat_bgwriter_snapshot',  'powa_stat_bgwriter_src', v_manually, true, default),
+        (_srvid, 'powa', 'pg_stat_bgwriter', 'aggregate', 'powa_stat_bgwriter_aggregate', NULL,                     v_manually, true, default),
+        (_srvid, 'powa', 'pg_stat_bgwriter', 'purge',     'powa_stat_bgwriter_purge',     NULL,                     v_manually, true, default),
+        (_srvid, 'powa', 'pg_stat_bgwriter', 'reset',     'powa_stat_bgwriter_reset',     NULL,                     v_manually, true, default);
     ELSIF (_module = 'pg_stat_kcache') THEN
         RETURN @extschema@.powa_kcache_register(_srvid);
     ELSIF (_module = 'pg_qualstats') THEN
@@ -2042,8 +2046,8 @@ BEGIN
         END AS schema, function_name AS funcname INTO r
     FROM @extschema@.powa_functions AS pf
     JOIN src ON pf.module = src.object_name
-    JOIN pg_extension AS ext ON ext.extname = pf.module
-    JOIN pg_namespace AS nsp ON nsp.oid = ext.extnamespace
+    LEFT JOIN pg_extension AS ext ON ext.extname = pf.extname
+    LEFT JOIN pg_namespace AS nsp ON nsp.oid = ext.extnamespace
     WHERE operation = 'unregister'
     ORDER BY module;
 
@@ -2168,8 +2172,8 @@ BEGIN
                 ELSE '@extschema@'
              END AS schema, function_name AS funcname
              FROM @extschema@.powa_functions AS pf
-             JOIN pg_extension AS ext ON ext.extname = pf.module
-             JOIN pg_namespace AS nsp ON nsp.oid = ext.extnamespace
+             LEFT JOIN pg_extension AS ext ON ext.extname = pf.extname
+             LEFT JOIN pg_namespace AS nsp ON nsp.oid = ext.extnamespace
              WHERE operation='snapshot'
              AND enabled
              AND srvid = _srvid
@@ -2214,8 +2218,8 @@ BEGIN
                   ELSE '@extschema@'
                END AS schema, function_name AS funcname
                FROM @extschema@.powa_functions AS pf
-               JOIN pg_extension AS ext ON ext.extname = pf.module
-               JOIN pg_namespace AS nsp ON nsp.oid = ext.extnamespace
+               LEFT JOIN pg_extension AS ext ON ext.extname = pf.extname
+               LEFT JOIN pg_namespace AS nsp ON nsp.oid = ext.extnamespace
                WHERE operation='aggregate'
                AND enabled
                AND srvid = _srvid
@@ -2270,8 +2274,8 @@ BEGIN
                     ELSE '@extschema@'
                END AS schema, function_name AS funcname
                FROM @extschema@.powa_functions AS pf
-               JOIN pg_extension AS ext ON ext.extname = pf.module
-               JOIN pg_namespace AS nsp ON nsp.oid = ext.extnamespace
+               LEFT JOIN pg_extension AS ext ON ext.extname = pf.extname
+               LEFT JOIN pg_namespace AS nsp ON nsp.oid = ext.extnamespace
                WHERE operation='purge'
                AND enabled
                AND srvid = _srvid
@@ -3301,8 +3305,8 @@ BEGIN
                 ELSE '@extschema@'
             END AS schema, function_name AS funcname
             FROM @extschema@.powa_functions AS pf
-            JOIN pg_extension AS ext ON ext.extname = pf.module
-            JOIN pg_namespace AS nsp ON nsp.oid = ext.extnamespace
+            LEFT JOIN pg_extension AS ext ON ext.extname = pf.extname
+            LEFT JOIN pg_namespace AS nsp ON nsp.oid = ext.extnamespace
             WHERE operation='reset'
             AND srvid = _srvid
             ORDER BY module LOOP
