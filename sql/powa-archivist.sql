@@ -5,6 +5,28 @@
 CREATE EXTENSION pg_stat_statements;
 CREATE EXTENSION btree_gist;
 CREATE EXTENSION powa;
+
+-- Check the relations that aren't dumped
+WITH ext AS (
+    SELECT c.oid, c.relname
+    FROM pg_depend d
+    JOIN pg_extension e ON d.refclassid = 'pg_extension'::regclass
+        AND e.oid = d.refobjid
+        AND e.extname = 'powa'
+    JOIN pg_class c ON d.classid = 'pg_class'::regclass
+        AND c.oid = d.objid
+),
+dmp AS (
+    SELECT unnest(extconfig) AS oid
+    FROM pg_extension
+    WHERE extname = 'powa'
+)
+SELECT ext.relname
+FROM ext
+LEFT JOIN dmp USING (oid)
+WHERE dmp.oid IS NULL
+ORDER BY ext.relname::text COLLATE "C";
+
 -- Aggregate data every 5 snapshots
 SET powa.coalesce = 5;
 
