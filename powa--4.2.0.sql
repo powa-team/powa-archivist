@@ -759,6 +759,7 @@ CREATE UNLOGGED TABLE public.powa_statements_src_tmp (
     ts  timestamp with time zone NOT NULL,
     userid oid NOT NULL,
     dbid oid NOT NULL,
+    toplevel boolean NOT NULL,
     queryid bigint NOT NULL,
     query text NOT NULL,
     calls bigint NOT NULL,
@@ -839,6 +840,7 @@ CREATE TABLE powa_statements_history (
     srvid integer NOT NULL,
     queryid bigint NOT NULL,
     dbid oid NOT NULL,
+    toplevel boolean NOT NULL,
     userid oid NOT NULL,
     coalesce_range tstzrange NOT NULL,
     records powa_statements_history_record[] NOT NULL,
@@ -867,6 +869,7 @@ CREATE TABLE powa_statements_history_current (
     srvid integer NOT NULL,
     queryid bigint NOT NULL,
     dbid oid NOT NULL,
+    toplevel boolean NOT NULL,
     userid oid NOT NULL,
     record powa_statements_history_record NOT NULL,
     FOREIGN KEY (srvid) REFERENCES powa_servers(id)
@@ -2418,6 +2421,7 @@ CREATE OR REPLACE FUNCTION powa_statements_src(IN _srvid integer,
     OUT ts timestamp with time zone,
     OUT userid oid,
     OUT dbid oid,
+    OUT toplevel boolean,
     OUT queryid bigint,
     OUT query text,
     OUT calls bigint,
@@ -2452,9 +2456,47 @@ BEGIN
         FROM pg_extension
         WHERE extname = 'pg_stat_statements';
 
-        IF (v_pgss[1] = 1 AND v_pgss[2] < 8) THEN
+        IF (v_pgss[1] = 1 AND v_pgss[2] >= 10) THEN
             RETURN QUERY SELECT now(),
-                pgss.userid, pgss.dbid, pgss.queryid, pgss.query,
+                pgss.userid, pgss.dbid, pgss.toplevel, pgss.queryid, pgss.query,
+                pgss.calls, pgss.total_exec_time,
+                pgss.rows, pgss.shared_blks_hit,
+                pgss.shared_blks_read, pgss.shared_blks_dirtied,
+                pgss.shared_blks_written, pgss.local_blks_hit,
+                pgss.local_blks_read, pgss.local_blks_dirtied,
+                pgss.local_blks_written, pgss.temp_blks_read,
+                pgss.temp_blks_written, pgss.blk_read_time, pgss.blk_write_time,
+                pgss.plans, pgss.total_plan_time,
+                pgss.wal_records, pgss.wal_fpi, pgss.wal_bytes
+            FROM pg_stat_statements pgss
+            JOIN pg_database d ON d.oid = pgss.dbid
+            JOIN pg_roles r ON pgss.userid = r.oid
+            WHERE pgss.query !~* '^[[:space:]]*(DEALLOCATE|BEGIN|PREPARE TRANSACTION|COMMIT PREPARED|ROLLBACK PREPARED)'
+            AND NOT (r.rolname = ANY (string_to_array(
+                        powa_get_guc('powa.ignored_users', ''),
+                        ',')));
+        ELSIF (v_pgss[1] = 1 AND v_pgss[2] >= 8) THEN
+            RETURN QUERY SELECT now(),
+                pgss.userid, pgss.dbid, true::boolean, pgss.queryid, pgss.query,
+                pgss.calls, pgss.total_exec_time,
+                pgss.rows, pgss.shared_blks_hit,
+                pgss.shared_blks_read, pgss.shared_blks_dirtied,
+                pgss.shared_blks_written, pgss.local_blks_hit,
+                pgss.local_blks_read, pgss.local_blks_dirtied,
+                pgss.local_blks_written, pgss.temp_blks_read,
+                pgss.temp_blks_written, pgss.blk_read_time, pgss.blk_write_time,
+                pgss.plans, pgss.total_plan_time,
+                pgss.wal_records, pgss.wal_fpi, pgss.wal_bytes
+            FROM pg_stat_statements pgss
+            JOIN pg_database d ON d.oid = pgss.dbid
+            JOIN pg_roles r ON pgss.userid = r.oid
+            WHERE pgss.query !~* '^[[:space:]]*(DEALLOCATE|BEGIN|PREPARE TRANSACTION|COMMIT PREPARED|ROLLBACK PREPARED)'
+            AND NOT (r.rolname = ANY (string_to_array(
+                        powa_get_guc('powa.ignored_users', ''),
+                        ',')));
+        ELSE
+            RETURN QUERY SELECT now(),
+                pgss.userid, pgss.dbid, true::boolean, pgss.queryid, pgss.query,
                 pgss.calls, pgss.total_time,
                 pgss.rows, pgss.shared_blks_hit,
                 pgss.shared_blks_read, pgss.shared_blks_dirtied,
@@ -2472,29 +2514,10 @@ BEGIN
             AND NOT (r.rolname = ANY (string_to_array(
                         powa_get_guc('powa.ignored_users', ''),
                         ',')));
-        ELSE
-            RETURN QUERY SELECT now(),
-                pgss.userid, pgss.dbid, pgss.queryid, pgss.query,
-                pgss.calls, pgss.total_exec_time,
-                pgss.rows, pgss.shared_blks_hit,
-                pgss.shared_blks_read, pgss.shared_blks_dirtied,
-                pgss.shared_blks_written, pgss.local_blks_hit,
-                pgss.local_blks_read, pgss.local_blks_dirtied,
-                pgss.local_blks_written, pgss.temp_blks_read,
-                pgss.temp_blks_written, pgss.blk_read_time, pgss.blk_write_time,
-                pgss.plans, pgss.total_plan_time,
-                pgss.wal_records, pgss.wal_fpi, pgss.wal_bytes
-            FROM pg_stat_statements pgss
-            JOIN pg_database d ON d.oid = pgss.dbid
-            JOIN pg_roles r ON pgss.userid = r.oid
-            WHERE pgss.query !~* '^[[:space:]]*(DEALLOCATE|BEGIN|PREPARE TRANSACTION|COMMIT PREPARED|ROLLBACK PREPARED)'
-            AND NOT (r.rolname = ANY (string_to_array(
-                        powa_get_guc('powa.ignored_users', ''),
-                        ',')));
         END IF;
     ELSE
         RETURN QUERY SELECT pgss.ts,
-            pgss.userid, pgss.dbid, pgss.queryid, pgss.query,
+            pgss.userid, pgss.dbid, pgss.toplevel, pgss.queryid, pgss.query,
             pgss.calls, pgss.total_exec_time,
             pgss.rows, pgss.shared_blks_hit,
             pgss.shared_blks_read, pgss.shared_blks_dirtied,
@@ -2550,7 +2573,7 @@ BEGIN
 
     by_query AS (
         INSERT INTO public.powa_statements_history_current
-            SELECT _srvid, queryid, dbid, userid,
+            SELECT _srvid, queryid, dbid, toplevel, userid,
             ROW(
                 ts, calls, total_exec_time, rows,
                 shared_blks_hit, shared_blks_read, shared_blks_dirtied,
@@ -3003,7 +3026,7 @@ BEGIN
 
     -- aggregate statements table
     INSERT INTO public.powa_statements_history
-        SELECT srvid, queryid, dbid, userid,
+        SELECT srvid, queryid, dbid, toplevel, userid,
             tstzrange(min((record).ts), max((record).ts),'[]'),
             array_agg(record),
             ROW(min((record).ts),
@@ -3034,7 +3057,7 @@ BEGIN
             )::powa_statements_history_record
         FROM powa_statements_history_current
         WHERE srvid = _srvid
-        GROUP BY srvid, queryid, dbid, userid;
+        GROUP BY srvid, queryid, dbid, toplevel, userid;
 
     GET DIAGNOSTICS v_rowcount = ROW_COUNT;
     perform powa_log(format('%I (powa_statements_history) - rowcount: %s',
