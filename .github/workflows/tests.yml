@@ -53,7 +53,8 @@ jobs:
         echo "******** INSTALL POSTGRES **********"
         sudo apt-get install -y \
           postgresql-$PG_MAJOR_VERSION \
-          postgresql-server-dev-$PG_MAJOR_VERSION
+          postgresql-server-dev-$PG_MAJOR_VERSION \
+          postgresql-contrib-$PG_MAJOR_VERSION
         echo ""
 
         echo "******* INSTALL DEPENDENCIES *******"
@@ -74,6 +75,7 @@ jobs:
       run: |
         sudo chmod a+rwx /var/run/postgresql/
         pg_ctl -D $DATADIR initdb
+        echo "shared_preload_libraries = 'pg_stat_statements'" >> $DATADIR/postgresql.conf
         pg_ctl -D $DATADIR -l $LOGFILE start || cat $LOGFILE
         psql -c 'select 1 as ok' postgres
 
