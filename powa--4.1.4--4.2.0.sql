@@ -1,5 +1,6 @@
 -- complain if script is sourced in psql, rather than via CREATE EXTENSION
---\echo Use "ALTER EXTENSION powa" to load this file. \quit
+\echo Use "ALTER EXTENSION powa" to load this file. \quit
+
 SET LOCAL statement_timeout = 0;
 SET LOCAL client_encoding = 'UTF8';
 SET LOCAL standard_conforming_strings = on;
