@@ -5,7 +5,6 @@ SET LOCAL statement_timeout = 0;
 SET LOCAL client_encoding = 'UTF8';
 SET LOCAL standard_conforming_strings = on;
 SET LOCAL client_min_messages = warning;
-SET LOCAL escape_string_warning = off;
 SET LOCAL search_path = public, pg_catalog;
 
 CREATE TABLE powa_servers(
@@ -759,7 +758,6 @@ CREATE UNLOGGED TABLE public.powa_statements_src_tmp (
     ts  timestamp with time zone NOT NULL,
     userid oid NOT NULL,
     dbid oid NOT NULL,
-    toplevel boolean NOT NULL,
     queryid bigint NOT NULL,
     query text NOT NULL,
     calls bigint NOT NULL,
@@ -781,7 +779,8 @@ CREATE UNLOGGED TABLE public.powa_statements_src_tmp (
     total_plan_time double precision NOT NULL,
     wal_records bigint NOT NULL,
     wal_fpi bigint NOT NULL,
-    wal_bytes numeric NOT NULL
+    wal_bytes numeric NOT NULL,
+    toplevel boolean NOT NULL
 );
 
 CREATE UNLOGGED TABLE public.powa_user_functions_src_tmp(
@@ -840,12 +839,12 @@ CREATE TABLE powa_statements_history (
     srvid integer NOT NULL,
     queryid bigint NOT NULL,
     dbid oid NOT NULL,
-    toplevel boolean NOT NULL,
     userid oid NOT NULL,
     coalesce_range tstzrange NOT NULL,
     records powa_statements_history_record[] NOT NULL,
     mins_in_range powa_statements_history_record NOT NULL,
     maxs_in_range powa_statements_history_record NOT NULL,
+    toplevel boolean NOT NULL,
     FOREIGN KEY (srvid) REFERENCES powa_servers(id)
       MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
 );
@@ -869,9 +868,9 @@ CREATE TABLE powa_statements_history_current (
     srvid integer NOT NULL,
     queryid bigint NOT NULL,
     dbid oid NOT NULL,
-    toplevel boolean NOT NULL,
     userid oid NOT NULL,
     record powa_statements_history_record NOT NULL,
+    toplevel boolean NOT NULL,
     FOREIGN KEY (srvid) REFERENCES powa_servers(id)
       MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
 );
@@ -2572,7 +2571,8 @@ BEGIN
     ),
 
     by_query AS (
-        INSERT INTO public.powa_statements_history_current
+        INSERT INTO public.powa_statements_history_current (srvid, queryid,
+                dbid, toplevel, userid, record)
             SELECT _srvid, queryid, dbid, toplevel, userid,
             ROW(
                 ts, calls, total_exec_time, rows,
@@ -2587,7 +2587,7 @@ BEGIN
     ),
 
     by_database AS (
-        INSERT INTO public.powa_statements_history_current_db
+        INSERT INTO public.powa_statements_history_current_db (srvid, dbid, record)
             SELECT _srvid, dbid,
             ROW(
                 ts, sum(calls),
@@ -3025,7 +3025,8 @@ BEGIN
     PERFORM powa_prevent_concurrent_snapshot(_srvid);
 
     -- aggregate statements table
-    INSERT INTO public.powa_statements_history
+    INSERT INTO public.powa_statements_history (srvid, queryid, dbid, toplevel,
+            userid, coalesce_range, records, mins_in_range, maxs_in_range)
         SELECT srvid, queryid, dbid, toplevel, userid,
             tstzrange(min((record).ts), max((record).ts),'[]'),
             array_agg(record),
@@ -3066,7 +3067,8 @@ BEGIN
     DELETE FROM powa_statements_history_current WHERE srvid = _srvid;
 
     -- aggregate db table
-    INSERT INTO public.powa_statements_history_db
+    INSERT INTO public.powa_statements_history_db (srvid, dbid, coalesce_range,
+            records, mins_in_range, maxs_in_range)
         SELECT srvid, dbid,
             tstzrange(min((record).ts), max((record).ts),'[]'),
             array_agg(record),
