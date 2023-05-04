@@ -309,3 +309,26 @@ BEGIN
     DELETE FROM powa_statements_history_current_db WHERE srvid = _srvid;
 END;
 $PROC$ LANGUAGE plpgsql; /* end of powa_statements_aggregate */
+
+ALTER TABLE public.powa_kcache_src_tmp ALTER COLUMN plan_reads DROP NOT NULL;
+ALTER TABLE public.powa_kcache_src_tmp ALTER COLUMN plan_writes DROP NOT NULL;
+ALTER TABLE public.powa_kcache_src_tmp ALTER COLUMN plan_user_time DROP NOT NULL;
+ALTER TABLE public.powa_kcache_src_tmp ALTER COLUMN plan_system_time DROP NOT NULL;
+ALTER TABLE public.powa_kcache_src_tmp ALTER COLUMN plan_minflts DROP NOT NULL;
+ALTER TABLE public.powa_kcache_src_tmp ALTER COLUMN plan_majflts DROP NOT NULL;
+ALTER TABLE public.powa_kcache_src_tmp ALTER COLUMN plan_nswaps DROP NOT NULL;
+ALTER TABLE public.powa_kcache_src_tmp ALTER COLUMN plan_msgsnds DROP NOT NULL;
+ALTER TABLE public.powa_kcache_src_tmp ALTER COLUMN plan_msgrcvs DROP NOT NULL;
+ALTER TABLE public.powa_kcache_src_tmp ALTER COLUMN plan_nsignals DROP NOT NULL;
+ALTER TABLE public.powa_kcache_src_tmp ALTER COLUMN plan_nvcsws DROP NOT NULL;
+ALTER TABLE public.powa_kcache_src_tmp ALTER COLUMN plan_nivcsws DROP NOT NULL;
+ALTER TABLE public.powa_kcache_src_tmp ALTER COLUMN exec_reads DROP NOT NULL;
+ALTER TABLE public.powa_kcache_src_tmp ALTER COLUMN exec_writes DROP NOT NULL;
+ALTER TABLE public.powa_kcache_src_tmp ALTER COLUMN exec_minflts DROP NOT NULL;
+ALTER TABLE public.powa_kcache_src_tmp ALTER COLUMN exec_majflts DROP NOT NULL;
+ALTER TABLE public.powa_kcache_src_tmp ALTER COLUMN exec_nswaps DROP NOT NULL;
+ALTER TABLE public.powa_kcache_src_tmp ALTER COLUMN exec_msgsnds DROP NOT NULL;
+ALTER TABLE public.powa_kcache_src_tmp ALTER COLUMN exec_msgrcvs DROP NOT NULL;
+ALTER TABLE public.powa_kcache_src_tmp ALTER COLUMN exec_nsignals DROP NOT NULL;
+ALTER TABLE public.powa_kcache_src_tmp ALTER COLUMN exec_nvcsws DROP NOT NULL;
+ALTER TABLE public.powa_kcache_src_tmp ALTER COLUMN exec_nivcsws DROP NOT NULL;
