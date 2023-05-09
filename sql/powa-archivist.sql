@@ -17,6 +17,7 @@ WITH ext AS (
         AND e.extname = 'powa'
     JOIN pg_class c ON d.classid = 'pg_class'::regclass
         AND c.oid = d.objid
+    WHERE c.relkind != 'v'
 ),
 dmp AS (
     SELECT unnest(extconfig) AS oid
@@ -46,7 +47,7 @@ ORDER BY descr COLLATE "C";
 SET powa.coalesce = 5;
 
 -- Test created ojects
-SELECT * FROM "PoWA".powa_functions ORDER BY module, operation;
+SELECT * FROM "PoWA".powa_functions ORDER BY name, operation;
 
 -- test C SRFs
 SELECT COUNT(*) = 0
@@ -148,13 +149,13 @@ SELECT count(*) FROM "PoWA".powa_qualstats_src_tmp;
 SELECT count(*) FROM "PoWA".powa_qualstats_quals_history_current WHERE srvid = 1;
 
 -- activate / deactivate extension
-SELECT * FROM "PoWA".powa_functions ORDER BY srvid, module, operation, function_name;
+SELECT * FROM "PoWA".powa_functions ORDER BY srvid, name, operation, function_name;
 SELECT * FROM "PoWA".powa_activate_extension(1, 'pg_stat_kcache');
 SELECT * FROM "PoWA".powa_activate_extension(1, 'some_extension');
-SELECT * FROM "PoWA".powa_functions ORDER BY srvid, module, operation, function_name;
+SELECT * FROM "PoWA".powa_functions ORDER BY srvid, name, operation, function_name;
 SELECT * FROM "PoWA".powa_deactivate_extension(1, 'pg_stat_kcache');
 SELECT * FROM "PoWA".powa_deactivate_extension(1, 'some_extension');
-SELECT * FROM "PoWA".powa_functions ORDER BY srvid, module, operation, function_name;
+SELECT * FROM "PoWA".powa_functions ORDER BY srvid, name, operation, function_name;
 
 SELECT alias FROM "PoWA".powa_servers WHERE id = 1;
 SELECT * FROM "PoWA".powa_configure_server(0, '{"somekey": "someval"}');

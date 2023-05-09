@@ -25,6 +25,131 @@ CREATE TABLE @extschema@.powa_servers (
 );
 INSERT INTO @extschema@.powa_servers VALUES (0, '', '<local>', 0, '', NULL, '', -1, 100, '0 second');
 
+CREATE TABLE @extschema@.powa_extensions (
+    extname text NOT NULL PRIMARY KEY,
+    external boolean NOT NULL default true,
+    added_manually boolean NOT NULL default true
+);
+
+INSERT INTO @extschema@.powa_extensions
+    (extname,              external, added_manually) VALUES
+    ('powa',               false,    false),
+    ('hypopg',             false,    false),
+    ('pg_stat_statements', false,    false),
+    ('pg_qualstats',       false,    false),
+    ('pg_stat_kcache',     false,    false),
+    ('pg_track_settings',  true,     false),
+    ('pg_wait_sampling',   false,    false);
+
+CREATE TABLE @extschema@.powa_extension_functions (
+    extname text NOT NULL,
+    operation text NOT NULL,
+    function_name text NOT NULL,
+    query_source text default NULL,
+    query_cleanup text default NULL,
+    added_manually boolean NOT NULL default true,
+    priority numeric NOT NULL default 10,
+    PRIMARY KEY (extname, operation, function_name),
+    CHECK (operation IN ('snapshot','aggregate','purge','reset')),
+    FOREIGN KEY (extname) REFERENCES @extschema@.powa_extensions(extname)
+      MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
+);
+
+INSERT INTO @extschema@.powa_extension_functions
+    (extname,              operation,   function_name,                         query_source,                     query_cleanup,                                added_manually, priority) VALUES
+    ('pg_stat_statements', 'snapshot',  'powa_databases_snapshot',             'powa_databases_src',             NULL,                                         false,          -3),
+    ('pg_stat_statements', 'snapshot',  'powa_statements_snapshot',            'powa_statements_src',            NULL,                                         false,          -2),
+    ('pg_stat_statements', 'aggregate', 'powa_statements_aggregate',           NULL,                             NULL,                                         false,          default),
+    ('pg_stat_statements', 'purge',     'powa_statements_purge',               NULL,                             NULL,                                         false,          default),
+    ('pg_stat_statements', 'purge',     'powa_databases_purge',                NULL,                             NULL,                                         false,          default),
+    ('pg_stat_statements', 'reset',     'powa_statements_reset',               NULL,                             NULL,                                         false,          default),
+    ('pg_qualstats',       'snapshot',  'powa_qualstats_snapshot',             'powa_qualstats_src',             'SELECT {pg_qualstats}.pg_qualstats_reset()', false,          default),
+    ('pg_qualstats',       'aggregate', 'powa_qualstats_aggregate',            NULL,                             NULL,                                         false,          default),
+    ('pg_qualstats',       'purge',     'powa_qualstats_purge',                NULL,                             NULL,                                         false,          default),
+    ('pg_qualstats',       'reset',     'powa_qualstats_reset',                NULL,                             NULL,                                         false,          default),
+    ('pg_stat_kcache',     'snapshot',  'powa_kcache_snapshot',                'powa_kcache_src',                NULL,                                         false,          -1),
+    ('pg_stat_kcache',     'aggregate', 'powa_kcache_aggregate',               NULL,                             NULL,                                         false,          default),
+    ('pg_stat_kcache',     'purge',     'powa_kcache_purge',                   NULL,                             NULL,                                         false,          default),
+    ('pg_stat_kcache',     'reset',     'powa_kcache_reset',                   NULL,                             NULL,                                         false,          default),
+    ('pg_track_settings',  'snapshot',  'pg_track_settings_snapshot_settings', 'pg_track_settings_settings_src', NULL,                                         false,          default),
+    ('pg_track_settings',  'snapshot',  'pg_track_settings_snapshot_rds',      'pg_track_settings_rds_src',      NULL,                                         false,          default),
+    ('pg_track_settings',  'snapshot',  'pg_track_settings_snapshot_reboot',   'pg_track_settings_reboot_src',   NULL,                                         false,          default),
+    ('pg_track_settings',  'reset',     'pg_track_settings_reset',             NULL,                             NULL,                                         false,          default),
+    ('pg_wait_sampling',   'snapshot',  'powa_wait_sampling_snapshot',         'powa_wait_sampling_src',         NULL,                                         false,          default),
+    ('pg_wait_sampling',   'aggregate', 'powa_wait_sampling_aggregate',        NULL,                             NULL,                                         false,          default),
+    ('pg_wait_sampling',   'purge',     'powa_wait_sampling_purge',            NULL,                             NULL,                                         false,          default),
+    ('pg_wait_sampling',   'reset',     'powa_wait_sampling_reset',            NULL,                             NULL,                                         false,          default);
+
+CREATE TABLE @extschema@.powa_extension_config (
+    srvid integer NOT NULL,
+    extname text NOT NULL,
+    version text,
+    enabled bool NOT NULL default true,
+    added_manually boolean NOT NULL default true,
+    PRIMARY KEY (srvid, extname),
+    FOREIGN KEY (srvid) REFERENCES @extschema@.powa_servers(id)
+      MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE,
+    FOREIGN KEY (extname) REFERENCES @extschema@.powa_extensions(extname)
+      MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
+);
+
+INSERT INTO @extschema@.powa_extension_config (srvid, extname, added_manually) VALUES
+    (0, 'powa', false),
+    (0, 'pg_stat_statements', false);
+
+-- This is for cluster-wide core views, we don't support custom datasources
+-- here.
+CREATE TABLE @extschema@.powa_modules (
+    module text NOT NULL PRIMARY KEY
+);
+
+INSERT INTO @extschema@.powa_modules (module) VALUES
+    ('pg_stat_bgwriter');
+
+CREATE TABLE @extschema@.powa_module_config (
+    srvid integer NOT NULL,
+    module text NOT NULL,
+    enabled bool NOT NULL default true,
+    added_manually boolean NOT NULL default true,
+    PRIMARY KEY (srvid, module),
+    FOREIGN KEY (srvid) REFERENCES @extschema@.powa_servers(id)
+      MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE,
+    FOREIGN KEY (module) REFERENCES @extschema@.powa_modules(module)
+      MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
+);
+
+INSERT INTO @extschema@.powa_module_config (srvid, module, added_manually) VALUES
+    (0, 'pg_stat_bgwriter', false);
+
+CREATE TABLE @extschema@.powa_module_functions (
+    module text NOT NULL,
+    operation text NOT NULL,
+    function_name text NOT NULL,
+    query_source text default NULL,
+    PRIMARY KEY (module, operation),
+    CHECK (operation IN ('snapshot','aggregate','purge','reset')),
+    FOREIGN KEY (module) REFERENCES @extschema@.powa_modules (module)
+      MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
+);
+
+INSERT INTO @extschema@.powa_module_functions (module, operation, function_name, query_source) VALUES
+    ('pg_stat_bgwriter', 'snapshot',  'powa_stat_bgwriter_snapshot',  'powa_stat_bgwriter_src'),
+    ('pg_stat_bgwriter', 'aggregate', 'powa_stat_bgwriter_aggregate', NULL),
+    ('pg_stat_bgwriter', 'purge',     'powa_stat_bgwriter_purge',     NULL),
+    ('pg_stat_bgwriter', 'reset',     'powa_stat_bgwriter_reset',     NULL);
+
+CREATE VIEW @extschema@.powa_functions AS
+    SELECT srvid, 'extension' AS kind, extname AS name, operation, external,
+        function_name, query_source, query_cleanup, enabled, priority
+    FROM @extschema@.powa_extensions e
+    JOIN @extschema@.powa_extension_functions f USING (extname)
+    JOIN @extschema@.powa_extension_config c USING (extname)
+    UNION ALL
+    SELECT srvid, 'module' AS kind, module AS name, operation, false,
+        function_name, query_source, NULL, enabled, 100
+    FROM @extschema@.powa_module_functions f
+    JOIN @extschema@.powa_module_config c USING (module);
+
 CREATE TABLE @extschema@.powa_snapshot_metas(
     srvid integer PRIMARY KEY,
     coalesce_seq bigint NOT NULL default (1),
@@ -974,159 +1099,189 @@ CREATE TABLE @extschema@.powa_stat_bgwriter_history_current (
 );
 CREATE INDEX ON @extschema@.powa_stat_bgwriter_history_current(srvid);
 
-
-CREATE TABLE @extschema@.powa_extensions (
-    srvid integer,
-    extname text,
-    version text,
-    PRIMARY KEY (srvid, extname),
-    FOREIGN KEY (srvid) REFERENCES @extschema@.powa_servers (id)
-      MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
-);
-
-INSERT INTO @extschema@.powa_extensions(srvid, extname) VALUES
-    (0, 'pg_stat_statements'),
-    (0, 'powa');
-
--- We have both a "module" and an "extname".  This gives the ability to have a
--- single extension providing multiple dataset.  This is the case for "powa"
--- extension itself, as it contains the necessary functions to handle sampling
--- of postgres core things, like pg_stat_bgwriter.
-CREATE TABLE @extschema@.powa_functions (
-    srvid integer NOT NULL,
-    extname text NOT NULL,
-    module text NOT NULL,
-    operation text NOT NULL,
-    external bool NOT NULL default false,
-    function_name text NOT NULL,
-    query_source text default NULL,
-    query_cleanup text default NULL,
-    added_manually boolean NOT NULL default true,
-    enabled boolean NOT NULL default true,
-    priority numeric NOT NULL default 10,
-    CHECK (operation IN ('snapshot','aggregate','purge','unregister','reset')),
-    FOREIGN KEY (srvid) REFERENCES @extschema@.powa_servers(id)
-      MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE,
-    FOREIGN KEY (srvid, extname)
-      REFERENCES @extschema@.powa_extensions (srvid, extname)
-      ON UPDATE CASCADE ON DELETE CASCADE
-);
-
-INSERT INTO @extschema@.powa_functions (srvid, extname, module, operation, function_name, query_source, added_manually, enabled, priority) VALUES
-    (0, 'pg_stat_statements', 'pg_stat_statements',       'snapshot',  'powa_databases_snapshot',       'powa_databases_src',      false, true, -3),
-    (0, 'pg_stat_statements', 'pg_stat_statements',       'snapshot',  'powa_statements_snapshot',      'powa_statements_src',     false, true, -2),
-    (0, 'powa',               'pg_stat_bgwriter',         'snapshot',  'powa_stat_bgwriter_snapshot',   'powa_stat_bgwriter_src',  false, true, default),
-    (0, 'pg_stat_statements', 'pg_stat_statements',       'aggregate', 'powa_statements_aggregate',     NULL,                      false, true, default),
-    (0, 'powa',               'pg_stat_bgwriter',         'aggregate', 'powa_stat_bgwriter_aggregate',  NULL,                      false, true, default),
-    (0, 'pg_stat_statements', 'pg_stat_statements',       'purge',     'powa_statements_purge',         NULL,                      false, true, default),
-    (0, 'pg_stat_statements', 'pg_stat_statements',       'purge',     'powa_databases_purge',          NULL,                      false, true, default),
-    (0, 'powa',               'pg_stat_bgwriter',         'purge',     'powa_stat_bgwriter_purge',      NULL,                      false, true, default),
-    (0, 'pg_stat_statements', 'pg_stat_statements',       'reset',     'powa_statements_reset',         NULL,                      false, true, default),
-    (0, 'powa',               'pg_stat_bgwriter',         'reset',     'powa_stat_bgwriter_reset',      NULL,                      false, true, default);
-
--- Register the module if needed, and set the enabled flag to on.  This
--- function should only be called by powa_register_server.
-CREATE FUNCTION @extschema@.powa_activate_extension(_srvid integer, _module text) RETURNS boolean
+-- Register the given module if needed.
+CREATE FUNCTION @extschema@.powa_activate_module(_srvid int, _module text) RETURNS boolean
 AS $_$
 DECLARE
-    v_ext_registered boolean;
-    v_manually boolean;
-    v_found boolean;
-    v_extname text;
+    v_res bool;
 BEGIN
-    SELECT COUNT(*) > 0 INTO v_ext_registered
-    FROM @extschema@.powa_functions
+    IF (_srvid IS NULL) THEN
+        RAISE EXCEPTION 'powa_activate_module: no server id provided';
+    END IF;
+
+    IF (_module IS NULL) THEN
+        RAISE EXCEPTION 'powa_activate_module: no module provided';
+    END IF;
+
+    -- Check that the module is known.
+    SELECT COUNT(*) = 1 INTO v_res
+    FROM @extschema@.powa_modules
+    WHERE module = _module;
+
+    IF (NOT v_res) THEN
+        RAISE EXCEPTION 'Module "%" is not known', _module;
+    END IF;
+
+    -- The record may already be present, but the enabled flag could be off.
+    -- If so simply enable it.  Otherwise, add the needed record.
+    SELECT COUNT(*) > 0 INTO v_res
+    FROM @extschema@.powa_module_config
     WHERE module = _module
     AND srvid = _srvid;
 
-    IF (_module LIKE 'powa%') THEN
-        v_extname = 'powa';
-    ELSIF (_module = 'pg_stat_bgwriter') THEN
-        v_extname = 'powa';
-    ELSE
-        v_extname = _module;
-    END IF;
-
-    -- the rows may already be present, but the enabled flag could be off,
-    -- so enabled it everywhere it's disabled.  We don't check for other cases,
-    -- for instance if part of the needed rows were deleted.
-    IF (v_ext_registered) THEN
-        UPDATE @extschema@.powa_functions
+    IF (v_res) THEN
+        UPDATE @extschema@.powa_module_config
         SET enabled = true
         WHERE enabled = false
         AND srvid = _srvid
         AND module = _module;
-
-        RETURN true;
-    END IF;
-
-    -- Add the row in powa_extensions if needed.  Note that since we add the
-    -- row before knowing if it's a supported extension, we may have to remove
-    -- it later.
-    IF (v_extname IS NOT NULL) THEN
-        SELECT COUNT(*) = 1 INTO v_found
-        FROM @extschema@.powa_extensions
-        WHERE srvid = _srvid
-        AND extname = v_extname;
-
-        IF NOT v_found THEN
-            INSERT INTO @extschema@.powa_extensions (srvid, extname)
-            VALUES (_srvid, v_extname);
-        END IF;
-    END IF;
-
-    -- default extensions for non-local server have to be dumped
-    SELECT _srvid != 0 INTO v_manually;
-
-    IF (_module = 'pg_stat_statements') THEN
-        INSERT INTO @extschema@.powa_functions(srvid, extname, module,
-            operation, function_name, query_source, added_manually, enabled,
-            priority)
-        VALUES
-        (_srvid, 'pg_stat_statements', 'pg_stat_statements', 'snapshot',  'powa_databases_snapshot',   'powa_databases_src',  v_manually, true, -1),
-        (_srvid, 'pg_stat_statements', 'pg_stat_statements', 'snapshot',  'powa_statements_snapshot',  'powa_statements_src', v_manually, true, default),
-        (_srvid, 'pg_stat_statements', 'pg_stat_statements', 'aggregate', 'powa_statements_aggregate', NULL,                  v_manually, true, default),
-        (_srvid, 'pg_stat_statements', 'pg_stat_statements', 'purge',     'powa_statements_purge',     NULL,                  v_manually, true, default),
-        (_srvid, 'pg_stat_statements', 'pg_stat_statements', 'purge',     'powa_databases_purge',      NULL,                  v_manually, true, default),
-        (_srvid, 'pg_stat_statements', 'pg_stat_statements', 'reset',     'powa_statements_reset',     NULL,                  v_manually, true, default);
-    ELSIF (_module = 'pg_stat_bgwriter') THEN
-        INSERT INTO @extschema@.powa_functions(srvid, extname, module,
-            operation, function_name, query_source, added_manually, enabled,
-            priority)
-        VALUES
-        (_srvid, 'powa', 'pg_stat_bgwriter', 'snapshot',  'powa_stat_bgwriter_snapshot',  'powa_stat_bgwriter_src', v_manually, true, default),
-        (_srvid, 'powa', 'pg_stat_bgwriter', 'aggregate', 'powa_stat_bgwriter_aggregate', NULL,                     v_manually, true, default),
-        (_srvid, 'powa', 'pg_stat_bgwriter', 'purge',     'powa_stat_bgwriter_purge',     NULL,                     v_manually, true, default),
-        (_srvid, 'powa', 'pg_stat_bgwriter', 'reset',     'powa_stat_bgwriter_reset',     NULL,                     v_manually, true, default);
-    ELSIF (_module = 'pg_stat_kcache') THEN
-        RETURN @extschema@.powa_kcache_register(_srvid);
-    ELSIF (_module = 'pg_qualstats') THEN
-        RETURN @extschema@.powa_qualstats_register(_srvid);
-    ELSIF (_module = 'pg_wait_sampling') THEN
-        RETURN @extschema@.powa_wait_sampling_register(_srvid);
-    ELSIF (_module = 'pg_track_settings') THEN
-        RETURN @extschema@.powa_track_settings_register(_srvid);
     ELSE
-        -- remove the previously added row in powa_extensions
-        IF (v_extname IS NOT NULL) THEN
-            DELETE FROM @extschema@.powa_extensions
-                WHERE srvid = _srvid AND extname = v_extname;
-        END IF;
+        INSERT INTO @extschema@.powa_module_config
+            (srvid, module, added_manually)
+        VALUES
+            (_srvid, _module, (_srvid != 0));
+    END IF;
 
+    RETURN true;
+END;
+$_$ LANGUAGE plpgsql; /* end of powa_activate_module */
+
+-- Deactivate a module: leave the record in powa_module_config but
+-- remove the enabled flag.
+CREATE FUNCTION @extschema@.powa_deactivate_module(_srvid int, _module text) RETURNS boolean
+AS $_$
+DECLARE
+    v_res bool;
+BEGIN
+    IF (_srvid IS NULL) THEN
+        RAISE EXCEPTION 'powa_deactivate_module: no server id provided';
+    END IF;
+
+    IF (_module IS NULL) THEN
+        RAISE EXCEPTION 'powa_deactivate_module: no module provided';
+    END IF;
+
+    -- Check that the module is known.
+    SELECT COUNT(*) = 1 INTO v_res
+    FROM @extschema@.powa_modules
+    WHERE module = _module;
+
+    IF (NOT v_res) THEN
+        RAISE EXCEPTION 'Module "%" is not known', _module;
+    END IF;
+
+    UPDATE @extschema@.powa_module_config
+    SET enabled = false
+    WHERE enabled = true
+    AND srvid = _srvid
+    AND module = _module;
+
+    RETURN true;
+END;
+$_$ LANGUAGE plpgsql; /* end of powa_deactivate_module */
+
+-- Register the given extension if needed, and set the enabled flag to on.
+CREATE FUNCTION @extschema@.powa_activate_extension(_srvid integer, _extname text) RETURNS boolean
+AS $_$
+DECLARE
+    v_res boolean;
+BEGIN
+    IF (_srvid IS NULL) THEN
+        RAISE EXCEPTION 'powa_activate_extension: no server id provided';
+    END IF;
+
+    IF (_extname IS NULL) THEN
+        RAISE EXCEPTION 'powa_activate_extension: no extension provided';
+    END IF;
+
+    -- Check that the extension is known.
+    SELECT COUNT(*) = 1 INTO v_res
+    FROM @extschema@.powa_extensions
+    WHERE extname = _extname;
+
+    IF (NOT v_res) THEN
+        RAISE WARNING 'powa_activate_extension "%" is not known', _extname;
         RETURN false;
     END IF;
 
-    return true;
+    -- For local server, check that the extension has been created before
+    -- blindly activating it.  It allows us to simply try to activate all known
+    -- extensions for the local server by default.
+    IF (_srvid = 0) THEN
+        SELECT COUNT(*) = 1 INTO v_res
+        FROM pg_catalog.pg_extension
+        WHERE extname = _extname;
+
+        IF (NOT v_res) THEN
+            RAISE WARNING 'Extension % is not installed locally, ignoring',
+                          _extname;
+            RETURN false;
+        END IF;
+    END IF;
+
+    -- Activating the "powa" extension is an alias for activating all the
+    -- underlying modules
+    IF (_extname = 'powa') THEN
+        SELECT bool_and(@extschema@.powa_activate_module(_srvid, module))
+            INTO v_res
+        FROM @extschema@.powa_modules;
+
+        RETURN v_res;
+    END IF;
+
+    -- The record may already be present, but the enabled flag could be off.
+    -- If so simply enable it.  Otherwise, add the needed record.
+    SELECT COUNT(*) > 0 INTO v_res
+    FROM @extschema@.powa_extension_config
+    WHERE extname = _extname
+    AND srvid = _srvid;
+
+    IF (v_res) THEN
+        UPDATE @extschema@.powa_extension_config
+        SET enabled = true
+        WHERE enabled = false
+        AND srvid = _srvid
+        AND extname = _extname;
+    ELSE
+        INSERT INTO @extschema@.powa_extension_config
+            (srvid, extname, added_manually)
+        VALUES
+            (_srvid, _extname, (_srvid != 0));
+    END IF;
+
+    RETURN true;
 END;
 $_$ LANGUAGE plpgsql; /* end of powa_activate_extension */
 
-CREATE FUNCTION @extschema@.powa_deactivate_extension(_srvid integer, _module text) RETURNS boolean
+-- Deactivate an extension: leave the record in powa_extension_config but
+-- remove the enabled flag.
+CREATE FUNCTION @extschema@.powa_deactivate_extension(_srvid integer, _extname text) RETURNS boolean
 AS $_$
+DECLARE
+    v_res bool;
 BEGIN
-    UPDATE @extschema@.powa_functions
-    SET enabled = false
-    WHERE module = _module
-    AND srvid = _srvid;
+    IF (_srvid IS NULL) THEN
+        RAISE EXCEPTION 'powa_activate_extension: no server id provided';
+    END IF;
+
+    IF (_extname IS NULL) THEN
+        RAISE EXCEPTION 'powa_activate_extension: no extension provided';
+    END IF;
+
+    -- Deactivating extension "powa" is an alias for deactivating all the
+    -- underlying modules.
+    IF (_extname = 'powa') THEN
+        SELECT bool_and(@extschema@.powa_deactivate_module(_srvid, module))
+            INTO v_res
+        FROM @extschema@.powa_modules;
+
+        RETURN v_res;
+    ELSE
+        UPDATE @extschema@.powa_extension_config
+        SET enabled = false
+        WHERE extname = _extname
+        AND srvid = _srvid;
+    END IF;
 
     return true;
 END;
@@ -1169,10 +1324,10 @@ BEGIN
     IF (NOT v_ok) THEN
         RAISE EXCEPTION 'Could not activate pg_stat_statements';
     END IF;
-    -- and also the pg_stat_bgwriter functions
-    SELECT @extschema@.powa_activate_extension(v_srvid, 'pg_stat_bgwriter') INTO v_ok;
+    -- and also the powa, which is an alias for activating all its modules
+    SELECT @extschema@.powa_activate_extension(v_srvid, 'powa') INTO v_ok;
     IF (NOT v_ok) THEN
-        RAISE EXCEPTION 'Could not activate pg_stat_statements';
+        RAISE EXCEPTION 'Could not activate powa modules';
     END IF;
 
     -- If no extra extensions were asked, we're done
@@ -1978,7 +2133,11 @@ SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_all_relations_histo
 SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_all_relations_history_current_db','');
 SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_stat_bgwriter_history','');
 SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_stat_bgwriter_history_current','');
-SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_functions','WHERE added_manually');
+SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_extensions','WHERE added_manually');
+SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_extension_functions','WHERE added_manually');
+SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_extension_config','WHERE added_manually');
+SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_module_functions','WHERE added_manually');
+SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_module_config','WHERE added_manually');
 SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_kcache_metrics','');
 SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_kcache_metrics_db','');
 SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_kcache_metrics_current','');
@@ -2000,18 +2159,26 @@ RETURNS event_trigger
 LANGUAGE plpgsql
 AS $_$
 DECLARE
+    v_extname text;
+    v_res bool;
 BEGIN
+    SELECT extname INTO v_extname
+    FROM pg_event_trigger_ddl_commands() d
+    JOIN pg_extension e ON d.classid = 'pg_extension'::regclass
+        AND d.objid = e.oid
+    JOIN @extschema@.powa_extensions p USING (extname)
+    WHERE d.object_type = 'extension';
 
-    /* We have for now no way for a proper handling of this event,
-     * as we don't have a table with the list of supported extensions.
-     * So just call every powa_*_register() function we know each time an
-     * extension is created. Powa should be in a dedicated database and the
-     * register function handle to be called several time, so it's not critical
-     */
-    PERFORM @extschema@.powa_activate_extension(0, 'pg_stat_kcache');
-    PERFORM @extschema@.powa_activate_extension(0, 'pg_qualstats');
-    PERFORM @extschema@.powa_activate_extension(0, 'pg_track_settings');
-    PERFORM @extschema@.powa_activate_extension(0, 'pg_wait_sampling');
+    -- Bail out if this isn't a known extension
+    IF (v_extname IS NULL) THEN
+        RETURN;
+    END IF;
+
+    SELECT @extschema@.powa_activate_extension(0, v_extname) INTO v_res;
+
+    IF (NOT v_res) THEN
+        RAISE WARNING 'Could not automatically activate extension "%"', v_extname;
+    END IF;
 END;
 $_$; /* end of powa_check_created_extensions */
 
@@ -2044,9 +2211,9 @@ BEGIN
         WHEN true THEN quote_ident(nsp.nspname)
         ELSE '@extschema@'
         END AS schema, function_name AS funcname INTO r
-    FROM @extschema@.powa_functions AS pf
-    JOIN src ON pf.module = src.object_name
-    LEFT JOIN pg_extension AS ext ON ext.extname = pf.extname
+    FROM @extschema@.powa_extensions AS pe
+    JOIN src ON pe.module = src.object_name
+    LEFT JOIN pg_extension AS ext ON ext.extname = pe.extname
     LEFT JOIN pg_namespace AS nsp ON nsp.oid = ext.extnamespace
     WHERE operation = 'unregister'
     ORDER BY module;
@@ -2172,12 +2339,13 @@ BEGIN
                 ELSE '@extschema@'
              END AS schema, function_name AS funcname
              FROM @extschema@.powa_functions AS pf
-             LEFT JOIN pg_extension AS ext ON ext.extname = pf.extname
+             LEFT JOIN pg_extension AS ext ON pf.kind = 'extension'
+                AND ext.extname = pf.name
              LEFT JOIN pg_namespace AS nsp ON nsp.oid = ext.extnamespace
              WHERE operation='snapshot'
              AND enabled
              AND srvid = _srvid
-             ORDER BY priority, module
+             ORDER BY priority, name
     LOOP
       -- Call all of them, for the current srvid
       BEGIN
@@ -2218,12 +2386,13 @@ BEGIN
                   ELSE '@extschema@'
                END AS schema, function_name AS funcname
                FROM @extschema@.powa_functions AS pf
-               LEFT JOIN pg_extension AS ext ON ext.extname = pf.extname
+               LEFT JOIN pg_extension AS ext ON pf.kind = 'extension'
+                  AND ext.extname = pf.name
                LEFT JOIN pg_namespace AS nsp ON nsp.oid = ext.extnamespace
                WHERE operation='aggregate'
                AND enabled
                AND srvid = _srvid
-               ORDER BY module
+               ORDER BY priority, name
       LOOP
         -- Call all of them, for the current srvid
         BEGIN
@@ -2274,12 +2443,13 @@ BEGIN
                     ELSE '@extschema@'
                END AS schema, function_name AS funcname
                FROM @extschema@.powa_functions AS pf
-               LEFT JOIN pg_extension AS ext ON ext.extname = pf.extname
+               LEFT JOIN pg_extension AS ext ON pf.kind = 'extension'
+                  AND ext.extname = pf.name
                LEFT JOIN pg_namespace AS nsp ON nsp.oid = ext.extnamespace
                WHERE operation='purge'
                AND enabled
                AND srvid = _srvid
-               ORDER BY module
+               ORDER BY priority, name
       LOOP
         -- Call all of them, for the current srvid
         BEGIN
@@ -2620,7 +2790,7 @@ BEGIN
         DELETE FROM @extschema@.powa_statements_src_tmp WHERE srvid = _srvid;
     END IF;
 
-    result := true; -- For now we don't care. What could we do on error except crash anyway?
+    result := true; -- For now we don't care. jhat could we do on error except crash anyway?
 END;
 $PROC$ language plpgsql; /* end of powa_statements_snapshot */
 
@@ -3299,17 +3469,17 @@ DECLARE
   v_context text;
 BEGIN
     -- Find reset function for every supported datasource, including pgss
-    -- Also call reset function even if they're not enabled
     FOR r IN SELECT CASE external
                 WHEN true THEN quote_ident(nsp.nspname)
                 ELSE '@extschema@'
             END AS schema, function_name AS funcname
             FROM @extschema@.powa_functions AS pf
-            LEFT JOIN pg_extension AS ext ON ext.extname = pf.extname
+            LEFT JOIN pg_extension AS ext ON pf.kind = 'extension'
+               AND ext.extname = pf.name
             LEFT JOIN pg_namespace AS nsp ON nsp.oid = ext.extnamespace
             WHERE operation='reset'
             AND srvid = _srvid
-            ORDER BY module LOOP
+            ORDER BY priority, name LOOP
       -- Call all of them, for the current srvid
       BEGIN
           EXECUTE format('SELECT %s.%I(%s)', r.schema, r.funcname, _srvid);
@@ -3425,62 +3595,6 @@ END;
 $function$; /* end of powa_stat_bgwriter_reset */
 
 /* pg_stat_kcache integration - part 2 */
-
-/*
- * register pg_stat_kcache extension
- */
-CREATE OR REPLACE function @extschema@.powa_kcache_register(_srvid integer = 0) RETURNS bool AS
-$_$
-DECLARE
-    v_func_present bool;
-    v_ext_present bool;
-BEGIN
-    -- Only check for extension availability for local server
-    IF (_srvid = 0) THEN
-        SELECT COUNT(*) = 1 INTO v_ext_present
-        FROM pg_extension
-        WHERE extname = 'pg_stat_kcache';
-    ELSE
-        v_ext_present = true;
-    END IF;
-
-    IF ( v_ext_present ) THEN
-        SELECT COUNT(*) > 0 INTO v_func_present
-        FROM @extschema@.powa_functions
-        WHERE module = 'pg_stat_kcache'
-        AND srvid = _srvid;
-
-        IF ( NOT v_func_present) THEN
-            PERFORM @extschema@.powa_log('registering pg_stat_kcache');
-
-            INSERT INTO @extschema@.powa_functions (srvid, extname, module, operation, function_name, query_source, added_manually, enabled, priority)
-            VALUES (_srvid, 'pg_stat_kcache', 'pg_stat_kcache', 'snapshot',   'powa_kcache_snapshot',   'powa_kcache_src', true, true, -1),
-                   (_srvid, 'pg_stat_kcache', 'pg_stat_kcache', 'aggregate',  'powa_kcache_aggregate',  NULL,              true, true, default),
-                   (_srvid, 'pg_stat_kcache', 'pg_stat_kcache', 'unregister', 'powa_kcache_unregister', NULL,              true, true, default),
-                   (_srvid, 'pg_stat_kcache', 'pg_stat_kcache', 'purge',      'powa_kcache_purge',      NULL,              true, true, default),
-                   (_srvid, 'pg_stat_kcache', 'pg_stat_kcache', 'reset',      'powa_kcache_reset',      NULL,              true, true, default);
-        END IF;
-    END IF;
-
-    RETURN true;
-END;
-$_$
-language plpgsql; /* end of powa_kcache_register */
-
-/*
- * unregister pg_stat_kcache extension
- */
-CREATE OR REPLACE function @extschema@.powa_kcache_unregister(_srvid integer = 0) RETURNS bool AS
-$_$
-BEGIN
-    PERFORM @extschema@.powa_log('unregistering pg_stat_kcache');
-    DELETE FROM @extschema@.powa_functions
-    WHERE module = 'pg_stat_kcache'
-    AND srvid = _srvid;
-    RETURN true;
-END;
-$_$
-language plpgsql; /* end of powa_kcache_unregister */
 
 CREATE OR REPLACE FUNCTION @extschema@.powa_kcache_src(IN _srvid integer,
     OUT ts timestamp with time zone,
@@ -3828,56 +3942,9 @@ BEGIN
 END;
 $PROC$ language plpgsql; /* end of powa_kcache_reset */
 
--- By default, try to register pg_stat_kcache, in case it's alreay here
-SELECT * FROM @extschema@.powa_activate_extension(0, 'pg_stat_kcache');
-
 /* end of pg_stat_kcache integration - part 2 */
 
 /* pg_qualstats integration - part 2 */
-
-/*
- * powa_qualstats_register
- */
-CREATE OR REPLACE function @extschema@.powa_qualstats_register(_srvid integer = 0) RETURNS bool AS
-$_$
-DECLARE
-    v_func_present bool;
-    v_ext_present bool;
-BEGIN
-    IF (_srvid = 0) THEN
-        SELECT COUNT(*) = 1 INTO v_ext_present
-        FROM pg_extension
-        WHERE extname = 'pg_qualstats';
-    ELSE
-        v_ext_present = true;
-    END IF;
-
-    IF ( v_ext_present) THEN
-        SELECT COUNT(*) > 0 INTO v_func_present
-        FROM @extschema@.powa_functions
-        WHERE module = 'pg_qualstats'
-        AND srvid = _srvid;
-
-        IF ( NOT v_func_present) THEN
-            PERFORM @extschema@.powa_log('registering pg_qualstats');
-
-            -- pg_qualstats_reset uses a python format pattern as query_cleanup
-            -- is only used for remote snapshot, which is done by
-            -- powa-collector which handles it.  For local snapshots this is
-            -- done explicitly in powa_qualstats_snapshot().
-            INSERT INTO @extschema@.powa_functions (srvid, extname, module, operation, function_name, query_source, query_cleanup, added_manually, enabled)
-            VALUES (_srvid, 'pg_qualstats', 'pg_qualstats', 'snapshot',   'powa_qualstats_snapshot',   'powa_qualstats_src', 'SELECT {pg_qualstats}.pg_qualstats_reset()', true, true),
-                   (_srvid, 'pg_qualstats', 'pg_qualstats', 'aggregate',  'powa_qualstats_aggregate',  NULL,                 NULL,                                         true, true),
-                   (_srvid, 'pg_qualstats', 'pg_qualstats', 'unregister', 'powa_qualstats_unregister', NULL,                 NULL,                                         true, true),
-                   (_srvid, 'pg_qualstats', 'pg_qualstats', 'purge',      'powa_qualstats_purge',      NULL,                 NULL,                                         true, true),
-                   (_srvid, 'pg_qualstats', 'pg_qualstats', 'reset',      'powa_qualstats_reset',      NULL,                 NULL,                                         true, true);
-        END IF;
-    END IF;
-
-    RETURN true;
-END;
-$_$
-language plpgsql; /* end of powa_qualstats_register */
 
 /*
  * powa_qualstats utility SRF for aggregating constvalues
@@ -4232,140 +4299,13 @@ BEGIN
 END;
 $PROC$ language plpgsql; /* end of powa_qualstats_reset */
 
-/*
- * powa_qualstats_unregister
- */
-CREATE OR REPLACE function @extschema@.powa_qualstats_unregister(_srvid integer = 0) RETURNS bool AS
-$_$
-BEGIN
-    PERFORM @extschema@.powa_log('unregistering pg_qualstats');
-    DELETE FROM @extschema@.powa_functions
-    WHERE module = 'pg_qualstats'
-    AND srvid = _srvid;
-    RETURN true;
-END;
-$_$
-language plpgsql; /* end of powa_qualstats_unregister */
-
--- By default, try to register pg_qualstats, in case it's alreay here
-SELECT * FROM @extschema@.powa_activate_extension(0, 'pg_qualstats');
-
 /* end of pg_qualstats integration - part 2 */
 
-/* pg_track_settings integration */
-
-CREATE OR REPLACE FUNCTION @extschema@.powa_track_settings_register(_srvid integer = 0) RETURNS bool AS $_$
-DECLARE
-    v_func_present bool;
-    v_ext_present bool;
-BEGIN
-    IF (_srvid = 0) THEN
-        SELECT COUNT(*) = 1 INTO v_ext_present
-        FROM pg_extension
-        WHERE extname = 'pg_track_settings';
-    ELSE
-        v_ext_present = true;
-    END IF;
-
-    IF ( v_ext_present ) THEN
-        SELECT COUNT(*) > 0 INTO v_func_present
-        FROM @extschema@.powa_functions
-        WHERE module = 'pg_track_settings'
-        AND srvid = _srvid;
-
-        IF ( NOT v_func_present) THEN
-            PERFORM @extschema@.powa_log('registering pg_track_settings');
-
-            -- This extension handles its own storage, just add its snapshot,
-            -- query_source and reset functions as external, and our unregister
-            -- function.
-            INSERT INTO @extschema@.powa_functions (srvid, extname, module, operation, external, function_name, query_source, added_manually, enabled)
-            VALUES (_srvid, 'pg_track_settings', 'pg_track_settings', 'snapshot',   true,  'pg_track_settings_snapshot_settings', 'pg_track_settings_settings_src', true, true),
-                   (_srvid, 'pg_track_settings', 'pg_track_settings', 'snapshot',   true,  'pg_track_settings_snapshot_rds',      'pg_track_settings_rds_src',      true, true),
-                   (_srvid, 'pg_track_settings', 'pg_track_settings', 'snapshot',   true,  'pg_track_settings_snapshot_reboot',   'pg_track_settings_reboot_src',   true, true),
-                   (_srvid, 'pg_track_settings', 'pg_track_settings', 'reset',      true,  'pg_track_settings_reset',             NULL,                             true, true),
-                   (_srvid, 'pg_track_settings', 'pg_track_settings', 'unregister', false, 'powa_track_settings_unregister',      NULL,                             true, true);
-        END IF;
-    END IF;
-
-    RETURN true;
-END;
-$_$ language plpgsql; /* end of pg_track_settings_register */
-
-CREATE OR REPLACE function @extschema@.powa_track_settings_unregister(_srvid integer = 0) RETURNS bool AS
-$_$
-BEGIN
-    PERFORM @extschema@.powa_log('unregistering pg_track_settings');
-    DELETE FROM @extschema@.powa_functions
-    WHERE module = 'pg_track_settings'
-    AND srvid = _srvid;
-    RETURN true;
-END;
-$_$
-language plpgsql; /* end of powa_track_settings_unregister */
-
--- By default, try to register pg_track_settings, in case it's alreay here
-SELECT * FROM @extschema@.powa_activate_extension(0, 'pg_track_settings');
+-- nothing to do
 
 /* end pg_track_settings integration */
 
 /* pg_wait_sampling integration - part 2 */
-
-/*
- * register pg_wait_sampling extension
- */
-CREATE OR REPLACE function @extschema@.powa_wait_sampling_register(_srvid integer = 0) RETURNS bool AS
-$_$
-DECLARE
-    v_func_present bool;
-    v_ext_present bool;
-BEGIN
-    -- Only check for extension availability for local server
-    IF (_srvid = 0) THEN
-        SELECT COUNT(*) = 1 INTO v_ext_present
-        FROM pg_extension
-        WHERE extname = 'pg_wait_sampling';
-    ELSE
-        v_ext_present = true;
-    END IF;
-
-    IF ( v_ext_present ) THEN
-        SELECT COUNT(*) > 0 INTO v_func_present
-        FROM @extschema@.powa_functions
-        WHERE module = 'pg_wait_sampling'
-        AND srvid = _srvid;
-
-        IF ( NOT v_func_present) THEN
-            PERFORM @extschema@.powa_log('registering pg_wait_sampling');
-
-            INSERT INTO @extschema@.powa_functions (srvid, extname, module, operation, function_name, query_source, added_manually, enabled)
-            VALUES (_srvid, 'pg_wait_sampling', 'pg_wait_sampling', 'snapshot',   'powa_wait_sampling_snapshot',   'powa_wait_sampling_src', true, true),
-                   (_srvid, 'pg_wait_sampling', 'pg_wait_sampling', 'aggregate',  'powa_wait_sampling_aggregate',  NULL,                     true, true),
-                   (_srvid, 'pg_wait_sampling', 'pg_wait_sampling', 'unregister', 'powa_wait_sampling_unregister', NULL,                     true, true),
-                   (_srvid, 'pg_wait_sampling', 'pg_wait_sampling', 'purge',      'powa_wait_sampling_purge',      NULL,                     true, true),
-                   (_srvid, 'pg_wait_sampling', 'pg_wait_sampling', 'reset',      'powa_wait_sampling_reset',      NULL,                     true, true);
-        END IF;
-    END IF;
-
-    RETURN true;
-END;
-$_$
-language plpgsql; /* end of powa_wait_sampling_register */
-
-/*
- * unregister pg_wait_sampling extension
- */
-CREATE OR REPLACE FUNCTION @extschema@.powa_wait_sampling_unregister(_srvid integer = 0)
-RETURNS bool AS $_$
-BEGIN
-    PERFORM @extschema@.powa_log('unregistering pg_wait_sampling');
-    DELETE FROM @extschema@.powa_functions
-    WHERE module = 'pg_wait_sampling'
-    AND srvid = _srvid;
-    RETURN true;
-END;
-$_$
-language plpgsql;
 
 CREATE OR REPLACE FUNCTION @extschema@.powa_wait_sampling_src(IN _srvid integer,
     OUT ts timestamp with time zone,
@@ -4592,7 +4532,9 @@ BEGIN
 END;
 $PROC$ language plpgsql; /* end of powa_wait_sampling_reset */
 
--- By default, try to register pg_wait_sampling, in case it's alreay here
-SELECT * FROM @extschema@.powa_activate_extension(0, 'pg_wait_sampling');
-
 /* end of pg_wait_sampling integration - part 2 */
+
+-- Finally, activate any supported extension that's already locally installed.
+SELECT @extschema@.powa_activate_extension(0, extname)
+FROM @extschema@.powa_extensions p
+JOIN pg_catalog.pg_extension e USING (extname);
