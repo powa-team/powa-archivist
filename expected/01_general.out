@@ -1,0 +1,325 @@
+-- General setup
+\set SHOW_CONTEXT never
+-- Check the relations that aren't dumped
+WITH ext AS (
+    SELECT c.oid, c.relname
+    FROM pg_depend d
+    JOIN pg_extension e ON d.refclassid = 'pg_extension'::regclass
+        AND e.oid = d.refobjid
+        AND e.extname = 'powa'
+    JOIN pg_class c ON d.classid = 'pg_class'::regclass
+        AND c.oid = d.objid
+    WHERE c.relkind != 'v'
+),
+dmp AS (
+    SELECT unnest(extconfig) AS oid
+    FROM pg_extension
+    WHERE extname = 'powa'
+)
+SELECT ext.relname
+FROM ext
+LEFT JOIN dmp USING (oid)
+WHERE dmp.oid IS NULL
+ORDER BY ext.relname::text COLLATE "C";
+           relname           
+-----------------------------
+ powa_all_relations_src_tmp
+ powa_databases_src_tmp
+ powa_kcache_src_tmp
+ powa_modules
+ powa_qualstats_src_tmp
+ powa_servers_id_seq
+ powa_stat_bgwriter_src_tmp
+ powa_statements_src_tmp
+ powa_user_functions_src_tmp
+ powa_wait_sampling_src_tmp
+(10 rows)
+
+-- Check for object that aren't in the "PoWA" schema
+WITH ext AS (
+    SELECT pg_describe_object(classid, objid, objsubid) AS descr
+    FROM pg_depend d
+    JOIN pg_extension e ON d.refclassid = 'pg_extension'::regclass
+        AND e.oid = d.refobjid
+        AND e.extname = 'powa'
+)
+SELECT descr
+FROM ext
+WHERE descr NOT LIKE '%"PoWA"%'
+ORDER BY descr COLLATE "C";
+                    descr                    
+---------------------------------------------
+ event trigger powa_check_created_extensions
+ event trigger powa_check_dropped_extensions
+(2 rows)
+
+-- Aggregate data every 5 snapshots
+SET powa.coalesce = 5;
+-- Test created ojects
+SELECT * FROM "PoWA".powa_functions ORDER BY name, operation;
+ srvid |   kind    |        name        | operation | external |        function_name         |      query_source      | query_cleanup | enabled | priority 
+-------+-----------+--------------------+-----------+----------+------------------------------+------------------------+---------------+---------+----------
+     0 | module    | pg_stat_bgwriter   | aggregate | f        | powa_stat_bgwriter_aggregate |                        |               | t       |      100
+     0 | module    | pg_stat_bgwriter   | purge     | f        | powa_stat_bgwriter_purge     |                        |               | t       |      100
+     0 | module    | pg_stat_bgwriter   | reset     | f        | powa_stat_bgwriter_reset     |                        |               | t       |      100
+     0 | module    | pg_stat_bgwriter   | snapshot  | f        | powa_stat_bgwriter_snapshot  | powa_stat_bgwriter_src |               | t       |      100
+     0 | extension | pg_stat_statements | aggregate | f        | powa_statements_aggregate    |                        |               | t       |       10
+     0 | extension | pg_stat_statements | purge     | f        | powa_statements_purge        |                        |               | t       |       10
+     0 | extension | pg_stat_statements | purge     | f        | powa_databases_purge         |                        |               | t       |       10
+     0 | extension | pg_stat_statements | reset     | f        | powa_statements_reset        |                        |               | t       |       10
+     0 | extension | pg_stat_statements | snapshot  | f        | powa_databases_snapshot      | powa_databases_src     |               | t       |       -3
+     0 | extension | pg_stat_statements | snapshot  | f        | powa_statements_snapshot     | powa_statements_src    |               | t       |       -2
+(10 rows)
+
+-- test C SRFs
+SELECT COUNT(*) = 0
+FROM pg_database,
+LATERAL "PoWA".powa_stat_user_functions(oid) f
+WHERE datname = current_database();
+ ?column? 
+----------
+ t
+(1 row)
+
+-- on pg15+ the function is a no-op, and this function will be deprecated soon
+-- anyway
+SELECT COUNT(*) >= 0
+FROM pg_database,
+LATERAL "PoWA".powa_stat_all_rel(oid)
+WHERE datname = current_database();
+ ?column? 
+----------
+ t
+(1 row)
+
+-- Test snapshot
+SELECT 1, COUNT(*) = 0 FROM "PoWA".powa_user_functions_history_current;
+ ?column? | ?column? 
+----------+----------
+        1 | t
+(1 row)
+
+SELECT 1, COUNT(*) = 0 FROM "PoWA".powa_all_relations_history_current;
+ ?column? | ?column? 
+----------+----------
+        1 | t
+(1 row)
+
+SELECT 1, COUNT(*) = 0 FROM "PoWA".powa_statements_history_current;
+ ?column? | ?column? 
+----------+----------
+        1 | t
+(1 row)
+
+SELECT 1, COUNT(*) = 0 FROM "PoWA".powa_statements_history_current_db;
+ ?column? | ?column? 
+----------+----------
+        1 | t
+(1 row)
+
+SELECT 1, COUNT(*) = 0 FROM "PoWA".powa_user_functions_history;
+ ?column? | ?column? 
+----------+----------
+        1 | t
+(1 row)
+
+SELECT 1, COUNT(*) = 0 FROM "PoWA".powa_all_relations_history;
+ ?column? | ?column? 
+----------+----------
+        1 | t
+(1 row)
+
+SELECT 1, COUNT(*) = 0 FROM "PoWA".powa_statements_history;
+ ?column? | ?column? 
+----------+----------
+        1 | t
+(1 row)
+
+SELECT 1, COUNT(*) = 0 FROM "PoWA".powa_statements_history;
+ ?column? | ?column? 
+----------+----------
+        1 | t
+(1 row)
+
+SELECT "PoWA".powa_take_snapshot();
+ powa_take_snapshot 
+--------------------
+                  0
+(1 row)
+
+SELECT 2, COUNT(*) >= 0 FROM "PoWA".powa_user_functions_history_current;
+ ?column? | ?column? 
+----------+----------
+        2 | t
+(1 row)
+
+SELECT 2, COUNT(*) >= 0 FROM "PoWA".powa_all_relations_history_current;
+ ?column? | ?column? 
+----------+----------
+        2 | t
+(1 row)
+
+SELECT 2, COUNT(*) > 0 FROM "PoWA".powa_statements_history_current;
+ ?column? | ?column? 
+----------+----------
+        2 | t
+(1 row)
+
+SELECT 2, COUNT(*) > 0 FROM "PoWA".powa_statements_history_current_db;
+ ?column? | ?column? 
+----------+----------
+        2 | t
+(1 row)
+
+SELECT 2, COUNT(*) >= 0 FROM "PoWA".powa_user_functions_history;
+ ?column? | ?column? 
+----------+----------
+        2 | t
+(1 row)
+
+SELECT 2, COUNT(*) = 0 FROM "PoWA".powa_all_relations_history;
+ ?column? | ?column? 
+----------+----------
+        2 | t
+(1 row)
+
+SELECT 2, COUNT(*) = 0 FROM "PoWA".powa_statements_history;
+ ?column? | ?column? 
+----------+----------
+        2 | t
+(1 row)
+
+SELECT 2, COUNT(*) = 0 FROM "PoWA".powa_statements_history;
+ ?column? | ?column? 
+----------+----------
+        2 | t
+(1 row)
+
+SELECT "PoWA".powa_take_snapshot();
+ powa_take_snapshot 
+--------------------
+                  0
+(1 row)
+
+SELECT "PoWA".powa_take_snapshot();
+ powa_take_snapshot 
+--------------------
+                  0
+(1 row)
+
+SELECT "PoWA".powa_take_snapshot();
+ powa_take_snapshot 
+--------------------
+                  0
+(1 row)
+
+-- This snapshot will trigger the aggregate
+SELECT "PoWA".powa_take_snapshot();
+ powa_take_snapshot 
+--------------------
+                  0
+(1 row)
+
+SELECT 3, COUNT(*) >= 0 FROM "PoWA".powa_user_functions_history_current;
+ ?column? | ?column? 
+----------+----------
+        3 | t
+(1 row)
+
+SELECT 3, COUNT(*) >= 0 FROM "PoWA".powa_all_relations_history_current;
+ ?column? | ?column? 
+----------+----------
+        3 | t
+(1 row)
+
+SELECT 3, COUNT(*) > 0 FROM "PoWA".powa_statements_history_current;
+ ?column? | ?column? 
+----------+----------
+        3 | t
+(1 row)
+
+SELECT 3, COUNT(*) > 0 FROM "PoWA".powa_statements_history_current_db;
+ ?column? | ?column? 
+----------+----------
+        3 | t
+(1 row)
+
+SELECT 3, COUNT(*) >= 0 FROM "PoWA".powa_user_functions_history;
+ ?column? | ?column? 
+----------+----------
+        3 | t
+(1 row)
+
+SELECT 3, COUNT(*) >= 0 FROM "PoWA".powa_all_relations_history;
+ ?column? | ?column? 
+----------+----------
+        3 | t
+(1 row)
+
+SELECT 3, COUNT(*) > 0 FROM "PoWA".powa_statements_history;
+ ?column? | ?column? 
+----------+----------
+        3 | t
+(1 row)
+
+SELECT 3, COUNT(*) > 0 FROM "PoWA".powa_statements_history;
+ ?column? | ?column? 
+----------+----------
+        3 | t
+(1 row)
+
+-- Test reset function
+SELECT * from "PoWA".powa_reset(0);
+ powa_reset 
+------------
+ t
+(1 row)
+
+SELECT 4, COUNT(*) = 0 FROM "PoWA".powa_user_functions_history_current;
+ ?column? | ?column? 
+----------+----------
+        4 | t
+(1 row)
+
+SELECT 4, COUNT(*) = 0 FROM "PoWA".powa_all_relations_history_current;
+ ?column? | ?column? 
+----------+----------
+        4 | t
+(1 row)
+
+SELECT 4, COUNT(*) = 0 FROM "PoWA".powa_statements_history_current;
+ ?column? | ?column? 
+----------+----------
+        4 | t
+(1 row)
+
+SELECT 4, COUNT(*) = 0 FROM "PoWA".powa_statements_history_current_db;
+ ?column? | ?column? 
+----------+----------
+        4 | t
+(1 row)
+
+SELECT 4, COUNT(*) = 0 FROM "PoWA".powa_user_functions_history;
+ ?column? | ?column? 
+----------+----------
+        4 | t
+(1 row)
+
+SELECT 4, COUNT(*) = 0 FROM "PoWA".powa_all_relations_history;
+ ?column? | ?column? 
+----------+----------
+        4 | t
+(1 row)
+
+SELECT 4, COUNT(*) = 0 FROM "PoWA".powa_statements_history;
+ ?column? | ?column? 
+----------+----------
+        4 | t
+(1 row)
+
+SELECT 4, COUNT(*) = 0 FROM "PoWA".powa_statements_history;
+ ?column? | ?column? 
+----------+----------
+        4 | t
+(1 row)
+
