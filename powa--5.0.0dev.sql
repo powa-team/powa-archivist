@@ -2860,7 +2860,7 @@ BEGIN
 
     result := true;
 END;
-$PROC$ language plpgsql; /* end of powa_all_relations_snapshot */
+$PROC$ language plpgsql; /* end of powa_stat_bgwriter_snapshot */
 
 
 CREATE OR REPLACE FUNCTION powa_databases_purge(_srvid integer)
