@@ -2825,7 +2825,7 @@ BEGIN
         WHERE s.srvid = _srvid;
     END IF;
 END;
-$PROC$ LANGUAGE plpgsql; /* end of pg_stat_bgwriter_src */
+$PROC$ LANGUAGE plpgsql; /* end of powa_stat_bgwriter_src */
 
 CREATE OR REPLACE FUNCTION powa_stat_bgwriter_snapshot(_srvid integer) RETURNS void AS $PROC$
 DECLARE
