@@ -104,7 +104,9 @@ CREATE TABLE @extschema@.powa_modules (
 );
 
 INSERT INTO @extschema@.powa_modules (module) VALUES
-    ('pg_stat_bgwriter');
+    ('pg_stat_bgwriter'),
+    ('pg_database'),
+    ('pg_role');
 
 CREATE TABLE @extschema@.powa_module_config (
     srvid integer NOT NULL,
@@ -119,7 +121,9 @@ CREATE TABLE @extschema@.powa_module_config (
 );
 
 INSERT INTO @extschema@.powa_module_config (srvid, module, added_manually) VALUES
-    (0, 'pg_stat_bgwriter', false);
+    (0, 'pg_stat_bgwriter', false),
+    (0, 'pg_database', false),
+    (0, 'pg_role', false);
 
 CREATE TABLE @extschema@.powa_module_functions (
     module text NOT NULL,
@@ -133,10 +137,14 @@ CREATE TABLE @extschema@.powa_module_functions (
 );
 
 INSERT INTO @extschema@.powa_module_functions (module, operation, function_name, query_source) VALUES
-    ('pg_stat_bgwriter', 'snapshot',  'powa_stat_bgwriter_snapshot',  'powa_stat_bgwriter_src'),
-    ('pg_stat_bgwriter', 'aggregate', 'powa_stat_bgwriter_aggregate', NULL),
-    ('pg_stat_bgwriter', 'purge',     'powa_stat_bgwriter_purge',     NULL),
-    ('pg_stat_bgwriter', 'reset',     'powa_stat_bgwriter_reset',     NULL);
+    ('pg_stat_bgwriter', 'snapshot',  'powa_stat_bgwriter_snapshot',    'powa_stat_bgwriter_src'),
+    ('pg_stat_bgwriter', 'aggregate', 'powa_stat_bgwriter_aggregate',   NULL),
+    ('pg_stat_bgwriter', 'purge',     'powa_stat_bgwriter_purge',       NULL),
+    ('pg_stat_bgwriter', 'reset',     'powa_stat_bgwriter_reset',       NULL),
+    ('pg_database',      'snapshot',  'powa_catalog_database_snapshot', 'powa_catalog_database_src'),
+    ('pg_database',      'reset',     'powa_catalog_database_reset',    NULL),
+    ('pg_role',          'snapshot',  'powa_catalog_role_snapshot',     'powa_catalog_role_src'),
+    ('pg_role',          'reset',     'powa_catalog_role_reset',        NULL);
 
 CREATE VIEW @extschema@.powa_functions AS
     SELECT srvid, 'extension' AS kind, extname AS name, operation, external,
@@ -308,6 +316,464 @@ CREATE VIEW @extschema@.powa_all_functions AS
     FROM @extschema@.powa_db_modules pdm
     JOIN @extschema@.powa_db_module_config pdmc USING (db_module)
     JOIN @extschema@.powa_db_module_functions pdmf USING (db_module);
+
+CREATE TABLE @extschema@.powa_catalogs (
+    catname text NOT NULL PRIMARY KEY,
+    tmp_table text NOT NULL,
+    priority numeric NOT NULL default 10
+);
+
+-- pg_class is last as we use it to record the last_refresh timestamp
+INSERT INTO @extschema@.powa_catalogs
+    (catname,        tmp_table,                        priority) VALUES
+    ('pg_class',     'powa_catalog_class_src_tmp',     99),
+    ('pg_attribute', 'powa_catalog_attribute_src_tmp', DEFAULT),
+    ('pg_namespace', 'powa_catalog_namespace_src_tmp', DEFAULT),
+    ('pg_type',      'powa_catalog_type_src_tmp',      DEFAULT),
+    ('pg_collation', 'powa_catalog_collation_src_tmp', DEFAULT),
+    ('pg_proc',      'powa_catalog_proc_src_tmp',      DEFAULT),
+    ('pg_language',  'powa_catalog_language_src_tmp',  DEFAULT)
+    ;
+
+CREATE TABLE @extschema@.powa_catalog_src_queries (
+    catname text NOT NULL,
+    min_version integer NOT NULL,
+    query_source text NOT NULL,
+    PRIMARY KEY (catname, min_version),
+    FOREIGN KEY (catname) REFERENCES @extschema@.powa_catalogs(catname)
+      MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
+);
+
+-- we exclude all temporary objects as they're unlikely to be helpful and might
+-- bloat the underlying tables.
+INSERT INTO @extschema@.powa_catalog_src_queries
+    (catname, min_version, query_source) VALUES
+    -- pg_class
+    ('pg_class', 0,
+     $$SELECT oid, relname::text AS relname, relnamespace, relpages, reltuples,
+        reltoastrelid, relisshared, relpersistence, relkind, relnatts,
+        false AS relrowsecurity, false AS relforcerowsecurity, relreplident,
+        false AS relispartition,
+        reloptions,
+        NULL::text AS relpartbound
+      FROM pg_catalog.pg_class
+      WHERE relpersistence != 't'$$),
+    -- pg_class 9.5+, relrowsecurity and relforcerowsecurity added
+    ('pg_class', 90500,
+     $$SELECT oid, relname::text AS relname, relnamespace, relpages, reltuples,
+        reltoastrelid, relisshared, relpersistence, relkind, relnatts,
+        relrowsecurity, relforcerowsecurity, relreplident,
+        false AS relispartition,
+        reloptions,
+        NULL::text AS relpartbound
+      FROM pg_catalog.pg_class
+      WHERE relpersistence != 't'$$),
+    -- pg_class pg10+, relispartition and repartbound added
+    ('pg_class', 100000,
+     $$SELECT oid, relname::text AS relname, relnamespace, relpages, reltuples,
+        reltoastrelid, relisshared, relpersistence, relkind, relnatts,
+        relrowsecurity, relforcerowsecurity, relreplident,
+        relispartition,
+        reloptions,
+        pg_get_expr(relpartbound, oid) AS relpartbound
+      FROM pg_catalog.pg_class
+      WHERE relpersistence != 't'$$),
+    -- pg_attribute
+    ('pg_attribute', 0,
+     $$SELECT attrelid, attname::text AS attname, atttypid, attlen, attnum,
+        ''::"char" AS attcompression, attnotnull, atthasdef,
+        false AS atthasmissing, ''::"char" AS attidentity,
+        ''::"char" AS attgenerated, attstattarget, attcollation, attoptions,
+        attfdwoptions
+      FROM pg_catalog.pg_attribute a
+      JOIN pg_catalog.pg_class c ON c.oid = a.attrelid
+      WHERE a.attnum > 0
+      AND NOT attisdropped
+      AND c.relpersistence != 't'$$),
+    -- pg_attribute pg10+, attidentity added
+    ('pg_attribute', 100000,
+     $$SELECT attrelid, attname::text AS attname, atttypid, attlen, attnum,
+        ''::"char" AS attcompression, attnotnull, atthasdef,
+        false AS atthasmissing, attidentity,
+        ''::"char" AS attgenerated, attstattarget, attcollation, attoptions,
+        attfdwoptions
+      FROM pg_catalog.pg_attribute a
+      JOIN pg_catalog.pg_class c ON c.oid = a.attrelid
+      WHERE a.attnum > 0
+      AND NOT attisdropped
+      AND c.relpersistence != 't'$$),
+    -- pg_attribute pg11+, atthasmissing added
+    ('pg_attribute', 110000,
+     $$SELECT attrelid, attname::text AS attname, atttypid, attlen, attnum,
+        ''::"char" AS attcompression, attnotnull, atthasdef,
+        atthasmissing, attidentity,
+        ''::"char" AS attgenerated, attstattarget, attcollation, attoptions,
+        attfdwoptions
+      FROM pg_catalog.pg_attribute a
+      JOIN pg_catalog.pg_class c ON c.oid = a.attrelid
+      WHERE a.attnum > 0
+      AND NOT attisdropped
+      AND c.relpersistence != 't'$$),
+    -- pg_attribute pg12+, attgenerated added
+    ('pg_attribute', 120000,
+     $$SELECT attrelid, attname::text AS attname, atttypid, attlen, attnum,
+        ''::"char" AS attcompression, attnotnull, atthasdef,
+        atthasmissing, attidentity,
+        attgenerated, attstattarget, attcollation, attoptions,
+        attfdwoptions
+      FROM pg_catalog.pg_attribute a
+      JOIN pg_catalog.pg_class c ON c.oid = a.attrelid
+      WHERE a.attnum > 0
+      AND NOT attisdropped
+      AND c.relpersistence != 't'$$),
+    -- pg_attribute pg14+, attcompression added
+    ('pg_attribute', 140000,
+     $$SELECT attrelid, attname::text AS attname, atttypid, attlen, attnum,
+        attcompression, attnotnull, atthasdef,
+        atthasmissing, attidentity,
+        attgenerated, attstattarget, attcollation, attoptions,
+        attfdwoptions
+      FROM pg_catalog.pg_attribute a
+      JOIN pg_catalog.pg_class c ON c.oid = a.attrelid
+      WHERE a.attnum > 0
+      AND NOT attisdropped
+      AND c.relpersistence != 't'$$),
+    -- pg_namespace
+    ('pg_namespace', 0,
+     $$SELECT oid, nspname::text AS nspname
+      FROM pg_catalog.pg_namespace$$),
+    -- pg_type
+    ('pg_type', 0,
+     $$SELECT oid, typname::text AS typname, typnamespace, typlen, typbyval,
+        typtype, typcategory, typispreferred, typisdefined, typdelim,
+        typrelid, typelem, typarray, typalign, typstorage, typnotnull,
+        typbasetype, typtypmod, typndims, typcollation, typdefault
+      FROM pg_catalog.pg_type$$),
+    -- pg_collation
+    ('pg_collation', 0,
+     $$SELECT oid, collname::text AS collname, collnamespace,
+        CASE WHEN collname = 'default' THEN 'd' ELSE 'c' END AS collprovider,
+        true AS collisdeterministic,
+        pg_encoding_to_char(collencoding) AS collencoding, collcollate,
+        collctype,
+        NULL::text AS colliculocale, NULL::text AS collicurules,
+        NULL::text AS collversion
+      FROM pg_catalog.pg_collation$$),
+    -- pg_collation pg10+, collprovider and collversion added
+    ('pg_collation', 100000,
+     $$SELECT oid, collname::text AS collname, collnamespace, collprovider,
+        true AS collisdeterministic,
+        pg_encoding_to_char(collencoding) AS collencoding, collcollate,
+        collctype,
+        NULL::text AS colliculocale, NULL::text AS collicurules,
+        collversion
+      FROM pg_catalog.pg_collation$$),
+    -- pg_collation pg12+, collisdeterministic added
+    ('pg_collation', 120000,
+     $$SELECT oid, collname::text AS collname, collnamespace, collprovider,
+        collisdeterministic,
+        pg_encoding_to_char(collencoding) AS collencoding, collcollate,
+        collctype,
+        NULL::text AS colliculocale, NULL::text AS collicurules,
+        collversion
+      FROM pg_catalog.pg_collation$$),
+    -- pg_collation pg15+, colliculocale added
+    ('pg_collation', 150000,
+     $$SELECT oid, collname::text AS collname, collnamespace, collprovider,
+        collisdeterministic,
+        pg_encoding_to_char(collencoding) AS collencoding, collcollate,
+        collctype,
+        colliculocale, NULL::text AS collicurules,
+        collversion
+      FROM pg_catalog.pg_collation$$),
+    -- pg_collation pg16+, collicurules added
+    ('pg_collation', 160000,
+     $$SELECT oid, collname::text AS collname, collnamespace, collprovider,
+        collisdeterministic,
+        pg_encoding_to_char(collencoding) AS collencoding, collcollate,
+        collctype,
+        colliculocale, collicurules,
+        collversion
+      FROM pg_catalog.pg_collation$$),
+    -- pg_proc
+    ('pg_proc', 0,
+     $$SELECT oid, proname::text AS proname, oid::regprocedure AS regprocedure,
+    pronamespace, prolang, procost,
+        prorows, provariadic,
+        CASE
+            WHEN proisagg THEN 'a'::"char"
+            WHEN proiswindow THEN 'w'::"char"
+            ELSE 'f'::"char"
+        END AS prokind, prosecdef, proleakproof, proisstrict, proretset,
+        provolatile, 'u'::"char" AS proparallel, pronargs, prorettype,
+        proargtypes, prosrc, proconfig
+      FROM pg_catalog.pg_proc$$),
+    -- pg_proc pg 9.6+, proparallel added
+    ('pg_proc', 90600,
+     $$SELECT oid, proname::text AS proname, oid::regprocedure AS regprocedure,
+        pronamespace, prolang, procost,
+        prorows, provariadic,
+        CASE
+            WHEN proisagg THEN 'a'::"char"
+            WHEN proiswindow THEN 'w'::"char"
+            ELSE 'f'::"char"
+        END AS prokind, prosecdef, proleakproof, proisstrict, proretset,
+        provolatile, proparallel, pronargs, prorettype,
+        proargtypes,
+        prosrc,
+        proconfig
+      FROM pg_catalog.pg_proc$$),
+    -- pg_proc pg11+, prokind added replacing proisagg and proiswindow
+    ('pg_proc', 110000,
+     $$SELECT oid, proname::text AS proname, oid::regprocedure AS regprocedure,
+        pronamespace, prolang, procost,
+        prorows, provariadic,
+        prokind, prosecdef, proleakproof, proisstrict, proretset,
+        provolatile, proparallel, pronargs, prorettype,
+        proargtypes,
+        prosrc,
+        proconfig
+      FROM pg_catalog.pg_proc$$),
+    -- pg_proc pg14+, prosqlbody added
+    ('pg_proc', 140000,
+     $$SELECT oid, proname::text AS proname, oid::regprocedure AS regprocedure,
+        pronamespace, prolang, procost,
+        prorows, provariadic,
+        prokind, prosecdef, proleakproof, proisstrict, proretset,
+        provolatile, proparallel, pronargs, prorettype,
+        proargtypes,
+        CASE WHEN prosqlbody IS NOT NULL THEN
+            pg_catalog.pg_get_function_sqlbody(oid)
+        ELSE
+            prosrc
+        END AS prosrc,
+        proconfig
+      FROM pg_catalog.pg_proc$$),
+    -- pg_language
+    ('pg_language', 0,
+     $$SELECT oid, lanname::text AS lanname, lanispl, lanpltrusted
+      FROM pg_catalog.pg_language$$)
+    ;
+
+CREATE FUNCTION @extschema@.powa_catalog_src_query(_catname text,
+                                                   _server_version_num integer)
+RETURNS text
+AS $_$
+    SELECT query_source
+    FROM @extschema@.powa_catalog_src_queries
+    WHERE catname = _catname
+    AND min_version <= _server_version_num
+    ORDER BY min_version DESC
+    LIMIT 1;
+$_$ LANGUAGE sql;
+
+CREATE TABLE @extschema@.powa_catalog_databases (
+    srvid integer NOT NULL,
+    oid oid NOT NULL,
+    datname text NOT NULL,
+    last_refresh timestamp with time zone,
+    PRIMARY KEY (srvid, oid),
+    FOREIGN KEY (srvid) REFERENCES @extschema@.powa_servers(id)
+      MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
+);
+
+CREATE TABLE @extschema@.powa_catalog_roles (
+    srvid integer NOT NULL,
+    oid oid NOT NULL,
+    rolname text NOT NULL,
+    rolsuper boolean NOT NULL,
+    rolinherit boolean NOT NULL,
+    rolcreaterole boolean NOT NULL,
+    rolcreatedb boolean NOT NULL,
+    rolcanlogin boolean NOT NULL,
+    rolreplication boolean NOT NULL,
+    rolbypassrls boolean NOT NULL,
+    PRIMARY KEY (srvid, oid),
+    FOREIGN KEY (srvid) REFERENCES @extschema@.powa_servers(id)
+      MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
+);
+
+CREATE FUNCTION @extschema@.powa_catalog_functions(_srvid integer,
+    _server_version_num integer, _refresh_interval interval DEFAULT '1 year')
+RETURNS TABLE (catname text, query_source text, tmp_table text,
+               excluded_dbnames text[])
+AS $_$
+    SELECT catname,
+        src_query AS query_source,
+        '@extschema@.'
+            || quote_ident('powa_catalog_'
+            || replace(catname, 'pg_', '') || '_src_tmp') AS tmp_table,
+        coalesce(array_agg(datname)
+            FILTER (WHERE (last_refresh + _refresh_interval) >= now()), '{}')
+        AS excluded_dbnames
+    FROM @extschema@.powa_catalogs c
+    LEFT JOIN @extschema@.powa_catalog_databases d ON d.srvid = _srvid
+    LEFT JOIN LATERAL (
+        SELECT @extschema@.powa_catalog_src_query(catname, _server_version_num)
+    ) f(src_query) ON (true)
+    GROUP BY catname, src_query;
+$_$ LANGUAGE sql;
+
+CREATE TABLE @extschema@.powa_catalog_class (
+    srvid integer NOT NULL,
+    dbid oid NOT NULL,
+    oid oid NOT NULL,
+    relname text NOT NULL,
+    relnamespace oid NOT NULL,
+    relpages integer NOT NULL,
+    reltuples real NOT NULL,
+    reltoastrelid oid NOT NULL,
+    relisshared bool NOT NULL,
+    relpersistence "char" NOT NULL,
+    relkind "char" NOT NULL,
+    relnatts smallint NOT NULL,
+    relrowsecurity boolean NOT NULL,
+    relforcerowsecurity boolean NOT NULL,
+    relreplident "char" NOT NULL,
+    relispartition boolean NOT NULL,
+    reloptions text[],
+    relpartbound text,
+    PRIMARY KEY (srvid, dbid, oid),
+    FOREIGN KEY (srvid) REFERENCES @extschema@.powa_servers(id)
+      MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE,
+    FOREIGN KEY (srvid, dbid) REFERENCES @extschema@.powa_catalog_databases(srvid, oid)
+      MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
+);
+
+CREATE TABLE @extschema@.powa_catalog_attribute (
+    srvid integer NOT NULL,
+    dbid oid NOT NULL,
+    attrelid oid NOT NULL,
+    attname text NOT NULL,
+    atttypid oid NOT NULL,
+    attlen smallint NOT NULL,
+    attnum smallint NOT NULL,
+    attcompression "char" NOT NULL,
+    attnotnull boolean NOT NULL,
+    atthasdef boolean NOT NULL,
+    atthasmissing boolean NOT NULL,
+    attidentity "char" NOT NULL,
+    attgenerated "char" NOT NULL,
+    attstattarget smallint NOT NULL,
+    attcollation oid NOT NULL,
+    attoptions text[],
+    attfdwoptions text[],
+    PRIMARY KEY (srvid, dbid, attrelid, attnum),
+    FOREIGN KEY (srvid) REFERENCES @extschema@.powa_servers(id)
+      MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE,
+    FOREIGN KEY (srvid, dbid) REFERENCES @extschema@.powa_catalog_databases(srvid, oid)
+      MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
+);
+
+CREATE TABLE @extschema@.powa_catalog_namespace (
+    srvid integer NOT NULL,
+    dbid oid NOT NULL,
+    oid oid NOT NULL,
+    nspname text NOT NULL,
+    PRIMARY KEY (srvid, dbid, oid),
+    FOREIGN KEY (srvid) REFERENCES @extschema@.powa_servers(id)
+      MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE,
+    FOREIGN KEY (srvid, dbid) REFERENCES @extschema@.powa_catalog_databases(srvid, oid)
+      MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
+);
+
+CREATE TABLE @extschema@.powa_catalog_type (
+    srvid integer NOT NULL,
+    dbid oid NOT NULL,
+    oid oid NOT NULL,
+    typname text NOT NULL,
+    typnamespace oid NOT NULL,
+    typlen smallint NOT NULL,
+    typbyval boolean NOT NULL,
+    typtype "char" NOT NULL,
+    typcategory "char" NOT NULL,
+    typispreferred boolean NOT NULL,
+    typisdefined boolean NOT NULL,
+    typdelim "char" NOT NULL,
+    typrelid oid NOT NULL,
+    typelem oid NOT NULL,
+    typarray oid NOT NULL,
+    typalign "char" NOT NULL,
+    typstorage "char" NOT NULL,
+    typnotnull boolean NOT NULL,
+    typbasetype oid NOT NULL,
+    typtypmod integer NOT NULL,
+    typndims integer NOT NULL,
+    typcollation oid NOT NULL,
+    typdefault text,
+    PRIMARY KEY (srvid, dbid, oid),
+    FOREIGN KEY (srvid) REFERENCES @extschema@.powa_servers(id)
+      MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE,
+    FOREIGN KEY (srvid, dbid) REFERENCES @extschema@.powa_catalog_databases(srvid, oid)
+      MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
+);
+
+CREATE TABLE @extschema@.powa_catalog_collation (
+    srvid integer NOT NULL,
+    dbid oid NOT NULL,
+    oid oid NOT NULL,
+    collname text NOT NULL,
+    collnamespace oid NOT NULL,
+    collprovider "char" NOT NULL,
+    collisdeterministic boolean NOT NULL,
+    collencoding text NOT NULL,
+    collcollate text,
+    collctype text,
+    colliculocale text,
+    collicurules text,
+    collversion text,
+    PRIMARY KEY (srvid, dbid, oid),
+    FOREIGN KEY (srvid) REFERENCES @extschema@.powa_servers(id)
+      MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE,
+    FOREIGN KEY (srvid, dbid) REFERENCES @extschema@.powa_catalog_databases(srvid, oid)
+      MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
+);
+
+-- we also store oid::regprocedure for an easy way to have an unambiguous
+-- identifier
+CREATE TABLE @extschema@.powa_catalog_proc (
+    srvid integer NOT NULL,
+    dbid oid NOT NULL,
+    oid oid NOT NULL,
+    proname text NOT NULL,
+    regprocedure text NOT NULL,
+    pronamespace oid NOT NULL,
+    prolang oid NOT NULL,
+    procost real NOT NULL,
+    prorows real NOT NULL,
+    provariadic oid NOT NULL,
+    prokind "char" NOT NULL,
+    prosecdef boolean NOT NULL,
+    proleakproof boolean NOT NULL,
+    proisstrict boolean NOT NULL,
+    proretset boolean NOT NULL,
+    provolatile "char" NOT NULL,
+    proparallel "char" NOT NULL,
+    pronargs smallint NOT NULL,
+    prorettype oid NOT NULL,
+    proargtypes oidvector NOT NULL,
+    prosrc text NOT NULL,
+    proconfig text[],
+    PRIMARY KEY (srvid, dbid, oid),
+    FOREIGN KEY (srvid) REFERENCES @extschema@.powa_servers(id)
+      MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE,
+    FOREIGN KEY (srvid, dbid) REFERENCES @extschema@.powa_catalog_databases(srvid, oid)
+      MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
+);
+
+CREATE TABLE @extschema@.powa_catalog_language (
+    srvid integer NOT NULL,
+    dbid oid NOT NULL,
+    oid oid NOT NULL,
+    lanname text NOT NULL,
+    lanispl boolean NOT NULL,
+    lanpltrusted boolean NOT NULL,
+    PRIMARY KEY (srvid, dbid, oid),
+    FOREIGN KEY (srvid) REFERENCES @extschema@.powa_servers(id)
+      MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE,
+    FOREIGN KEY (srvid, dbid) REFERENCES @extschema@.powa_catalog_databases(srvid, oid)
+      MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
+);
 
 CREATE TABLE @extschema@.powa_snapshot_metas (
     srvid integer PRIMARY KEY,
@@ -1222,6 +1688,36 @@ CREATE OPERATOR @extschema@./ (
 );
 /* end of pg_stat_bgwriter operator support */
 
+/* pg_catalog import support */
+CREATE UNLOGGED TABLE @extschema@.powa_catalog_class_src_tmp (
+    LIKE @extschema@.powa_catalog_class
+);
+
+CREATE UNLOGGED TABLE @extschema@.powa_catalog_attribute_src_tmp (
+    LIKE @extschema@.powa_catalog_attribute
+);
+
+CREATE UNLOGGED TABLE @extschema@.powa_catalog_namespace_src_tmp (
+    LIKE @extschema@.powa_catalog_namespace
+);
+
+CREATE UNLOGGED TABLE @extschema@.powa_catalog_type_src_tmp (
+    LIKE @extschema@.powa_catalog_type
+);
+
+CREATE UNLOGGED TABLE @extschema@.powa_catalog_collation_src_tmp (
+    LIKE @extschema@.powa_catalog_collation
+);
+
+CREATE UNLOGGED TABLE @extschema@.powa_catalog_proc_src_tmp (
+    LIKE @extschema@.powa_catalog_proc
+);
+
+CREATE UNLOGGED TABLE @extschema@.powa_catalog_language_src_tmp (
+    LIKE @extschema@.powa_catalog_language
+);
+/* end of pg_catalog import support */
+
 
 CREATE UNLOGGED TABLE @extschema@.powa_databases_src_tmp (
     srvid integer NOT NULL,
@@ -1334,6 +1830,25 @@ CREATE UNLOGGED TABLE @extschema@.powa_stat_bgwriter_src_tmp (
     buffers_backend bigint NOT NULL,
     buffers_backend_fsync bigint NOT NULL,
     buffers_alloc bigint NOT NULL
+);
+
+CREATE UNLOGGED TABLE @extschema@.powa_catalog_database_src_tmp (
+    srvid integer NOT NULL,
+    oid oid NOT NULL,
+    datname text NOT NULL
+);
+
+CREATE UNLOGGED TABLE @extschema@.powa_catalog_role_src_tmp (
+    srvid integer NOT NULL,
+    oid oid NOT NULL,
+    rolname text NOT NULL,
+    rolsuper boolean NOT NULL,
+    rolinherit boolean NOT NULL,
+    rolcreaterole boolean NOT NULL,
+    rolcreatedb boolean NOT NULL,
+    rolcanlogin boolean NOT NULL,
+    rolreplication boolean NOT NULL,
+    rolbypassrls boolean NOT NULL
 );
 
 CREATE TABLE @extschema@.powa_statements_history (
@@ -2772,6 +3287,15 @@ SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_extension_functions
 SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_extension_config','WHERE added_manually');
 SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_module_functions','WHERE added_manually');
 SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_module_config','WHERE added_manually');
+SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_catalog_databases','');
+SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_catalog_roles','');
+SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_catalog_class','');
+SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_catalog_attribute','');
+SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_catalog_namespace','');
+SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_catalog_type','');
+SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_catalog_collation','');
+SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_catalog_proc','');
+SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_catalog_language','');
 SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_db_modules','WHERE added_manually');
 SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_db_module_functions','WHERE added_manually');
 SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_db_module_config', '');
@@ -2944,7 +3468,16 @@ DECLARE
               hint   : %s
               context: %s';
   v_pattern_simple text = '@extschema@.powa_take_snapshot(%s): function %s.%I failed: %s';
+
+  v_pattern_cat  text = '@extschema@.powa_take_snapshot(%s): function @extschema@.powa_catalog_generic_snapshot for catalog %s failed:
+              state  : %s
+              message: %s
+              detail : %s
+              hint   : %s
+              context: %s';
+  v_pattern_cat_simple text = '@extschema@.powa_take_snapshot(%s): function @extschema@.powa_catalog_generic_snapshot for catalog %s failed: %s';
   v_coalesce bigint;
+  v_catname text;
 BEGIN
     PERFORM set_config('application_name',
         v_title || ' snapshot database list',
@@ -3123,6 +3656,39 @@ BEGIN
       UPDATE @extschema@.powa_snapshot_metas
       SET purgets = now()
       WHERE srvid = _srvid;
+    END IF;
+
+    -- and finally we call the snapshot function for the per-db catalog import,
+    -- if this is a remote server
+    IF (_srvid != 0) THEN
+      FOR v_catname IN SELECT catname FROM @extschema@.powa_catalogs ORDER BY priority
+      LOOP
+        PERFORM @extschema@.powa_log(format('calling catalog function: %s.%I(%s, %s)',
+              '@extschema@', 'powa_catalog_generic_snapshot', _srvid, v_catname));
+        PERFORM set_config('application_name',
+            v_title || quote_ident('powa_catalog_generic_snapshot')
+                    || '(' || _srvid || ', ' || v_catname || ')', false);
+
+        BEGIN
+          PERFORM @extschema@.powa_catalog_generic_snapshot(_srvid, v_catname);
+        EXCEPTION
+          WHEN OTHERS THEN
+            GET STACKED DIAGNOSTICS
+                v_state   = RETURNED_SQLSTATE,
+                v_msg     = MESSAGE_TEXT,
+                v_detail  = PG_EXCEPTION_DETAIL,
+                v_hint    = PG_EXCEPTION_HINT,
+                v_context = PG_EXCEPTION_CONTEXT;
+
+            RAISE warning '%', format(v_pattern_cat, _srvid, v_catname,
+                v_state, v_msg, v_detail, v_hint, v_context);
+
+            v_errs := array_append(v_errs, format(v_pattern_cat_simple, _srvid,
+                  v_catname, v_msg));
+
+            v_nb_err = v_nb_err + 1;
+        END;
+      END LOOP;
     END IF;
 
     IF (v_nb_err > 0) THEN
@@ -3696,6 +4262,268 @@ BEGIN
     result := true;
 END;
 $PROC$ language plpgsql; /* end of powa_stat_bgwriter_snapshot */
+
+CREATE OR REPLACE FUNCTION @extschema@.powa_catalog_database_src(IN _srvid integer,
+    OUT oid oid,
+    OUT datname text
+) RETURNS SETOF record STABLE AS $PROC$
+BEGIN
+    IF (_srvid = 0) THEN
+        RETURN QUERY SELECT
+            d.oid, d.datname::text
+        FROM pg_catalog.pg_database AS d;
+    ELSE
+        RETURN QUERY SELECT
+            d.oid, d.datname
+        FROM @extschema@.powa_catalog_database_src_tmp AS d
+        WHERE d.srvid = _srvid;
+    END IF;
+END;
+$PROC$ LANGUAGE plpgsql; /* end of powa_catalog_database_src */
+
+CREATE OR REPLACE FUNCTION @extschema@.powa_catalog_role_src(IN _srvid integer,
+    OUT oid oid,
+    OUT rolname text, OUT rolsuper boolean, OUT rolinherit boolean,
+    OUT rolcreaterole boolean, OUT rolcreatedb boolean, OUT rolcanlogin
+    boolean, OUT rolreplication boolean, OUT rolbypassrls boolean
+) RETURNS SETOF record STABLE AS $PROC$
+BEGIN
+    IF (_srvid = 0) THEN
+        IF current_setting('server_version_num')::int < 90500 THEN
+            RETURN QUERY SELECT
+                r.oid, r.rolname::text AS rolname, r.rolsuper, r.rolinherit,
+                r.rolcreaterole, r.rolcreatedb, r.rolcanlogin,
+                r.rolreplication, false AS rolbypassrls
+            FROM pg_catalog.pg_roles AS r;
+        ELSE
+            RETURN QUERY SELECT
+                r.oid, r.rolname::text AS rolname, r.rolsuper, r.rolinherit,
+                r.rolcreaterole, r.rolcreatedb, r.rolcanlogin,
+                r.rolreplication, r.rolbypassrls
+            FROM pg_catalog.pg_roles AS r;
+        END IF;
+    ELSE
+        RETURN QUERY SELECT
+            r.oid, r.rolname, r.rolsuper, r.rolinherit,
+            r.rolcreaterole, r.rolcreatedb, r.rolcanlogin,
+            r.rolreplication, r.rolbypassrls
+        FROM @extschema@.powa_catalog_role_src_tmp AS r
+        WHERE r.srvid = _srvid;
+    END IF;
+END;
+$PROC$ LANGUAGE plpgsql; /* end of powa_catalog_role_src */
+
+CREATE OR REPLACE FUNCTION @extschema@.powa_catalog_database_snapshot(_srvid integer) RETURNS void AS $PROC$
+DECLARE
+    result boolean;
+    v_funcname    text := format('@extschema@.%I(%s)',
+                                 'powa_catalog_database_snapshot', _srvid);
+    v_rowcount    bigint;
+BEGIN
+    PERFORM @extschema@.powa_log(format('running %s', v_funcname));
+
+    PERFORM @extschema@.powa_prevent_concurrent_snapshot(_srvid);
+
+    WITH src AS (
+        SELECT * FROM @extschema@.powa_catalog_database_src(_srvid)
+    ),
+    remove_deleted AS (
+        DELETE FROM @extschema@.powa_catalog_databases AS d
+        WHERE d.srvid = _srvid
+        AND d.oid NOT IN (
+            SELECT oid
+            FROM src
+        )
+    ),
+    add_new AS (
+        INSERT INTO @extschema@.powa_catalog_databases (srvid, oid, datname)
+        SELECT _srvid, src.oid, src.datname
+        FROM src
+        WHERE src.oid NOT IN (
+            SELECT oid
+            FROM @extschema@.powa_catalog_databases AS d
+            WHERE d.srvid = _srvid
+        )
+    )
+    UPDATE @extschema@.powa_catalog_databases
+    SET datname = src.datname
+    FROM src
+    WHERE powa_catalog_databases.srvid = _srvid
+    AND powa_catalog_databases.oid = src.oid;
+
+    GET DIAGNOSTICS v_rowcount = ROW_COUNT;
+    PERFORM @extschema@.powa_log(format('%s - rowcount: %s',
+            v_funcname, v_rowcount));
+
+    IF (_srvid != 0) THEN
+        DELETE FROM @extschema@.powa_catalog_database_src_tmp WHERE srvid = _srvid;
+    END IF;
+
+    result := true;
+END;
+$PROC$ language plpgsql; /* end of powa_catalog_database_snapshot */
+
+CREATE OR REPLACE FUNCTION @extschema@.powa_catalog_role_snapshot(_srvid integer) RETURNS void AS $PROC$
+DECLARE
+    v_funcname    text := format('@extschema@.%I(%s)',
+                                 'powa_catalog_role_snapshot', _srvid);
+    v_rowcount    bigint;
+BEGIN
+    PERFORM @extschema@.powa_log(format('running %s', v_funcname));
+
+    PERFORM @extschema@.powa_prevent_concurrent_snapshot(_srvid);
+
+    WITH src AS (
+        SELECT * FROM @extschema@.powa_catalog_role_src(_srvid)
+    ),
+    remove_deleted AS (
+        DELETE FROM @extschema@.powa_catalog_roles AS r
+        WHERE r.srvid = _srvid
+        AND r.oid NOT IN (
+            SELECT oid
+            FROM src
+        )
+    ),
+    add_new AS (
+        INSERT INTO @extschema@.powa_catalog_roles (srvid, oid, rolname,
+            rolsuper, rolinherit, rolcreaterole, rolcreatedb, rolcanlogin,
+            rolreplication, rolbypassrls)
+        SELECT _srvid, src.oid, src.rolname, src.rolsuper, src.rolinherit,
+            src.rolcreaterole, src.rolcreatedb, src.rolcanlogin,
+            src.rolreplication, src.rolbypassrls
+        FROM src
+        WHERE src.oid NOT IN (
+            SELECT oid
+            FROM @extschema@.powa_catalog_roles AS r
+            WHERE r.srvid = _srvid
+        )
+    )
+    UPDATE @extschema@.powa_catalog_roles
+    SET rolname = src.rolname, rolsuper = src.rolsuper,
+        rolinherit = src.rolinherit, rolcreaterole = src.rolcreaterole,
+        rolcreatedb = src.rolcreatedb, rolcanlogin = src.rolcanlogin,
+        rolreplication = src.rolreplication, rolbypassrls = src.rolbypassrls
+    FROM src
+    WHERE powa_catalog_roles.srvid = _srvid
+    AND powa_catalog_roles.oid = src.oid
+    AND (powa_catalog_roles.rolname != src.rolname
+         OR powa_catalog_roles.rolsuper != src.rolsuper
+         OR powa_catalog_roles.rolinherit != src.rolinherit
+         OR powa_catalog_roles.rolcreaterole != src.rolcreaterole
+         OR powa_catalog_roles.rolcreatedb != src.rolcreatedb
+         OR powa_catalog_roles.rolcanlogin != src.rolcanlogin
+         OR powa_catalog_roles.rolreplication != src.rolreplication
+         OR powa_catalog_roles.rolbypassrls != src.rolbypassrls);
+
+    GET DIAGNOSTICS v_rowcount = ROW_COUNT;
+    PERFORM @extschema@.powa_log(format('%s - rowcount: %s',
+            v_funcname, v_rowcount));
+
+    IF (_srvid != 0) THEN
+        DELETE FROM @extschema@.powa_catalog_role_src_tmp WHERE srvid = _srvid;
+    END IF;
+END;
+$PROC$ LANGUAGE plpgsql; /* end of powa_catalog_role_snapshot() */
+
+CREATE OR REPLACE FUNCTION @extschema@.powa_catalog_generic_snapshot(_srvid integer,
+    _catname text)
+RETURNS void AS $PROC$
+DECLARE
+    v_funcname    text := format('@extschema@.%I(%s, %s)',
+                                 'powa_catalog_generic_snapshot',
+                                 _srvid, _catname);
+    v_rowcount    bigint;
+    v_prefix      text;
+    v_src_tmp     text;
+    v_query       text;
+BEGIN
+    PERFORM @extschema@.powa_log(format('running %s', v_funcname));
+
+    PERFORM @extschema@.powa_prevent_concurrent_snapshot(_srvid);
+
+    -- get the table prefix and src_tmp table name
+    SELECT 'powa_catalog_' || replace(_catname, 'pg_', '')
+        INTO STRICT v_prefix;
+
+    SELECT quote_ident(v_prefix || '_src_tmp') INTO STRICT v_src_tmp;
+
+    -- bail out if there's no source data
+    EXECUTE format('SELECT 1 FROM @extschema@.%s WHERE srvid = %s LIMIT 1',
+        v_src_tmp, _srvid) INTO v_rowcount;
+
+    IF v_rowcount IS NULL THEN
+        RETURN;
+    END IF;
+
+    -- Remove all records for the given server.
+    -- Note that only remove record for found database oid so we can handle
+    -- partial per-db snapshot.  This has to be done in a different step as
+    -- wCTE don't see the results of previous wCTE.
+    -- If a database is removed from a remote server, all the underyling
+    -- records will already be removed when cascading the delete in the
+    -- powa_catalog_databases table.
+    EXECUTE format('DELETE FROM @extschema@.%s
+        WHERE srvid = %s
+        AND dbid IN (SELECT DISTINCT dbid
+            FROM @extschema@.%s
+            WHERE srvid = %s
+    )', v_prefix, _srvid, v_src_tmp, _srvid);
+
+    -- Insert the new records.
+    -- We also finally save the refresh time.  We only want to do it once per
+    -- remote server and not once per catalog, so arbitrarily do that for the
+    -- pg_class catalog only, which is done last.
+    v_query := format('WITH src AS (
+             DELETE FROM @extschema@.%1$s
+             WHERE srvid = %3$s
+             RETURNING *
+        ),
+        metadata AS (
+            UPDATE @extschema@.powa_catalog_databases
+            SET last_refresh = now()
+            WHERE srvid = %3$s
+            AND %4$L = ''pg_class''
+            AND oid IN (SELECT DISTINCT dbid
+                FROM src)
+        )
+        INSERT INTO @extschema@.%2$s
+        SELECT *
+        FROM src', v_src_tmp, v_prefix, _srvid, _catname);
+
+    -- execute it
+    EXECUTE v_query;
+
+    GET DIAGNOSTICS v_rowcount = ROW_COUNT;
+    PERFORM @extschema@.powa_log(format('%s - rowcount: %s',
+            v_funcname, v_rowcount));
+END;
+$PROC$ language plpgsql; /* end of powa_catalog_generic_snapshot */
+
+CREATE OR REPLACE FUNCTION @extschema@.powa_catalog_reset(_srvid integer)
+RETURNS void AS $PROC$
+DECLARE
+    v_funcname    text := format('@extschema@.%I(%s)',
+                                 'powa_catalog_reset',
+                                 _srvid);
+    v_catname     text;
+    v_prefix      text;
+BEGIN
+    PERFORM @extschema@.powa_log(format('running %s', v_funcname));
+
+    PERFORM @extschema@.powa_prevent_concurrent_snapshot(_srvid);
+
+    FOR v_catname IN SELECT catname FROM @extschema@.powa_catalogs
+    LOOP
+        SELECT 'powa_catalog_' || replace(v_catname, 'pg_', '')
+            INTO STRICT v_prefix;
+
+        PERFORM format('DELETE FROM @extschema@.%I WHERE srvid = %s',
+            v_prefix, _srvid);
+        PERFORM format('DELETE FROM @extschema@.%I WHERE srvid = %s',
+            v_prefix || '_src_tmp', _srvid);
+    END LOOP;
+END;
+$PROC$ language plpgsql; /* end of powa_catalog_reset */
 
 
 CREATE OR REPLACE FUNCTION @extschema@.powa_databases_purge(_srvid integer)
@@ -4320,6 +5148,27 @@ BEGIN
 
       END;
     END LOOP;
+
+    -- And reset all catalogs
+    BEGIN
+      PERFORM @extschema@.powa_catalog_reset(_srvid);
+    EXCEPTION
+      WHEN OTHERS THEN
+        GET STACKED DIAGNOSTICS
+            v_state   = RETURNED_SQLSTATE,
+            v_msg     = MESSAGE_TEXT,
+            v_detail  = PG_EXCEPTION_DETAIL,
+            v_hint    = PG_EXCEPTION_HINT,
+            v_context = PG_EXCEPTION_CONTEXT;
+        RAISE warning 'powa_reset(): function "@extschema@.powa_catalog_reset(%)" failed:
+            state  : %
+            message: %
+            detail : %
+            hint   : %
+            context: %',
+            _srvid, v_state, v_msg, v_detail, v_hint, v_context;
+    END;
+
     RETURN true;
 END;
 $function$; /* end of powa_reset */
@@ -4441,6 +5290,36 @@ BEGIN
     RETURN true;
 END;
 $function$; /* end of powa_stat_bgwriter_reset */
+
+CREATE OR REPLACE FUNCTION @extschema@.powa_catalog_database_reset(_srvid integer)
+ RETURNS boolean
+ LANGUAGE plpgsql
+AS $function$
+BEGIN
+    PERFORM @extschema@.powa_log('Resetting powa_catalog_databases(' || _srvid || ')');
+    DELETE FROM @extschema@.powa_catalog_databases WHERE srvid = _srvid;
+
+    PERFORM @extschema@.powa_log('Resetting powa_catalog_database_src_tmp(' || _srvid || ')');
+    DELETE FROM @extschema@.powa_catalog_database_src_tmp WHERE srvid = _srvid;
+
+    RETURN true;
+END;
+$function$; /* end of powa_catalog_database_reset */
+
+CREATE OR REPLACE FUNCTION @extschema@.powa_catalog_role_reset(_srvid integer)
+ RETURNS boolean
+ LANGUAGE plpgsql
+AS $function$
+BEGIN
+    PERFORM @extschema@.powa_log('Resetting powa_catalog_roles(' || _srvid || ')');
+    DELETE FROM @extschema@.powa_catalog_roles WHERE srvid = _srvid;
+
+    PERFORM @extschema@.powa_log('Resetting powa_catalog_role_src_tmp(' || _srvid || ')');
+    DELETE FROM @extschema@.powa_catalog_role_src_tmp WHERE srvid = _srvid;
+
+    RETURN true;
+END;
+$function$; /* end of powa_catalog_role_reset */
 
 /* pg_stat_kcache integration - part 2 */
 
