@@ -21,10 +21,21 @@ FROM ext
 LEFT JOIN dmp USING (oid)
 WHERE dmp.oid IS NULL
 ORDER BY ext.relname::text COLLATE "C";
-           relname           
------------------------------
+            relname             
+--------------------------------
  powa_all_indexes_src_tmp
  powa_all_tables_src_tmp
+ powa_catalog_attribute_src_tmp
+ powa_catalog_class_src_tmp
+ powa_catalog_collation_src_tmp
+ powa_catalog_database_src_tmp
+ powa_catalog_language_src_tmp
+ powa_catalog_namespace_src_tmp
+ powa_catalog_proc_src_tmp
+ powa_catalog_role_src_tmp
+ powa_catalog_src_queries
+ powa_catalog_type_src_tmp
+ powa_catalogs
  powa_databases_src_tmp
  powa_kcache_src_tmp
  powa_modules
@@ -34,7 +45,7 @@ ORDER BY ext.relname::text COLLATE "C";
  powa_statements_src_tmp
  powa_user_functions_src_tmp
  powa_wait_sampling_src_tmp
-(11 rows)
+(22 rows)
 
 -- Check for object that aren't in the "PoWA" schema
 WITH ext AS (
@@ -57,20 +68,24 @@ ORDER BY descr COLLATE "C";
 -- Aggregate data every 5 snapshots
 SET powa.coalesce = 5;
 -- Test created ojects
-SELECT * FROM "PoWA".powa_functions ORDER BY name, operation;
- srvid |   kind    |        name        | operation | external |        function_name         |      query_source      | query_cleanup | enabled | priority 
--------+-----------+--------------------+-----------+----------+------------------------------+------------------------+---------------+---------+----------
-     0 | module    | pg_stat_bgwriter   | aggregate | f        | powa_stat_bgwriter_aggregate |                        |               | t       |      100
-     0 | module    | pg_stat_bgwriter   | purge     | f        | powa_stat_bgwriter_purge     |                        |               | t       |      100
-     0 | module    | pg_stat_bgwriter   | reset     | f        | powa_stat_bgwriter_reset     |                        |               | t       |      100
-     0 | module    | pg_stat_bgwriter   | snapshot  | f        | powa_stat_bgwriter_snapshot  | powa_stat_bgwriter_src |               | t       |      100
-     0 | extension | pg_stat_statements | aggregate | f        | powa_statements_aggregate    |                        |               | t       |       10
-     0 | extension | pg_stat_statements | purge     | f        | powa_statements_purge        |                        |               | t       |       10
-     0 | extension | pg_stat_statements | purge     | f        | powa_databases_purge         |                        |               | t       |       10
-     0 | extension | pg_stat_statements | reset     | f        | powa_statements_reset        |                        |               | t       |       10
-     0 | extension | pg_stat_statements | snapshot  | f        | powa_databases_snapshot      | powa_databases_src     |               | t       |       -3
-     0 | extension | pg_stat_statements | snapshot  | f        | powa_statements_snapshot     | powa_statements_src    |               | t       |       -2
-(10 rows)
+SELECT * FROM "PoWA".powa_functions ORDER BY name, operation, priority, function_name;
+ srvid |   kind    |        name        | operation | external |         function_name          |       query_source        | query_cleanup | enabled | priority 
+-------+-----------+--------------------+-----------+----------+--------------------------------+---------------------------+---------------+---------+----------
+     0 | module    | pg_database        | reset     | f        | powa_catalog_database_reset    |                           |               | t       |      100
+     0 | module    | pg_database        | snapshot  | f        | powa_catalog_database_snapshot | powa_catalog_database_src |               | t       |      100
+     0 | module    | pg_role            | reset     | f        | powa_catalog_role_reset        |                           |               | t       |      100
+     0 | module    | pg_role            | snapshot  | f        | powa_catalog_role_snapshot     | powa_catalog_role_src     |               | t       |      100
+     0 | module    | pg_stat_bgwriter   | aggregate | f        | powa_stat_bgwriter_aggregate   |                           |               | t       |      100
+     0 | module    | pg_stat_bgwriter   | purge     | f        | powa_stat_bgwriter_purge       |                           |               | t       |      100
+     0 | module    | pg_stat_bgwriter   | reset     | f        | powa_stat_bgwriter_reset       |                           |               | t       |      100
+     0 | module    | pg_stat_bgwriter   | snapshot  | f        | powa_stat_bgwriter_snapshot    | powa_stat_bgwriter_src    |               | t       |      100
+     0 | extension | pg_stat_statements | aggregate | f        | powa_statements_aggregate      |                           |               | t       |       10
+     0 | extension | pg_stat_statements | purge     | f        | powa_databases_purge           |                           |               | t       |       10
+     0 | extension | pg_stat_statements | purge     | f        | powa_statements_purge          |                           |               | t       |       10
+     0 | extension | pg_stat_statements | reset     | f        | powa_statements_reset          |                           |               | t       |       10
+     0 | extension | pg_stat_statements | snapshot  | f        | powa_databases_snapshot        | powa_databases_src        |               | t       |       -3
+     0 | extension | pg_stat_statements | snapshot  | f        | powa_statements_snapshot       | powa_statements_src       |               | t       |       -2
+(14 rows)
 
 -- test C SRFs
 SELECT COUNT(*) = 0
