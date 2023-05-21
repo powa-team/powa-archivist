@@ -92,33 +92,41 @@ SELECT count(*) FROM "PoWA".powa_qualstats_quals_history_current WHERE srvid = 1
 
 -- activate / deactivate extension
 SELECT * FROM "PoWA".powa_functions ORDER BY srvid, name, operation, function_name;
- srvid |   kind    |        name        | operation | external |        function_name         |      query_source      |               query_cleanup                | enabled | priority 
--------+-----------+--------------------+-----------+----------+------------------------------+------------------------+--------------------------------------------+---------+----------
-     0 | module    | pg_stat_bgwriter   | aggregate | f        | powa_stat_bgwriter_aggregate |                        |                                            | t       |      100
-     0 | module    | pg_stat_bgwriter   | purge     | f        | powa_stat_bgwriter_purge     |                        |                                            | t       |      100
-     0 | module    | pg_stat_bgwriter   | reset     | f        | powa_stat_bgwriter_reset     |                        |                                            | t       |      100
-     0 | module    | pg_stat_bgwriter   | snapshot  | f        | powa_stat_bgwriter_snapshot  | powa_stat_bgwriter_src |                                            | t       |      100
-     0 | extension | pg_stat_statements | aggregate | f        | powa_statements_aggregate    |                        |                                            | t       |       10
-     0 | extension | pg_stat_statements | purge     | f        | powa_databases_purge         |                        |                                            | t       |       10
-     0 | extension | pg_stat_statements | purge     | f        | powa_statements_purge        |                        |                                            | t       |       10
-     0 | extension | pg_stat_statements | reset     | f        | powa_statements_reset        |                        |                                            | t       |       10
-     0 | extension | pg_stat_statements | snapshot  | f        | powa_databases_snapshot      | powa_databases_src     |                                            | t       |       -3
-     0 | extension | pg_stat_statements | snapshot  | f        | powa_statements_snapshot     | powa_statements_src    |                                            | t       |       -2
-     1 | extension | pg_qualstats       | aggregate | f        | powa_qualstats_aggregate     |                        |                                            | t       |       10
-     1 | extension | pg_qualstats       | purge     | f        | powa_qualstats_purge         |                        |                                            | t       |       10
-     1 | extension | pg_qualstats       | reset     | f        | powa_qualstats_reset         |                        |                                            | t       |       10
-     1 | extension | pg_qualstats       | snapshot  | f        | powa_qualstats_snapshot      | powa_qualstats_src     | SELECT {pg_qualstats}.pg_qualstats_reset() | t       |       10
-     1 | module    | pg_stat_bgwriter   | aggregate | f        | powa_stat_bgwriter_aggregate |                        |                                            | t       |      100
-     1 | module    | pg_stat_bgwriter   | purge     | f        | powa_stat_bgwriter_purge     |                        |                                            | t       |      100
-     1 | module    | pg_stat_bgwriter   | reset     | f        | powa_stat_bgwriter_reset     |                        |                                            | t       |      100
-     1 | module    | pg_stat_bgwriter   | snapshot  | f        | powa_stat_bgwriter_snapshot  | powa_stat_bgwriter_src |                                            | t       |      100
-     1 | extension | pg_stat_statements | aggregate | f        | powa_statements_aggregate    |                        |                                            | t       |       10
-     1 | extension | pg_stat_statements | purge     | f        | powa_databases_purge         |                        |                                            | t       |       10
-     1 | extension | pg_stat_statements | purge     | f        | powa_statements_purge        |                        |                                            | t       |       10
-     1 | extension | pg_stat_statements | reset     | f        | powa_statements_reset        |                        |                                            | t       |       10
-     1 | extension | pg_stat_statements | snapshot  | f        | powa_databases_snapshot      | powa_databases_src     |                                            | t       |       -3
-     1 | extension | pg_stat_statements | snapshot  | f        | powa_statements_snapshot     | powa_statements_src    |                                            | t       |       -2
-(24 rows)
+ srvid |   kind    |        name        | operation | external |         function_name          |       query_source        |               query_cleanup                | enabled | priority 
+-------+-----------+--------------------+-----------+----------+--------------------------------+---------------------------+--------------------------------------------+---------+----------
+     0 | module    | pg_database        | reset     | f        | powa_catalog_database_reset    |                           |                                            | t       |      100
+     0 | module    | pg_database        | snapshot  | f        | powa_catalog_database_snapshot | powa_catalog_database_src |                                            | t       |      100
+     0 | module    | pg_role            | reset     | f        | powa_catalog_role_reset        |                           |                                            | t       |      100
+     0 | module    | pg_role            | snapshot  | f        | powa_catalog_role_snapshot     | powa_catalog_role_src     |                                            | t       |      100
+     0 | module    | pg_stat_bgwriter   | aggregate | f        | powa_stat_bgwriter_aggregate   |                           |                                            | t       |      100
+     0 | module    | pg_stat_bgwriter   | purge     | f        | powa_stat_bgwriter_purge       |                           |                                            | t       |      100
+     0 | module    | pg_stat_bgwriter   | reset     | f        | powa_stat_bgwriter_reset       |                           |                                            | t       |      100
+     0 | module    | pg_stat_bgwriter   | snapshot  | f        | powa_stat_bgwriter_snapshot    | powa_stat_bgwriter_src    |                                            | t       |      100
+     0 | extension | pg_stat_statements | aggregate | f        | powa_statements_aggregate      |                           |                                            | t       |       10
+     0 | extension | pg_stat_statements | purge     | f        | powa_databases_purge           |                           |                                            | t       |       10
+     0 | extension | pg_stat_statements | purge     | f        | powa_statements_purge          |                           |                                            | t       |       10
+     0 | extension | pg_stat_statements | reset     | f        | powa_statements_reset          |                           |                                            | t       |       10
+     0 | extension | pg_stat_statements | snapshot  | f        | powa_databases_snapshot        | powa_databases_src        |                                            | t       |       -3
+     0 | extension | pg_stat_statements | snapshot  | f        | powa_statements_snapshot       | powa_statements_src       |                                            | t       |       -2
+     1 | module    | pg_database        | reset     | f        | powa_catalog_database_reset    |                           |                                            | t       |      100
+     1 | module    | pg_database        | snapshot  | f        | powa_catalog_database_snapshot | powa_catalog_database_src |                                            | t       |      100
+     1 | extension | pg_qualstats       | aggregate | f        | powa_qualstats_aggregate       |                           |                                            | t       |       10
+     1 | extension | pg_qualstats       | purge     | f        | powa_qualstats_purge           |                           |                                            | t       |       10
+     1 | extension | pg_qualstats       | reset     | f        | powa_qualstats_reset           |                           |                                            | t       |       10
+     1 | extension | pg_qualstats       | snapshot  | f        | powa_qualstats_snapshot        | powa_qualstats_src        | SELECT {pg_qualstats}.pg_qualstats_reset() | t       |       10
+     1 | module    | pg_role            | reset     | f        | powa_catalog_role_reset        |                           |                                            | t       |      100
+     1 | module    | pg_role            | snapshot  | f        | powa_catalog_role_snapshot     | powa_catalog_role_src     |                                            | t       |      100
+     1 | module    | pg_stat_bgwriter   | aggregate | f        | powa_stat_bgwriter_aggregate   |                           |                                            | t       |      100
+     1 | module    | pg_stat_bgwriter   | purge     | f        | powa_stat_bgwriter_purge       |                           |                                            | t       |      100
+     1 | module    | pg_stat_bgwriter   | reset     | f        | powa_stat_bgwriter_reset       |                           |                                            | t       |      100
+     1 | module    | pg_stat_bgwriter   | snapshot  | f        | powa_stat_bgwriter_snapshot    | powa_stat_bgwriter_src    |                                            | t       |      100
+     1 | extension | pg_stat_statements | aggregate | f        | powa_statements_aggregate      |                           |                                            | t       |       10
+     1 | extension | pg_stat_statements | purge     | f        | powa_databases_purge           |                           |                                            | t       |       10
+     1 | extension | pg_stat_statements | purge     | f        | powa_statements_purge          |                           |                                            | t       |       10
+     1 | extension | pg_stat_statements | reset     | f        | powa_statements_reset          |                           |                                            | t       |       10
+     1 | extension | pg_stat_statements | snapshot  | f        | powa_databases_snapshot        | powa_databases_src        |                                            | t       |       -3
+     1 | extension | pg_stat_statements | snapshot  | f        | powa_statements_snapshot       | powa_statements_src       |                                            | t       |       -2
+(32 rows)
 
 SELECT * FROM "PoWA".powa_activate_extension(1, 'pg_stat_kcache');
  powa_activate_extension 
@@ -134,37 +142,45 @@ WARNING:  powa_activate_extension "some_extension" is not known
 (1 row)
 
 SELECT * FROM "PoWA".powa_functions ORDER BY srvid, name, operation, function_name;
- srvid |   kind    |        name        | operation | external |        function_name         |      query_source      |               query_cleanup                | enabled | priority 
--------+-----------+--------------------+-----------+----------+------------------------------+------------------------+--------------------------------------------+---------+----------
-     0 | module    | pg_stat_bgwriter   | aggregate | f        | powa_stat_bgwriter_aggregate |                        |                                            | t       |      100
-     0 | module    | pg_stat_bgwriter   | purge     | f        | powa_stat_bgwriter_purge     |                        |                                            | t       |      100
-     0 | module    | pg_stat_bgwriter   | reset     | f        | powa_stat_bgwriter_reset     |                        |                                            | t       |      100
-     0 | module    | pg_stat_bgwriter   | snapshot  | f        | powa_stat_bgwriter_snapshot  | powa_stat_bgwriter_src |                                            | t       |      100
-     0 | extension | pg_stat_statements | aggregate | f        | powa_statements_aggregate    |                        |                                            | t       |       10
-     0 | extension | pg_stat_statements | purge     | f        | powa_databases_purge         |                        |                                            | t       |       10
-     0 | extension | pg_stat_statements | purge     | f        | powa_statements_purge        |                        |                                            | t       |       10
-     0 | extension | pg_stat_statements | reset     | f        | powa_statements_reset        |                        |                                            | t       |       10
-     0 | extension | pg_stat_statements | snapshot  | f        | powa_databases_snapshot      | powa_databases_src     |                                            | t       |       -3
-     0 | extension | pg_stat_statements | snapshot  | f        | powa_statements_snapshot     | powa_statements_src    |                                            | t       |       -2
-     1 | extension | pg_qualstats       | aggregate | f        | powa_qualstats_aggregate     |                        |                                            | t       |       10
-     1 | extension | pg_qualstats       | purge     | f        | powa_qualstats_purge         |                        |                                            | t       |       10
-     1 | extension | pg_qualstats       | reset     | f        | powa_qualstats_reset         |                        |                                            | t       |       10
-     1 | extension | pg_qualstats       | snapshot  | f        | powa_qualstats_snapshot      | powa_qualstats_src     | SELECT {pg_qualstats}.pg_qualstats_reset() | t       |       10
-     1 | module    | pg_stat_bgwriter   | aggregate | f        | powa_stat_bgwriter_aggregate |                        |                                            | t       |      100
-     1 | module    | pg_stat_bgwriter   | purge     | f        | powa_stat_bgwriter_purge     |                        |                                            | t       |      100
-     1 | module    | pg_stat_bgwriter   | reset     | f        | powa_stat_bgwriter_reset     |                        |                                            | t       |      100
-     1 | module    | pg_stat_bgwriter   | snapshot  | f        | powa_stat_bgwriter_snapshot  | powa_stat_bgwriter_src |                                            | t       |      100
-     1 | extension | pg_stat_kcache     | aggregate | f        | powa_kcache_aggregate        |                        |                                            | t       |       10
-     1 | extension | pg_stat_kcache     | purge     | f        | powa_kcache_purge            |                        |                                            | t       |       10
-     1 | extension | pg_stat_kcache     | reset     | f        | powa_kcache_reset            |                        |                                            | t       |       10
-     1 | extension | pg_stat_kcache     | snapshot  | f        | powa_kcache_snapshot         | powa_kcache_src        |                                            | t       |       -1
-     1 | extension | pg_stat_statements | aggregate | f        | powa_statements_aggregate    |                        |                                            | t       |       10
-     1 | extension | pg_stat_statements | purge     | f        | powa_databases_purge         |                        |                                            | t       |       10
-     1 | extension | pg_stat_statements | purge     | f        | powa_statements_purge        |                        |                                            | t       |       10
-     1 | extension | pg_stat_statements | reset     | f        | powa_statements_reset        |                        |                                            | t       |       10
-     1 | extension | pg_stat_statements | snapshot  | f        | powa_databases_snapshot      | powa_databases_src     |                                            | t       |       -3
-     1 | extension | pg_stat_statements | snapshot  | f        | powa_statements_snapshot     | powa_statements_src    |                                            | t       |       -2
-(28 rows)
+ srvid |   kind    |        name        | operation | external |         function_name          |       query_source        |               query_cleanup                | enabled | priority 
+-------+-----------+--------------------+-----------+----------+--------------------------------+---------------------------+--------------------------------------------+---------+----------
+     0 | module    | pg_database        | reset     | f        | powa_catalog_database_reset    |                           |                                            | t       |      100
+     0 | module    | pg_database        | snapshot  | f        | powa_catalog_database_snapshot | powa_catalog_database_src |                                            | t       |      100
+     0 | module    | pg_role            | reset     | f        | powa_catalog_role_reset        |                           |                                            | t       |      100
+     0 | module    | pg_role            | snapshot  | f        | powa_catalog_role_snapshot     | powa_catalog_role_src     |                                            | t       |      100
+     0 | module    | pg_stat_bgwriter   | aggregate | f        | powa_stat_bgwriter_aggregate   |                           |                                            | t       |      100
+     0 | module    | pg_stat_bgwriter   | purge     | f        | powa_stat_bgwriter_purge       |                           |                                            | t       |      100
+     0 | module    | pg_stat_bgwriter   | reset     | f        | powa_stat_bgwriter_reset       |                           |                                            | t       |      100
+     0 | module    | pg_stat_bgwriter   | snapshot  | f        | powa_stat_bgwriter_snapshot    | powa_stat_bgwriter_src    |                                            | t       |      100
+     0 | extension | pg_stat_statements | aggregate | f        | powa_statements_aggregate      |                           |                                            | t       |       10
+     0 | extension | pg_stat_statements | purge     | f        | powa_databases_purge           |                           |                                            | t       |       10
+     0 | extension | pg_stat_statements | purge     | f        | powa_statements_purge          |                           |                                            | t       |       10
+     0 | extension | pg_stat_statements | reset     | f        | powa_statements_reset          |                           |                                            | t       |       10
+     0 | extension | pg_stat_statements | snapshot  | f        | powa_databases_snapshot        | powa_databases_src        |                                            | t       |       -3
+     0 | extension | pg_stat_statements | snapshot  | f        | powa_statements_snapshot       | powa_statements_src       |                                            | t       |       -2
+     1 | module    | pg_database        | reset     | f        | powa_catalog_database_reset    |                           |                                            | t       |      100
+     1 | module    | pg_database        | snapshot  | f        | powa_catalog_database_snapshot | powa_catalog_database_src |                                            | t       |      100
+     1 | extension | pg_qualstats       | aggregate | f        | powa_qualstats_aggregate       |                           |                                            | t       |       10
+     1 | extension | pg_qualstats       | purge     | f        | powa_qualstats_purge           |                           |                                            | t       |       10
+     1 | extension | pg_qualstats       | reset     | f        | powa_qualstats_reset           |                           |                                            | t       |       10
+     1 | extension | pg_qualstats       | snapshot  | f        | powa_qualstats_snapshot        | powa_qualstats_src        | SELECT {pg_qualstats}.pg_qualstats_reset() | t       |       10
+     1 | module    | pg_role            | reset     | f        | powa_catalog_role_reset        |                           |                                            | t       |      100
+     1 | module    | pg_role            | snapshot  | f        | powa_catalog_role_snapshot     | powa_catalog_role_src     |                                            | t       |      100
+     1 | module    | pg_stat_bgwriter   | aggregate | f        | powa_stat_bgwriter_aggregate   |                           |                                            | t       |      100
+     1 | module    | pg_stat_bgwriter   | purge     | f        | powa_stat_bgwriter_purge       |                           |                                            | t       |      100
+     1 | module    | pg_stat_bgwriter   | reset     | f        | powa_stat_bgwriter_reset       |                           |                                            | t       |      100
+     1 | module    | pg_stat_bgwriter   | snapshot  | f        | powa_stat_bgwriter_snapshot    | powa_stat_bgwriter_src    |                                            | t       |      100
+     1 | extension | pg_stat_kcache     | aggregate | f        | powa_kcache_aggregate          |                           |                                            | t       |       10
+     1 | extension | pg_stat_kcache     | purge     | f        | powa_kcache_purge              |                           |                                            | t       |       10
+     1 | extension | pg_stat_kcache     | reset     | f        | powa_kcache_reset              |                           |                                            | t       |       10
+     1 | extension | pg_stat_kcache     | snapshot  | f        | powa_kcache_snapshot           | powa_kcache_src           |                                            | t       |       -1
+     1 | extension | pg_stat_statements | aggregate | f        | powa_statements_aggregate      |                           |                                            | t       |       10
+     1 | extension | pg_stat_statements | purge     | f        | powa_databases_purge           |                           |                                            | t       |       10
+     1 | extension | pg_stat_statements | purge     | f        | powa_statements_purge          |                           |                                            | t       |       10
+     1 | extension | pg_stat_statements | reset     | f        | powa_statements_reset          |                           |                                            | t       |       10
+     1 | extension | pg_stat_statements | snapshot  | f        | powa_databases_snapshot        | powa_databases_src        |                                            | t       |       -3
+     1 | extension | pg_stat_statements | snapshot  | f        | powa_statements_snapshot       | powa_statements_src       |                                            | t       |       -2
+(36 rows)
 
 SELECT * FROM "PoWA".powa_deactivate_extension(1, 'pg_stat_kcache');
  powa_deactivate_extension 
@@ -179,37 +195,45 @@ SELECT * FROM "PoWA".powa_deactivate_extension(1, 'some_extension');
 (1 row)
 
 SELECT * FROM "PoWA".powa_functions ORDER BY srvid, name, operation, function_name;
- srvid |   kind    |        name        | operation | external |        function_name         |      query_source      |               query_cleanup                | enabled | priority 
--------+-----------+--------------------+-----------+----------+------------------------------+------------------------+--------------------------------------------+---------+----------
-     0 | module    | pg_stat_bgwriter   | aggregate | f        | powa_stat_bgwriter_aggregate |                        |                                            | t       |      100
-     0 | module    | pg_stat_bgwriter   | purge     | f        | powa_stat_bgwriter_purge     |                        |                                            | t       |      100
-     0 | module    | pg_stat_bgwriter   | reset     | f        | powa_stat_bgwriter_reset     |                        |                                            | t       |      100
-     0 | module    | pg_stat_bgwriter   | snapshot  | f        | powa_stat_bgwriter_snapshot  | powa_stat_bgwriter_src |                                            | t       |      100
-     0 | extension | pg_stat_statements | aggregate | f        | powa_statements_aggregate    |                        |                                            | t       |       10
-     0 | extension | pg_stat_statements | purge     | f        | powa_databases_purge         |                        |                                            | t       |       10
-     0 | extension | pg_stat_statements | purge     | f        | powa_statements_purge        |                        |                                            | t       |       10
-     0 | extension | pg_stat_statements | reset     | f        | powa_statements_reset        |                        |                                            | t       |       10
-     0 | extension | pg_stat_statements | snapshot  | f        | powa_databases_snapshot      | powa_databases_src     |                                            | t       |       -3
-     0 | extension | pg_stat_statements | snapshot  | f        | powa_statements_snapshot     | powa_statements_src    |                                            | t       |       -2
-     1 | extension | pg_qualstats       | aggregate | f        | powa_qualstats_aggregate     |                        |                                            | t       |       10
-     1 | extension | pg_qualstats       | purge     | f        | powa_qualstats_purge         |                        |                                            | t       |       10
-     1 | extension | pg_qualstats       | reset     | f        | powa_qualstats_reset         |                        |                                            | t       |       10
-     1 | extension | pg_qualstats       | snapshot  | f        | powa_qualstats_snapshot      | powa_qualstats_src     | SELECT {pg_qualstats}.pg_qualstats_reset() | t       |       10
-     1 | module    | pg_stat_bgwriter   | aggregate | f        | powa_stat_bgwriter_aggregate |                        |                                            | t       |      100
-     1 | module    | pg_stat_bgwriter   | purge     | f        | powa_stat_bgwriter_purge     |                        |                                            | t       |      100
-     1 | module    | pg_stat_bgwriter   | reset     | f        | powa_stat_bgwriter_reset     |                        |                                            | t       |      100
-     1 | module    | pg_stat_bgwriter   | snapshot  | f        | powa_stat_bgwriter_snapshot  | powa_stat_bgwriter_src |                                            | t       |      100
-     1 | extension | pg_stat_kcache     | aggregate | f        | powa_kcache_aggregate        |                        |                                            | f       |       10
-     1 | extension | pg_stat_kcache     | purge     | f        | powa_kcache_purge            |                        |                                            | f       |       10
-     1 | extension | pg_stat_kcache     | reset     | f        | powa_kcache_reset            |                        |                                            | f       |       10
-     1 | extension | pg_stat_kcache     | snapshot  | f        | powa_kcache_snapshot         | powa_kcache_src        |                                            | f       |       -1
-     1 | extension | pg_stat_statements | aggregate | f        | powa_statements_aggregate    |                        |                                            | t       |       10
-     1 | extension | pg_stat_statements | purge     | f        | powa_databases_purge         |                        |                                            | t       |       10
-     1 | extension | pg_stat_statements | purge     | f        | powa_statements_purge        |                        |                                            | t       |       10
-     1 | extension | pg_stat_statements | reset     | f        | powa_statements_reset        |                        |                                            | t       |       10
-     1 | extension | pg_stat_statements | snapshot  | f        | powa_databases_snapshot      | powa_databases_src     |                                            | t       |       -3
-     1 | extension | pg_stat_statements | snapshot  | f        | powa_statements_snapshot     | powa_statements_src    |                                            | t       |       -2
-(28 rows)
+ srvid |   kind    |        name        | operation | external |         function_name          |       query_source        |               query_cleanup                | enabled | priority 
+-------+-----------+--------------------+-----------+----------+--------------------------------+---------------------------+--------------------------------------------+---------+----------
+     0 | module    | pg_database        | reset     | f        | powa_catalog_database_reset    |                           |                                            | t       |      100
+     0 | module    | pg_database        | snapshot  | f        | powa_catalog_database_snapshot | powa_catalog_database_src |                                            | t       |      100
+     0 | module    | pg_role            | reset     | f        | powa_catalog_role_reset        |                           |                                            | t       |      100
+     0 | module    | pg_role            | snapshot  | f        | powa_catalog_role_snapshot     | powa_catalog_role_src     |                                            | t       |      100
+     0 | module    | pg_stat_bgwriter   | aggregate | f        | powa_stat_bgwriter_aggregate   |                           |                                            | t       |      100
+     0 | module    | pg_stat_bgwriter   | purge     | f        | powa_stat_bgwriter_purge       |                           |                                            | t       |      100
+     0 | module    | pg_stat_bgwriter   | reset     | f        | powa_stat_bgwriter_reset       |                           |                                            | t       |      100
+     0 | module    | pg_stat_bgwriter   | snapshot  | f        | powa_stat_bgwriter_snapshot    | powa_stat_bgwriter_src    |                                            | t       |      100
+     0 | extension | pg_stat_statements | aggregate | f        | powa_statements_aggregate      |                           |                                            | t       |       10
+     0 | extension | pg_stat_statements | purge     | f        | powa_databases_purge           |                           |                                            | t       |       10
+     0 | extension | pg_stat_statements | purge     | f        | powa_statements_purge          |                           |                                            | t       |       10
+     0 | extension | pg_stat_statements | reset     | f        | powa_statements_reset          |                           |                                            | t       |       10
+     0 | extension | pg_stat_statements | snapshot  | f        | powa_databases_snapshot        | powa_databases_src        |                                            | t       |       -3
+     0 | extension | pg_stat_statements | snapshot  | f        | powa_statements_snapshot       | powa_statements_src       |                                            | t       |       -2
+     1 | module    | pg_database        | reset     | f        | powa_catalog_database_reset    |                           |                                            | t       |      100
+     1 | module    | pg_database        | snapshot  | f        | powa_catalog_database_snapshot | powa_catalog_database_src |                                            | t       |      100
+     1 | extension | pg_qualstats       | aggregate | f        | powa_qualstats_aggregate       |                           |                                            | t       |       10
+     1 | extension | pg_qualstats       | purge     | f        | powa_qualstats_purge           |                           |                                            | t       |       10
+     1 | extension | pg_qualstats       | reset     | f        | powa_qualstats_reset           |                           |                                            | t       |       10
+     1 | extension | pg_qualstats       | snapshot  | f        | powa_qualstats_snapshot        | powa_qualstats_src        | SELECT {pg_qualstats}.pg_qualstats_reset() | t       |       10
+     1 | module    | pg_role            | reset     | f        | powa_catalog_role_reset        |                           |                                            | t       |      100
+     1 | module    | pg_role            | snapshot  | f        | powa_catalog_role_snapshot     | powa_catalog_role_src     |                                            | t       |      100
+     1 | module    | pg_stat_bgwriter   | aggregate | f        | powa_stat_bgwriter_aggregate   |                           |                                            | t       |      100
+     1 | module    | pg_stat_bgwriter   | purge     | f        | powa_stat_bgwriter_purge       |                           |                                            | t       |      100
+     1 | module    | pg_stat_bgwriter   | reset     | f        | powa_stat_bgwriter_reset       |                           |                                            | t       |      100
+     1 | module    | pg_stat_bgwriter   | snapshot  | f        | powa_stat_bgwriter_snapshot    | powa_stat_bgwriter_src    |                                            | t       |      100
+     1 | extension | pg_stat_kcache     | aggregate | f        | powa_kcache_aggregate          |                           |                                            | f       |       10
+     1 | extension | pg_stat_kcache     | purge     | f        | powa_kcache_purge              |                           |                                            | f       |       10
+     1 | extension | pg_stat_kcache     | reset     | f        | powa_kcache_reset              |                           |                                            | f       |       10
+     1 | extension | pg_stat_kcache     | snapshot  | f        | powa_kcache_snapshot           | powa_kcache_src           |                                            | f       |       -1
+     1 | extension | pg_stat_statements | aggregate | f        | powa_statements_aggregate      |                           |                                            | t       |       10
+     1 | extension | pg_stat_statements | purge     | f        | powa_databases_purge           |                           |                                            | t       |       10
+     1 | extension | pg_stat_statements | purge     | f        | powa_statements_purge          |                           |                                            | t       |       10
+     1 | extension | pg_stat_statements | reset     | f        | powa_statements_reset          |                           |                                            | t       |       10
+     1 | extension | pg_stat_statements | snapshot  | f        | powa_databases_snapshot        | powa_databases_src        |                                            | t       |       -3
+     1 | extension | pg_stat_statements | snapshot  | f        | powa_statements_snapshot       | powa_statements_src       |                                            | t       |       -2
+(36 rows)
 
 SELECT alias FROM "PoWA".powa_servers WHERE id = 1;
  alias 

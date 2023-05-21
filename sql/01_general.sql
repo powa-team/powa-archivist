@@ -40,7 +40,7 @@ ORDER BY descr COLLATE "C";
 SET powa.coalesce = 5;
 
 -- Test created ojects
-SELECT * FROM "PoWA".powa_functions ORDER BY name, operation;
+SELECT * FROM "PoWA".powa_functions ORDER BY name, operation, priority, function_name;
 
 -- test C SRFs
 SELECT COUNT(*) = 0
