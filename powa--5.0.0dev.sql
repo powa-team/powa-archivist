@@ -1400,6 +1400,19 @@ CREATE TABLE @extschema@.powa_user_functions_history (
 
 CREATE INDEX powa_user_functions_history_funcid_ts ON @extschema@.powa_user_functions_history USING gist (srvid, funcid, coalesce_range);
 
+CREATE TABLE @extschema@.powa_user_functions_history_db (
+    srvid integer NOT NULL,
+    dbid oid NOT NULL,
+    coalesce_range tstzrange NOT NULL,
+    records @extschema@.powa_user_functions_history_record[] NOT NULL,
+    mins_in_range @extschema@.powa_user_functions_history_record NOT NULL,
+    maxs_in_range @extschema@.powa_user_functions_history_record NOT NULL,
+    FOREIGN KEY (srvid) REFERENCES @extschema@.powa_servers(id)
+      MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
+);
+
+CREATE INDEX powa_user_functions_history_db_dbid_ts ON @extschema@.powa_user_functions_history USING gist (srvid, dbid, coalesce_range);
+
 CREATE TABLE @extschema@.powa_user_functions_history_current (
     srvid integer NOT NULL,
     dbid oid NOT NULL,
@@ -1409,6 +1422,15 @@ CREATE TABLE @extschema@.powa_user_functions_history_current (
       MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
 );
 CREATE INDEX ON @extschema@.powa_user_functions_history_current(srvid);
+
+CREATE TABLE @extschema@.powa_user_functions_history_current_db (
+    srvid integer NOT NULL,
+    dbid oid NOT NULL,
+    record @extschema@.powa_user_functions_history_record NOT NULL,
+    FOREIGN KEY (srvid) REFERENCES @extschema@.powa_servers(id)
+      MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
+);
+CREATE INDEX ON @extschema@.powa_user_functions_history_current_db(srvid);
 
 CREATE TABLE @extschema@.powa_all_indexes_history (
     srvid integer NOT NULL,
@@ -2732,7 +2754,9 @@ SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_statements_history_
 SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_statements_history_current','');
 SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_statements_history_current_db','');
 SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_user_functions_history','');
+SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_user_functions_history_db','');
 SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_user_functions_history_current','');
+SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_user_functions_history_current_db','');
 SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_all_indexes_history','');
 SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_all_indexes_history_db','');
 SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_all_indexes_history_current','');
@@ -3447,15 +3471,29 @@ BEGIN
     WITH func AS (
         SELECT *
         FROM @extschema@.powa_user_functions_src(_srvid)
-    )
-    INSERT INTO @extschema@.powa_user_functions_history_current
-        SELECT _srvid, dbid, funcid,
-        ROW(ts, calls,
-            total_time,
-            self_time)::@extschema@.powa_user_functions_history_record AS record
-        FROM func;
+    ),
 
-    GET DIAGNOSTICS v_rowcount = ROW_COUNT;
+    by_function AS (
+        INSERT INTO @extschema@.powa_user_functions_history_current
+            (srvid, dbid, funcid, record)
+            SELECT _srvid, dbid, funcid,
+            ROW(ts, calls, total_time, self_time
+            )::@extschema@.powa_user_functions_history_record AS record
+            FROM func
+    ),
+
+    by_database AS (
+        INSERT INTO @extschema@.powa_user_functions_history_current_db
+            (srvid, dbid, record)
+            SELECT _srvid AS srvid, dbid,
+            ROW(ts, sum(calls), sum(total_time), sum(self_time)
+            )::@extschema@.powa_user_functions_history_record AS record
+            FROM func
+            GROUP BY srvid, dbid, ts
+    )
+
+    SELECT COUNT(*) INTO v_rowcount
+    FROM func;
 
     PERFORM @extschema@.powa_log(format('%s - rowcount: %s',
             v_funcname, v_rowcount));
@@ -3752,7 +3790,15 @@ BEGIN
     AND srvid = _srvid;
 
     GET DIAGNOSTICS v_rowcount = ROW_COUNT;
-    PERFORM @extschema@.powa_log(format('%s - rowcount: %s',
+    PERFORM @extschema@.powa_log(format('%s - (powa_user_functions_history) rowcount: %s',
+            v_funcname, v_rowcount));
+
+    DELETE FROM @extschema@.powa_user_functions_history_db
+    WHERE upper(coalesce_range)< (now() - v_retention)
+    AND srvid = _srvid;
+
+    GET DIAGNOSTICS v_rowcount = ROW_COUNT;
+    PERFORM @extschema@.powa_log(format('%s - (powa_user_functions_history_db) rowcount: %s',
             v_funcname, v_rowcount));
 END;
 $PROC$ LANGUAGE plpgsql; /* end of powa_user_functions_purge */
@@ -3948,6 +3994,10 @@ $PROC$ LANGUAGE plpgsql; /* end of powa_statements_aggregate */
 
 CREATE OR REPLACE FUNCTION @extschema@.powa_user_functions_aggregate(_srvid integer)
 RETURNS void AS $PROC$
+DECLARE
+    v_funcname    text := format('@extschema@.%I(%s)',
+                                 'powa_user_functions_aggregate', _srvid);
+    v_rowcount    bigint;
 BEGIN
     PERFORM @extschema@.powa_log('running powa_user_functions_aggregate(' || _srvid ||')');
 
@@ -3955,6 +4005,8 @@ BEGIN
 
     -- aggregate user_functions table
     INSERT INTO @extschema@.powa_user_functions_history
+        (srvid, dbid, funcid, coalesce_range, records,
+                mins_in_range, maxs_in_range)
         SELECT srvid, dbid, funcid,
             tstzrange(min((record).ts), max((record).ts),'[]'),
             array_agg(record),
@@ -3966,7 +4018,31 @@ BEGIN
         WHERE srvid = _srvid
         GROUP BY srvid, dbid, funcid;
 
+    GET DIAGNOSTICS v_rowcount = ROW_COUNT;
+    PERFORM @extschema@.powa_log(format('%s - (powa_user_functions_history_current) rowcount: %s',
+            v_funcname, v_rowcount));
+
     DELETE FROM @extschema@.powa_user_functions_history_current WHERE srvid = _srvid;
+
+    -- aggregate user_functions_db table
+    INSERT INTO @extschema@.powa_user_functions_history_db
+        (srvid, dbid, coalesce_range, records, mins_in_range, maxs_in_range)
+        SELECT srvid, dbid,
+            tstzrange(min((record).ts), max((record).ts),'[]'),
+            array_agg(record),
+            ROW(min((record).ts), min((record).calls),min((record).total_time),
+                min((record).self_time))::@extschema@.powa_user_functions_history_record,
+            ROW(max((record).ts), max((record).calls),max((record).total_time),
+                max((record).self_time))::@extschema@.powa_user_functions_history_record
+        FROM @extschema@.powa_user_functions_history_current
+        WHERE srvid = _srvid
+        GROUP BY srvid, dbid;
+
+    GET DIAGNOSTICS v_rowcount = ROW_COUNT;
+    PERFORM @extschema@.powa_log(format('%s - (powa_user_functions_history_current_db) rowcount: %s',
+            v_funcname, v_rowcount));
+
+    DELETE FROM @extschema@.powa_user_functions_history_current_db WHERE srvid = _srvid;
  END;
 $PROC$ LANGUAGE plpgsql; /* end of powa_user_functions_aggregate */
 
@@ -4284,8 +4360,14 @@ BEGIN
     PERFORM @extschema@.powa_log('Resetting powa_user_functions_history(' || _srvid || ')');
     DELETE FROM @extschema@.powa_user_functions_history WHERE srvid = _srvid;
 
+    PERFORM @extschema@.powa_log('Resetting powa_user_functions_history_db(' || _srvid || ')');
+    DELETE FROM @extschema@.powa_user_functions_history_db WHERE srvid = _srvid;
+
     PERFORM @extschema@.powa_log('Resetting powa_user_functions_history_current(' || _srvid || ')');
     DELETE FROM @extschema@.powa_user_functions_history_current WHERE srvid = _srvid;
+
+    PERFORM @extschema@.powa_log('Resetting powa_user_functions_history_current_db(' || _srvid || ')');
+    DELETE FROM @extschema@.powa_user_functions_history_current_db WHERE srvid = _srvid;
 
     PERFORM @extschema@.powa_log('Resetting powa_user_functions_src_tmp(' || _srvid || ')');
     DELETE FROM @extschema@.powa_user_functions_src_tmp WHERE srvid = _srvid;
