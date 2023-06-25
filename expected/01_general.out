@@ -40,12 +40,13 @@ ORDER BY ext.relname::text COLLATE "C";
  powa_kcache_src_tmp
  powa_modules
  powa_qualstats_src_tmp
+ powa_roles
  powa_servers_id_seq
  powa_stat_bgwriter_src_tmp
  powa_statements_src_tmp
  powa_user_functions_src_tmp
  powa_wait_sampling_src_tmp
-(22 rows)
+(23 rows)
 
 -- Check for object that aren't in the "PoWA" schema
 WITH ext AS (

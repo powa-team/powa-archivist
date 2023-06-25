@@ -7,6 +7,115 @@ SET LOCAL standard_conforming_strings = on;
 SET LOCAL client_min_messages = warning;
 SET LOCAL search_path = pg_catalog;
 
+-- This table cannot be dumped as postgres doesn't offer a way to restore only
+-- some columns.  Even if it was possible, we couldn't assume that users would
+-- choose to restore the roles too.
+CREATE TABLE @extschema@.powa_roles (
+    powa_role name NOT NULL PRIMARY KEY,
+    rolname name,
+    CHECK (powa_role IN ('powa_admin', 'powa_read_all_data',
+                         'powa_read_all_metrics', 'powa_write_all_data',
+                         'powa_snapshot', 'powa_signal_backend'))
+);
+
+INSERT INTO @extschema@.powa_roles
+    (powa_role,               rolname) VALUES
+    ('powa_admin',            NULL),
+    ('powa_read_all_data',    NULL),
+    ('powa_read_all_metrics', NULL),
+    ('powa_write_all_data',   NULL),
+    ('powa_snapshot',         NULL),
+    ('powa_signal_backend',   NULL);
+
+CREATE FUNCTION @extschema@.setup_powa_roles(
+    IN reuse_existing_role bool default FALSE,
+    IN admin_role text DEFAULT 'powa_admin',
+    IN read_all_data_role text DEFAULT 'powa_read_all_data',
+    IN read_all_metrics_role text DEFAULT 'powa_read_all_metrics',
+    IN write_all_data_role text DEFAULT 'powa_write_all_data',
+    IN snapshot_role text DEFAULT 'powa_snapshot',
+    IN signal_backend_role text DEFAULT 'powa_signal_backend'
+) RETURNS void
+AS $$
+DECLARE
+    v_roles name[];
+    v_role name;
+    v_rec record;
+    v_nb integer;
+BEGIN
+    v_roles = ARRAY [admin_role, read_all_data_role, read_all_metrics_role,
+                     write_all_data_role, snapshot_role, signal_backend_role];
+
+    -- Preliminary sanity checks for the reuse_existing_role case
+    IF (reuse_existing_role) THEN
+        SELECT count(*) INTO v_nb
+        FROM @extschema@.powa_roles
+        WHERE rolname IS NOT NULL;
+
+        IF (v_nb != 0) THEN
+            RAISE EXCEPTION 'Cannot chang existing roles';
+        END IF;
+
+        FOR v_rec in SELECT *
+                     FROM pg_catalog.pg_roles
+                     WHERE rolname = ANY (v_roles)
+        LOOP
+            IF v_rec.rolsuper THEN
+                RAISE EXCEPTION 'Existing role % is a superuser', v_rec.rolname;
+            ELSIF v_rec.rolcreaterole THEN
+                RAISE EXCEPTION 'Existing role % can create role', v_rec.rolname;
+            ELSIF v_rec.rolcreatedb THEN
+                RAISE EXCEPTION 'Existing role % can create db', v_rec.rolname;
+            ELSIF v_rec.rolcanlogin THEN
+                RAISE EXCEPTION 'Existing role % can login', v_rec.rolname;
+            ELSIF v_rec.rolreplication THEN
+                RAISE EXCEPTION 'Existing role % is a replication role', v_rec.rolname;
+            ELSIF v_rec.rolbypassrls THEN
+                RAISE EXCEPTION 'Existing role % can bypass RLS', v_rec.rolname;
+            END IF;
+        END LOOP;
+    END IF;
+
+    -- Update the powa_roles information.  This will be rollbacked if any issue
+    -- is later found with it
+    UPDATE @extschema@.powa_roles
+        SET rolname = CASE
+            WHEN powa_role = 'powa_admin' THEN admin_role
+            WHEN powa_role = 'powa_read_all_data' THEN read_all_data_role
+            WHEN powa_role = 'powa_read_all_metrics' THEN read_all_metrics_role
+            WHEN powa_role = 'powa_write_all_data' THEN write_all_data_role
+            WHEN powa_role = 'powa_snapshot' THEN snapshot_role
+            WHEN powa_role = 'powa_signal_backend' THEN signal_backend_role
+        END;
+
+    IF (reuse_existing_role) THEN
+        SELECT count(*) INTO v_nb
+        FROM @extschema@.powa_roles p
+        LEFT JOIN pg_catalog.pg_roles r USING (rolname)
+        WHERE r.rolname IS NULL;
+
+        IF (v_nb != 0) THEN
+            RAISE EXCEPTION 'Cannot reuse existing powa roles unless all roles already exist';
+        END IF;
+    ELSE
+        SELECT count(*) INTO v_nb
+        FROM pg_catalog.pg_roles
+        WHERE rolname = ANY (v_roles);
+
+        IF v_nb != 0 THEN
+            RAISE EXCEPTION 'Some roles already exists';
+        END IF;
+
+        FOREACH v_role IN ARRAY v_roles LOOP
+            EXECUTE format('CREATE ROLE %I NOLOGIN', v_role);
+        END LOOP;
+    END IF;
+
+    -- Final add all the required ACL based on the up-to-date powa_roles table
+    PERFORM @extschema@.powa_grant();
+END;
+$$ LANGUAGE plpgsql STRICT; /* end if setup_powa_roles */
+
 CREATE TABLE @extschema@.powa_servers (
     id serial PRIMARY KEY,
     hostname text NOT NULL,
@@ -6260,6 +6369,233 @@ END;
 $PROC$ language plpgsql; /* end of powa_wait_sampling_reset */
 
 /* end of pg_wait_sampling integration - part 2 */
+
+---------------
+-- ACL handling
+---------------
+
+/*
+ * powa_grant() will grant the appropriate ACL to the various powa_* pseudo
+ * predefined roles.
+ *
+ * We try to avoid relying on external extensions like hstore to not have to
+ * handle the possibility of it installed in some custom and not visible
+ * schema, so the code is a bit more verbose than needed.
+ */
+CREATE FUNCTION @extschema@.powa_grant() RETURNS void
+AS $$
+DECLARE
+    relname name;
+    relkind char;
+    powa_role name;
+    rolname name;
+    admin_role name;
+    read_all_data_role name;
+    read_all_metrics_role name;
+    write_all_data_role name;
+    snapshot_role name;
+    signal_backend_role name;
+    v_nb integer;
+BEGIN
+    FOR powa_role, rolname IN SELECT pr.powa_role, pr.rolname
+                              FROM @extschema@.powa_roles pr
+    LOOP
+        IF rolname IS NULL THEN
+            RAISE EXCEPTION 'powa_role % is NULL', powa_role;
+        END IF;
+
+        IF powa_role = 'powa_admin' THEN
+            admin_role = rolname;
+        ELSIF powa_role = 'powa_read_all_data' THEN
+            read_all_data_role = rolname;
+        ELSIF powa_role = 'powa_read_all_metrics' THEN
+            read_all_metrics_role = rolname;
+        ELSIF powa_role = 'powa_write_all_data' THEN
+            write_all_data_role = rolname;
+        ELSIF powa_role = 'powa_snapshot' THEN
+            snapshot_role = rolname;
+        ELSIF powa_role = 'powa_signal_backend' THEN
+            signal_backend_role = rolname;
+        ELSE
+            RAISE EXCEPTION 'Unexpected powa_role %', powa_role;
+        END IF;
+    END LOOP;
+
+    FOR relname, relkind IN
+        SELECT c.relname, c.relkind
+        FROM pg_depend d
+        JOIN pg_extension e ON d.refclassid = 'pg_extension'::regclass
+            AND e.oid = d.refobjid
+            AND e.extname = 'powa'
+        JOIN pg_class c ON d.classid = 'pg_class'::regclass
+            AND c.oid = d.objid
+    LOOP
+        EXECUTE format('GRANT ALL ON @extschema@.%I TO %I',
+                       relname, admin_role);
+
+        IF relkind = 'S' THEN
+            EXECUTE format('GRANT USAGE, SELECT, UPDATE ON @extschema@.%I TO %I',
+                           relname, write_all_data_role);
+        ELSE
+            EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE, TRUNCATE '
+                           'ON @extschema@.%I TO %I',
+                           relname, write_all_data_role);
+            EXECUTE format('REVOKE REFERENCES, TRIGGER ON @extschema@.%I FROM %I',
+                           relname, write_all_data_role);
+            EXECUTE format('REVOKE REFERENCES, TRIGGER ON @extschema@.%I FROM %I',
+                           relname, snapshot_role);
+            -- powa_snapshot can only write to snapshot-related data
+            IF relname IN ('powa_roles', 'powa_servers', 'powa_extensions',
+                           'powa_extension_functions', 'powa_extension_config',
+                            'powa_modules', 'powa_module_config',
+                            'powa_module_functions', 'powa_db_modules',
+                            'powa_db_module_config',
+                            'powa_db_module_functions',
+                            'powa_db_module_src_queries', 'powa_catalogs',
+                            'powa_catalog_src_queries')
+                OR relkind = 'v'
+            THEN
+                EXECUTE format('GRANT SELECT '
+                               'ON @extschema@.%I TO %I',
+                               relname, snapshot_role);
+            ELSE
+                EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE, TRUNCATE '
+                               'ON @extschema@.%I TO %I',
+                               relname, snapshot_role);
+            END IF;
+        END IF;
+
+        EXECUTE format('REVOKE ALL ON @extschema@.%I FROM %I',
+                       relname, signal_backend_role);
+
+        -- powa_read_all_data only has SELECT privilege on non *_src_tmp tables
+        --
+        -- powa_read_all_metrics on has SELECT privileges on non *_src_tmp
+        -- tables and non pg_qualstats constvalues related tables
+        IF relname LIKE '%\_src\_tmp' THEN
+            EXECUTE format('REVOKE ALL ON @extschema@.%I FROM %I',
+                           relname, read_all_data_role);
+            EXECUTE format('REVOKE ALL ON @extschema@.%I FROM %I',
+                           relname, read_all_metrics_role);
+        ELSIF relname LIKE '%qualstats\_constvalues%' THEN
+            EXECUTE format('REVOKE ALL ON @extschema@.%I FROM %I',
+                           relname, read_all_metrics_role);
+            EXECUTE format('GRANT SELECT ON @extschema@.%I TO %I',
+                           relname, read_all_data_role);
+        ELSE
+            IF relkind = 'S' THEN
+                EXECUTE format('REVOKE ALL ON @extschema@.%I FROM %I',
+                               relname, read_all_data_role);
+                EXECUTE format('REVOKE ALL ON @extschema@.%I FROM %I',
+                               relname, read_all_metrics_role);
+            ELSE
+                EXECUTE format('GRANT SELECT ON @extschema@.%I TO %I',
+                               relname, read_all_data_role);
+                EXECUTE format('GRANT SELECT ON @extschema@.%I TO %I',
+                               relname, read_all_metrics_role);
+                EXECUTE format('REVOKE INSERT, UPDATE, DELETE, TRUNCATE, '
+                               'REFERENCES, TRIGGER ON @extschema@.%I FROM %I',
+                               relname, read_all_data_role);
+                EXECUTE format('REVOKE INSERT, UPDATE, DELETE, TRUNCATE, '
+                               'REFERENCES, TRIGGER ON @extschema@.%I FROM %I',
+                               relname, read_all_metrics_role);
+            END IF;
+        END IF;
+    END LOOP;
+END;
+$$ LANGUAGE plpgsql; /* end of powa_grant() */
+
+/*
+ * powa_revoke() will revoke any ACL from the various powa_* pseudo
+ * predefined roles.
+ *
+ * This is mostly intended to help dropping the powa_* pseudo predefine roles.
+ *
+ * We don't try to revoke any ACL on non-powa relations, as powa_grant() won't
+ * try to do that.  If users added some extra ACL they will have to take care
+ * of it themselves.
+ */
+CREATE FUNCTION @extschema@.powa_revoke() RETURNS void
+AS $$
+DECLARE
+    relname name;
+    powa_role name;
+    rolname name;
+    admin_role name;
+    read_all_data_role name;
+    read_all_metrics_role name;
+    write_all_data_role name;
+    snapshot_role name;
+    signal_backend_role name;
+    v_nb integer;
+BEGIN
+    FOR powa_role, rolname IN SELECT pr.powa_role, pr.rolname
+                              FROM @extschema@.powa_roles pr
+    LOOP
+        IF rolname IS NULL THEN
+            RAISE EXCEPTION 'powa_role % is NULL', powa_role;
+        END IF;
+
+        IF powa_role = 'powa_admin' THEN
+            admin_role = rolname;
+        ELSIF powa_role = 'powa_read_all_data' THEN
+            read_all_data_role = rolname;
+        ELSIF powa_role = 'powa_read_all_metrics' THEN
+            read_all_metrics_role = rolname;
+        ELSIF powa_role = 'powa_write_all_data' THEN
+            write_all_data_role = rolname;
+        ELSIF powa_role = 'powa_snapshot' THEN
+            snapshot_role = rolname;
+        ELSIF powa_role = 'powa_signal_backend' THEN
+            signal_backend_role = rolname;
+        ELSE
+            RAISE EXCEPTION 'Unexpected powa_role %', powa_role;
+        END IF;
+    END LOOP;
+
+    FOR relname IN
+        SELECT c.relname
+        FROM pg_depend d
+        JOIN pg_extension e ON d.refclassid = 'pg_extension'::regclass
+            AND e.oid = d.refobjid
+            AND e.extname = 'powa'
+        JOIN pg_class c ON d.classid = 'pg_class'::regclass
+            AND c.oid = d.objid
+    LOOP
+        EXECUTE format('REVOKE ALL ON @extschema@.%I FROM %I',
+                       relname, admin_role);
+        EXECUTE format('REVOKE ALL ON @extschema@.%I FROM %I',
+                       relname, read_all_data_role);
+        EXECUTE format('REVOKE ALL ON @extschema@.%I FROM %I',
+                       relname, read_all_metrics_role);
+        EXECUTE format('REVOKE ALL ON @extschema@.%I FROM %I',
+                       relname, write_all_data_role);
+        EXECUTE format('REVOKE ALL ON @extschema@.%I FROM %I',
+                       relname, snapshot_role);
+        EXECUTE format('REVOKE ALL ON @extschema@.%I FROM %I',
+                       relname, signal_backend_role);
+    END LOOP;
+END;
+$$ LANGUAGE plpgsql; /* end of powa_revoke() */
+
+-- mass set proper ACL IIF none of the default pseudo predefined roles exist
+DO
+$$
+DECLARE
+    v_nb int;
+BEGIN
+    SELECT count(*) INTO v_nb
+    FROM @extschema@.powa_roles p
+    JOIN pg_catalog.pg_roles c ON c.rolname = p.powa_role;
+
+    IF v_nb = 0 THEN
+        RAISE NOTICE 'Creating default powa pseudo predefined roles';
+        PERFORM @extschema@.setup_powa_roles();
+    ELSE
+        RAISE NOTICE 'Skipping default powa pseudo predefined roles';
+    END IF;
+END;
+$$ LANGUAGE plpgsql;
 
 -- Finally, activate any supported extension that's already locally installed.
 SELECT @extschema@.powa_activate_extension(0, extname)
