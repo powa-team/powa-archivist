@@ -1416,7 +1416,7 @@ CREATE UNLOGGED TABLE @extschema@.powa_kcache_src_tmp(
     exec_nivcsws     bigint
 );
 
-CREATE TYPE @extschema@.powa_kcache_type AS (
+CREATE TYPE @extschema@.powa_kcache_history_record AS (
     ts timestamptz,
     plan_reads       bigint,             /* total reads, in bytes */
     plan_writes      bigint,             /* total writes, in bytes */
@@ -1445,7 +1445,7 @@ CREATE TYPE @extschema@.powa_kcache_type AS (
 );
 
 /* pg_stat_kcache operator support */
-CREATE TYPE @extschema@.powa_kcache_diff AS (
+CREATE TYPE @extschema@.powa_kcache_history_diff AS (
     intvl interval,
     plan_reads       bigint,
     plan_writes      bigint,
@@ -1473,13 +1473,13 @@ CREATE TYPE @extschema@.powa_kcache_diff AS (
     exec_nivcsws     bigint
 );
 
-CREATE OR REPLACE FUNCTION @extschema@.powa_kcache_mi(
-    a @extschema@.powa_kcache_type,
-    b @extschema@.powa_kcache_type)
-RETURNS @extschema@.powa_kcache_diff AS
+CREATE OR REPLACE FUNCTION @extschema@.powa_kcache_history_mi(
+    a @extschema@.powa_kcache_history_record,
+    b @extschema@.powa_kcache_history_record)
+RETURNS @extschema@.powa_kcache_history_diff AS
 $_$
 DECLARE
-    res @extschema@.powa_kcache_diff;
+    res @extschema@.powa_kcache_history_diff;
 BEGIN
     res.intvl = a.ts - b.ts;
     res.plan_reads = a.plan_reads - b.plan_reads;
@@ -1513,12 +1513,12 @@ $_$
 LANGUAGE plpgsql IMMUTABLE STRICT;
 
 CREATE OPERATOR @extschema@.- (
-    PROCEDURE = @extschema@.powa_kcache_mi,
-    LEFTARG = @extschema@.powa_kcache_type,
-    RIGHTARG = @extschema@.powa_kcache_type
+    PROCEDURE = @extschema@.powa_kcache_history_mi,
+    LEFTARG = @extschema@.powa_kcache_history_record,
+    RIGHTARG = @extschema@.powa_kcache_history_record
 );
 
-CREATE TYPE @extschema@.powa_kcache_rate AS (
+CREATE TYPE @extschema@.powa_kcache_history_rate AS (
     sec integer,
     plan_reads_per_sec       double precision,
     plan_writes_per_sec      double precision,
@@ -1546,13 +1546,13 @@ CREATE TYPE @extschema@.powa_kcache_rate AS (
     exec_nivcsws_per_sec     double precision
 );
 
-CREATE OR REPLACE FUNCTION @extschema@.powa_kcache_div(
-    a @extschema@.powa_kcache_type,
-    b @extschema@.powa_kcache_type)
-RETURNS @extschema@.powa_kcache_rate AS
+CREATE OR REPLACE FUNCTION @extschema@.powa_kcache_history_div(
+    a @extschema@.powa_kcache_history_record,
+    b @extschema@.powa_kcache_history_record)
+RETURNS @extschema@.powa_kcache_history_rate AS
 $_$
 DECLARE
-    res @extschema@.powa_kcache_rate;
+    res @extschema@.powa_kcache_history_rate;
     sec integer;
 BEGIN
     res.sec = extract(EPOCH FROM (a.ts - b.ts));
@@ -1592,9 +1592,9 @@ $_$
 LANGUAGE plpgsql IMMUTABLE STRICT;
 
 CREATE OPERATOR @extschema@./ (
-    PROCEDURE = @extschema@.powa_kcache_div,
-    LEFTARG = @extschema@.powa_kcache_type,
-    RIGHTARG = @extschema@.powa_kcache_type
+    PROCEDURE = @extschema@.powa_kcache_history_div,
+    LEFTARG = @extschema@.powa_kcache_history_record,
+    RIGHTARG = @extschema@.powa_kcache_history_record
 );
 
 /* end of pg_stat_kcache operator support */
@@ -1605,9 +1605,9 @@ CREATE TABLE @extschema@.powa_kcache_metrics (
     queryid bigint NOT NULL,
     dbid oid NOT NULL,
     userid oid NOT NULL,
-    metrics @extschema@.powa_kcache_type[] NOT NULL,
-    mins_in_range @extschema@.powa_kcache_type NOT NULL,
-    maxs_in_range @extschema@.powa_kcache_type NOT NULL,
+    metrics @extschema@.powa_kcache_history_record[] NOT NULL,
+    mins_in_range @extschema@.powa_kcache_history_record NOT NULL,
+    maxs_in_range @extschema@.powa_kcache_history_record NOT NULL,
     top boolean NOT NULL,
     PRIMARY KEY (srvid, coalesce_range, queryid, dbid, userid, top),
     FOREIGN KEY (srvid) REFERENCES @extschema@.powa_servers(id)
@@ -1620,9 +1620,9 @@ CREATE TABLE @extschema@.powa_kcache_metrics_db (
     srvid integer NOT NULL,
     coalesce_range tstzrange NOT NULL,
     dbid oid NOT NULL,
-    metrics @extschema@.powa_kcache_type[] NOT NULL,
-    mins_in_range @extschema@.powa_kcache_type NOT NULL,
-    maxs_in_range @extschema@.powa_kcache_type NOT NULL,
+    metrics @extschema@.powa_kcache_history_record[] NOT NULL,
+    mins_in_range @extschema@.powa_kcache_history_record NOT NULL,
+    maxs_in_range @extschema@.powa_kcache_history_record NOT NULL,
     top boolean NOT NULL,
     PRIMARY KEY (srvid, coalesce_range, dbid, top),
     FOREIGN KEY (srvid) REFERENCES @extschema@.powa_servers(id)
@@ -1633,7 +1633,7 @@ CREATE TABLE @extschema@.powa_kcache_metrics_current ( srvid integer NOT NULL,
     queryid bigint NOT NULL,
     dbid oid NOT NULL,
     userid oid NOT NULL,
-    metrics @extschema@.powa_kcache_type NULL NULL,
+    metrics @extschema@.powa_kcache_history_record NULL NULL,
     top boolean NOT NULL,
     FOREIGN KEY (srvid) REFERENCES @extschema@.powa_servers(id)
       MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
@@ -1643,7 +1643,7 @@ CREATE INDEX ON @extschema@.powa_kcache_metrics_current(srvid);
 CREATE TABLE @extschema@.powa_kcache_metrics_current_db (
     srvid integer NOT NULL,
     dbid oid NOT NULL,
-    metrics @extschema@.powa_kcache_type NULL NULL,
+    metrics @extschema@.powa_kcache_history_record NULL NULL,
     top boolean NOT NULL,
     FOREIGN KEY (srvid) REFERENCES @extschema@.powa_servers(id)
       MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
@@ -3643,7 +3643,7 @@ BEGIN
                exec_minflts, exec_majflts, exec_nswaps,
                exec_msgsnds, exec_msgrcvs, exec_nsignals,
                exec_nvcsws, exec_nivcsws
-        )::@extschema@.powa_kcache_type
+        )::@extschema@.powa_kcache_history_record
             FROM capture
     ),
 
@@ -3661,7 +3661,7 @@ BEGIN
                sum(exec_minflts), sum(exec_majflts), sum(exec_nswaps),
                sum(exec_msgsnds), sum(exec_msgrcvs), sum(exec_nsignals),
                sum(exec_nvcsws), sum(exec_nivcsws)
-              )::@extschema@.powa_kcache_type
+              )::@extschema@.powa_kcache_history_record
             FROM capture
             GROUP BY ts, srvid, top, dbid
     )
@@ -3716,7 +3716,7 @@ BEGIN
             min((metrics).exec_msgsnds), min((metrics).exec_msgrcvs),
             min((metrics).exec_nsignals),
             min((metrics).exec_nvcsws), min((metrics).exec_nivcsws)
-        )::@extschema@.powa_kcache_type,
+        )::@extschema@.powa_kcache_history_record,
         ROW(max((metrics).ts),
             max((metrics).plan_reads), max((metrics).plan_writes),
             max((metrics).plan_user_time), max((metrics).plan_system_time),
@@ -3732,7 +3732,7 @@ BEGIN
             max((metrics).exec_msgsnds), max((metrics).exec_msgrcvs),
             max((metrics).exec_nsignals),
             max((metrics).exec_nvcsws), max((metrics).exec_nivcsws)
-        )::@extschema@.powa_kcache_type
+        )::@extschema@.powa_kcache_history_record
         FROM @extschema@.powa_kcache_metrics_current
         WHERE srvid = _srvid
         GROUP BY srvid, queryid, top, dbid, userid;
@@ -3764,7 +3764,7 @@ BEGIN
             min((metrics).exec_msgsnds), min((metrics).exec_msgrcvs),
             min((metrics).exec_nsignals),
             min((metrics).exec_nvcsws), min((metrics).exec_nivcsws)
-        )::@extschema@.powa_kcache_type,
+        )::@extschema@.powa_kcache_history_record,
         ROW(max((metrics).ts),
             max((metrics).plan_reads), max((metrics).plan_writes),
             max((metrics).plan_user_time), max((metrics).plan_system_time),
@@ -3780,7 +3780,7 @@ BEGIN
             max((metrics).exec_msgsnds), max((metrics).exec_msgrcvs),
             max((metrics).exec_nsignals),
             max((metrics).exec_nvcsws), max((metrics).exec_nivcsws)
-        )::@extschema@.powa_kcache_type
+        )::@extschema@.powa_kcache_history_record
         FROM @extschema@.powa_kcache_metrics_current_db
         WHERE srvid = _srvid
         GROUP BY srvid, dbid, top;
