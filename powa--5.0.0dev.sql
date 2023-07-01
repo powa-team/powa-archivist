@@ -655,7 +655,7 @@ CREATE TYPE powa_stat_bgwriter_history_diff AS (
     checkpoints_req bigint,
     checkpoint_write_time double precision,
     checkpoint_sync_time double precision,
-    buffers_checkpoint double precision,
+    buffers_checkpoint bigint,
     buffers_clean bigint,
     maxwritten_clean bigint,
     buffers_backend bigint,
