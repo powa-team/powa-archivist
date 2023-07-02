@@ -960,127 +960,171 @@ CREATE FUNCTION @extschema@.powa_stat_all_rel(IN dbid oid,
     LANGUAGE c COST 100
 AS '$libdir/powa', 'powa_stat_all_rel';
 
-CREATE TYPE @extschema@.powa_statements_history_record AS (
-    ts timestamp with time zone,
-    calls bigint,
-    total_exec_time double precision,
-    rows bigint,
-    shared_blks_hit bigint,
-    shared_blks_read bigint,
-    shared_blks_dirtied bigint,
-    shared_blks_written bigint,
-    local_blks_hit bigint,
-    local_blks_read bigint,
-    local_blks_dirtied bigint,
-    local_blks_written bigint,
-    temp_blks_read bigint,
-    temp_blks_written bigint,
-    blk_read_time double precision,
-    blk_write_time double precision,
-    plans bigint,
-    total_plan_time double precision,
-    wal_records bigint,
-    wal_fpi bigint,
-    wal_bytes numeric
-);
-
-/* pg_stat_statements operator support */
-CREATE TYPE @extschema@.powa_statements_history_diff AS (
-    intvl interval,
-    calls bigint,
-    total_exec_time double precision,
-    rows bigint,
-    shared_blks_hit bigint,
-    shared_blks_read bigint,
-    shared_blks_dirtied bigint,
-    shared_blks_written bigint,
-    local_blks_hit bigint,
-    local_blks_read bigint,
-    local_blks_dirtied bigint,
-    local_blks_written bigint,
-    temp_blks_read bigint,
-    temp_blks_written bigint,
-    blk_read_time double precision,
-    blk_write_time double precision,
-    plans bigint,
-    total_plan_time double precision,
-    wal_records bigint,
-    wal_fpi bigint,
-    wal_bytes numeric
-);
-
-CREATE OR REPLACE FUNCTION @extschema@.powa_statements_history_mi(
-    a @extschema@.powa_statements_history_record,
-    b @extschema@.powa_statements_history_record)
-RETURNS @extschema@.powa_statements_history_diff AS
-$_$
+-------------------------------
+-- data sources generic support
+-------------------------------
+CREATE FUNCTION @extschema@.powa_generic_datasource_setup(
+    _datasource text,
+    _cols text[],
+    _extra jsonb DEFAULT '{}'
+)
+RETURNS void AS
+$$
 DECLARE
-    res @extschema@.powa_statements_history_diff;
+    i integer;
+    v_prefix text;
+    v_sql text;
+    v_record_name text;
+    v_colname text;
+    v_coltype text;
+    v_extra text;
+    v_kind text;
+    c_no_agg text[];
+    v_has_no_agg_col bool;
 BEGIN
-    res.intvl = a.ts - b.ts;
-    res.calls = a.calls - b.calls;
-    res.total_exec_time = a.total_exec_time - b.total_exec_time;
-    res.rows = a.rows - b.rows;
-    res.shared_blks_hit = a.shared_blks_hit - b.shared_blks_hit;
-    res.shared_blks_read = a.shared_blks_read - b.shared_blks_read;
-    res.shared_blks_dirtied = a.shared_blks_dirtied - b.shared_blks_dirtied;
-    res.shared_blks_written = a.shared_blks_written - b.shared_blks_written;
-    res.local_blks_hit = a.local_blks_hit - b.local_blks_hit;
-    res.local_blks_read = a.local_blks_read - b.local_blks_read;
-    res.local_blks_dirtied = a.local_blks_dirtied - b.local_blks_dirtied;
-    res.local_blks_written = a.local_blks_written - b.local_blks_written;
-    res.temp_blks_read = a.temp_blks_read - b.temp_blks_read;
-    res.temp_blks_written = a.temp_blks_written - b.temp_blks_written;
-    res.blk_read_time = a.blk_read_time - b.blk_read_time;
-    res.blk_write_time = a.blk_write_time - b.blk_write_time;
-    res.plans = a.plans - b.plans;
-    res.total_plan_time = a.total_plan_time - b.total_plan_time;
-    res.wal_records = a.wal_records - b.wal_records;
-    res.wal_fpi = a.wal_fpi - b.wal_fpi;
-    res.wal_bytes = a.wal_bytes - b.wal_bytes;
+    IF quote_ident(_datasource) != _datasource THEN
+        RAISE EXCEPTION '% require quoting, which is not supported',
+                        _datasource;
+    END IF;
 
-    return res;
-END;
-$_$
-LANGUAGE plpgsql IMMUTABLE STRICT;
+    -- we don't put any fields for any of those datatypes in the *_history_db
+    -- records, as aggregating them per-database or computing a rate wouldn't
+    -- make sense
+    c_no_agg = ARRAY['timestamp with time zone', 'timestamptz'];
 
-CREATE OPERATOR @extschema@.- (
-    PROCEDURE = @extschema@.powa_statements_history_mi,
-    LEFTARG = @extschema@.powa_statements_history_record,
-    RIGHTARG = @extschema@.powa_statements_history_record
-);
+    -- we loop over the whole process in case we find some columns with
+    -- some specific datatypes.  For those we need to create a *_history_db
+    -- version datatype without such columns, as we can't do a per-db
+    -- aggregation of such data.
+    v_has_no_agg_col := false;
+    FOREACH v_prefix IN ARRAY ARRAY['_history', '_history_db'] LOOP
+        -- we only need _db version of the infrastructure if we skipped some
+        -- columns
+        EXIT WHEN v_prefix = '_history_db' AND NOT v_has_no_agg_col;
 
-CREATE TYPE @extschema@.powa_statements_history_rate AS (
-    sec integer,
-    calls_per_sec double precision,
-    runtime_per_sec double precision,
-    rows_per_sec double precision,
-    shared_blks_hit_per_sec double precision,
-    shared_blks_read_per_sec double precision,
-    shared_blks_dirtied_per_sec double precision,
-    shared_blks_written_per_sec double precision,
-    local_blks_hit_per_sec double precision,
-    local_blks_read_per_sec double precision,
-    local_blks_dirtied_per_sec double precision,
-    local_blks_written_per_sec double precision,
-    temp_blks_read_per_sec double precision,
-    temp_blks_written_per_sec double precision,
-    blk_read_time_per_sec double precision,
-    blk_write_time_per_sec double precision,
-    plans_per_sec double precision,
-    plantime_per_sec double precision,
-    wal_records_per_sec double precision,
-    wal_fpi_per_sec double precision,
-    wal_bytes_per_sec numeric
-);
+        v_record_name := _datasource || v_prefix || '_record';
 
-CREATE OR REPLACE FUNCTION @extschema@.powa_statements_history_div(
-    a @extschema@.powa_statements_history_record,
-    b @extschema@.powa_statements_history_record)
-RETURNS @extschema@.powa_statements_history_rate AS
+        -- first, create a main record type
+        -- as this is the first iteration over the columns, make sure that none
+        -- of them require quoting
+        v_sql := format('CREATE TYPE @extschema@.%I AS (
+ts timestamp with time zone',
+                        v_record_name);
+        FOR i in 1..array_upper(_cols, 1) LOOP
+            v_colname := _cols[i][1];
+            v_coltype := _cols[i][2];
+
+            -- the *_history_db type version is the same as the *_history
+            -- without the fields of datatype we don't aggregate
+            CONTINUE WHEN v_prefix = '_history_db'
+                     AND v_coltype = ANY (c_no_agg);
+
+            IF quote_ident(v_colname) != v_colname THEN
+                RAISE EXCEPTION '% require quoting, which is not supported',
+                                v_colname;
+                END IF;
+            --IF v_coltype !~ '^[a-z][a-z ]+$' THEN
+            -- datasources should only use a few of native system types
+            IF v_coltype NOT IN ('timestamp with time zone', 'bigint',
+                                 'numeric', 'double precision')
+            THEN
+                RAISE EXCEPTION 'invalid data type % for col %.%',
+                                v_coltype, _datasource, v_colname;
+            END IF;
+
+            v_sql := v_sql || ',' || chr(10) || v_colname || ' ' || v_coltype;
+        END LOOP;
+        v_sql := v_sql || ')';
+        EXECUTE v_sql;
+
+        -- add a *history_rate and a *history_diff type, and remember if we saw
+        -- (and skipped) any timestamptz column
+        FOREACH v_kind IN ARRAY ARRAY['diff', 'rate'] LOOP
+            CONTINUE WHEN v_prefix = '_history_db';
+
+            IF v_kind = 'diff' THEN
+                v_extra := 'intvl interval';
+            ELSE
+                v_extra := 'sec integer';
+            END IF;
+            v_sql := format('CREATE TYPE @extschema@.%I AS ('
+                            || chr(10)
+                            || '%s',
+                            _datasource || v_prefix || '_' || v_kind, v_extra);
+            FOR i IN 1..array_upper(_cols, 1) LOOP
+                v_colname := _cols[i][1];
+                v_coltype := _cols[i][2];
+
+                IF v_coltype = ANY (c_no_agg)
+                THEN
+                    v_has_no_agg_col = true;
+                    CONTINUE;
+                END IF;
+
+                v_colname = coalesce(_extra->v_kind->'colname'->>v_colname,
+                                     v_colname);
+
+                IF v_kind = 'rate' THEN
+                    v_colname := v_colname ||
+                        coalesce(_extra->v_kind->'suffix'->>v_colname,
+                                 '_per_sec');
+                    IF v_coltype != 'numeric' THEN
+                        v_coltype := 'double precision';
+                    END IF;
+                END IF;
+
+                v_sql := v_sql || ', ' || chr(10)
+                    || quote_ident(v_colname) || ' ' || v_coltype;
+            END LOOP;
+            v_sql := v_sql || ')';
+            EXECUTE v_sql;
+        END LOOP;
+
+        -- add a *_mi() function
+        v_sql := format('CREATE FUNCTION @extschema@.%1$I(
+a @extschema@.%2$I,
+b @extschema@.%2$I)
+RETURNS @extschema@.%3$I AS
 $_$
 DECLARE
-    res @extschema@.powa_statements_history_rate;
+    res @extschema@.%3$I;
+BEGIN
+    res.intvl = a.ts - b.ts;',
+                        _datasource || v_prefix || '_mi',
+                        v_record_name,
+                        -- the datatype is the same for the _db version
+                        _datasource || '_history_diff');
+        FOR i in 1..array_upper(_cols, 1) LOOP
+            CONTINUE WHEN _cols[i][2] = ANY (c_no_agg);
+            v_colname := _cols[i][1];
+            v_colname = coalesce(_extra->'mi'->'colname'->>v_colname,
+                                 v_colname);
+
+            v_sql := v_sql || chr(10)
+                || format('    res.%1$I = a.%1$I - b.%1$I;', v_colname);
+        END LOOP;
+        v_sql := v_sql || chr(10) || chr(10) || '    return res;'
+            || chr(10) || 'END;' || chr(10) || '$_$'
+            || chr(10) || 'LANGUAGE plpgsql IMMUTABLE STRICT';
+        EXECUTE v_sql;
+
+        -- add a "-" operator
+        v_sql := format('CREATE OPERATOR @extschema@.- ('
+                        'PROCEDURE = @extschema@.%1$I,'
+                        'LEFTARG = @extschema@.%2$I,'
+                        'RIGHTARG = @extschema@.%2$I)',
+                        _datasource || v_prefix || '_mi',
+                        v_record_name);
+        EXECUTE v_sql;
+
+        -- add a *_div() function
+        v_sql := format('CREATE FUNCTION @extschema@.%1$I(
+a @extschema@.%2$I,
+b @extschema@.%2$I)
+RETURNS @extschema@.%3$I AS
+$_$
+DECLARE
+    res @extschema@.%3$I;
     sec integer;
 BEGIN
     res.sec = extract(EPOCH FROM (a.ts - b.ts));
@@ -1088,714 +1132,141 @@ BEGIN
         sec = 1;
     ELSE
         sec = res.sec;
-    END IF;
-    res.calls_per_sec = (a.calls - b.calls)::double precision / sec;
-    res.runtime_per_sec = (a.total_exec_time - b.total_exec_time)::double precision / sec;
-    res.rows_per_sec = (a.rows - b.rows)::double precision / sec;
-    res.shared_blks_hit_per_sec = (a.shared_blks_hit - b.shared_blks_hit)::double precision / sec;
-    res.shared_blks_read_per_sec = (a.shared_blks_read - b.shared_blks_read)::double precision / sec;
-    res.shared_blks_dirtied_per_sec = (a.shared_blks_dirtied - b.shared_blks_dirtied)::double precision / sec;
-    res.shared_blks_written_per_sec = (a.shared_blks_written - b.shared_blks_written)::double precision / sec;
-    res.local_blks_hit_per_sec = (a.local_blks_hit - b.local_blks_hit)::double precision / sec;
-    res.local_blks_read_per_sec = (a.local_blks_read - b.local_blks_read)::double precision / sec;
-    res.local_blks_dirtied_per_sec = (a.local_blks_dirtied - b.local_blks_dirtied)::double precision / sec;
-    res.local_blks_written_per_sec = (a.local_blks_written - b.local_blks_written)::double precision / sec;
-    res.temp_blks_read_per_sec = (a.temp_blks_read - b.temp_blks_read)::double precision / sec;
-    res.temp_blks_written_per_sec = (a.temp_blks_written - b.temp_blks_written)::double precision / sec;
-    res.blk_read_time_per_sec = (a.blk_read_time - b.blk_read_time)::double precision / sec;
-    res.blk_write_time_per_sec = (a.blk_write_time - b.blk_write_time)::double precision / sec;
-    res.plans_per_sec = (a.plans - b.plans)::double precision / sec;
-    res.plantime_per_sec = (a.total_plan_time - b.total_plan_time)::double precision / sec;
-    res.wal_records_per_sec = (a.wal_records - b.wal_records)::double precision / sec;
-    res.wal_fpi_per_sec = (a.wal_fpi - b.wal_fpi)::double precision / sec;
-    res.wal_bytes_per_sec = (a.wal_bytes - b.wal_bytes)::double precision / sec;
+    END IF;',
+                        _datasource || v_prefix || '_div',
+                        v_record_name,
+                        -- the datatype is the same for the _db version
+                        _datasource || '_history_rate');
+        FOR i in 1..array_upper(_cols, 1) LOOP
+            CONTINUE WHEN _cols[i][2] = ANY (c_no_agg);
+
+            v_colname := _cols[i][1];
+            v_extra := coalesce(_extra->'rate'->'colname'->>v_colname,
+                                v_colname);
+            v_extra := v_extra ||
+                coalesce(_extra->'rate'->'suffix'->>v_colname, '_per_sec');
+
+            v_sql := v_sql || chr(10)
+                || format('    res.%1$I = (a.%2$I - b.%2$I)::double precision / sec;',
+                          v_extra, v_colname);
+    END LOOP;
+    v_sql := v_sql || '
 
     return res;
 END;
 $_$
-LANGUAGE plpgsql IMMUTABLE STRICT;
+LANGUAGE plpgsql IMMUTABLE STRICT';
+    EXECUTE v_sql;
 
-CREATE OPERATOR @extschema@./ (
-    PROCEDURE = @extschema@.powa_statements_history_div,
-    LEFTARG = @extschema@.powa_statements_history_record,
-    RIGHTARG = @extschema@.powa_statements_history_record
-);
-/* end of pg_stat_statements operator support */
-
-CREATE TYPE @extschema@.powa_user_functions_history_record AS (
-    ts timestamp with time zone,
-    calls bigint,
-    total_time double precision,
-    self_time double precision
-);
-
-/* pg_stat_user_functions operator support */
-CREATE TYPE @extschema@.powa_user_functions_history_diff AS (
-    intvl interval,
-    calls bigint,
-    total_time double precision,
-    self_time double precision
-
-);
-
-CREATE OR REPLACE FUNCTION @extschema@.powa_user_functions_history_mi(
-    a @extschema@.powa_user_functions_history_record,
-    b @extschema@.powa_user_functions_history_record)
-RETURNS @extschema@.powa_user_functions_history_diff AS
-$_$
-DECLARE
-    res @extschema@.powa_user_functions_history_diff;
-BEGIN
-    res.intvl = a.ts - b.ts;
-    res.calls = a.calls - b.calls;
-    res.total_time = a.total_time - b.total_time;
-    res.self_time = a.self_time - b.self_time;
-
-    return res;
+    -- add a "/" operator
+    v_sql := format('CREATE OPERATOR @extschema@./ ('
+                    'PROCEDURE = @extschema@.%1$I,'
+                    'LEFTARG = @extschema@.%2$I,'
+                    'RIGHTARG = @extschema@.%2$I)',
+                    _datasource || v_prefix || '_div',
+                    v_record_name);
+    EXECUTE v_sql;
+    END LOOP;
 END;
-$_$
-LANGUAGE plpgsql IMMUTABLE STRICT;
+$$ LANGUAGE plpgsql; /* end of powa_generic_datatype_setup */
 
-CREATE OPERATOR @extschema@.- (
-    PROCEDURE = @extschema@.powa_user_functions_history_mi,
-    LEFTARG = @extschema@.powa_user_functions_history_record,
-    RIGHTARG = @extschema@.powa_user_functions_history_record
-);
+SELECT @extschema@.powa_generic_datasource_setup('powa_statements',
+$${
+{calls, bigint}, {total_exec_time, double precision}, {rows, bigint},
+{shared_blks_hit, bigint}, {shared_blks_read, bigint},
+{shared_blks_dirtied, bigint}, {shared_blks_written, bigint},
+{local_blks_hit, bigint}, {local_blks_read, bigint},
+{local_blks_dirtied, bigint}, {local_blks_written, bigint},
+{temp_blks_read, bigint}, {temp_blks_written, bigint},
+{blk_read_time, double precision}, {blk_write_time, double precision},
+{plans, bigint}, {total_plan_time, double precision},
+{wal_records, bigint}, {wal_fpi, bigint}, {wal_bytes, numeric}
+}$$,
+'{"rate": {
+    "colname": { "total_exec_time": "runtime", "total_plan_time": "plantime"}
+}}');
 
-CREATE TYPE @extschema@.powa_user_functions_history_rate AS (
-    sec integer,
-    calls_per_sec double precision,
-    total_time_per_sec double precision,
-    self_time_per_sec double precision
-);
+SELECT @extschema@.powa_generic_datasource_setup('powa_user_functions',
+$${
+{calls, bigint}, {total_time, double precision}, {self_time, double precision}
+}$$);
 
-CREATE OR REPLACE FUNCTION @extschema@.powa_user_functions_history_div(
-    a @extschema@.powa_user_functions_history_record,
-    b @extschema@.powa_user_functions_history_record)
-RETURNS @extschema@.powa_user_functions_history_rate AS
-$_$
-DECLARE
-    res @extschema@.powa_user_functions_history_rate;
-    sec integer;
-BEGIN
-    res.sec = extract(EPOCH FROM (a.ts - b.ts));
-    IF res.sec = 0 THEN
-        sec = 1;
-    ELSE
-        sec = res.sec;
-    END IF;
-    res.calls_per_sec = (a.calls - b.calls)::double precision / sec;
-    res.total_time_per_sec = (a.total_time - b.total_time)::double precision / sec;
-    res.self_time_per_sec = (a.self_time - b.self_time)::double precision / sec;
+-- powa_all_indexes combines info from pg_stat_all_indexes and
+-- pg_statio_all_indexes
+SELECT @extschema@.powa_generic_datasource_setup('powa_all_indexes',
+$${
+{idx_scan, bigint}, {last_idx_scan, timestamp with time zone},
+{idx_tup_read, bigint}, {idx_tup_fetch, bigint},
+{idx_blks_read, bigint}, {idx_blks_hit, bigint}
+}$$);
 
-    return res;
-END;
-$_$
-LANGUAGE plpgsql IMMUTABLE STRICT;
+-- powa_all_tablees combines info from pg_stat_all_tablees and
+-- pg_statio_all_tablees
+SELECT @extschema@.powa_generic_datasource_setup('powa_all_tables',
+$${
+{seq_scan, bigint}, {last_seq_scan, timestamp with time zone},
+{seq_tup_read, bigint}, {idx_scan, bigint},
+{last_idx_scan, timestamp with time zone},
+{n_tup_ins, bigint}, {n_tup_upd, bigint}, {n_tup_del, bigint},
+{n_tup_hot_upd, bigint}, {n_tup_newpage_upd, bigint},
+{n_liv_tup, bigint}, {n_dead_tup, bigint},
+{n_mod_since_analyze, bigint}, {n_ins_since_vacuum, bigint},
+{last_vacuum, timestamp with time zone},
+{last_autovacuum, timestamp with time zone},
+{last_analyze, timestamp with time zone},
+{last_autoanalyze, timestamp with time zone},
+{vacuum_count, bigint}, {autovacuum_count, bigint},
+{analyze_count, bigint}, {autoanalyze_count, bigint},
+{heap_blks_read, bigint}, {heap_blks_hit, bigint},
+{idx_blks_read, bigint}, {idx_blks_hit, bigint},
+{toast_blks_read, bigint}, {toast_blks_hit, bigint},
+{tidx_blks_read, bigint}, {tidx_blks_hit, bigint}
+}$$);
 
-CREATE OPERATOR @extschema@./ (
-    PROCEDURE = @extschema@.powa_user_functions_history_div,
-    LEFTARG = @extschema@.powa_user_functions_history_record,
-    RIGHTARG = @extschema@.powa_user_functions_history_record
-);
-/* end of pg_stat_user_functions operator support */
+SELECT @extschema@.powa_generic_datasource_setup('powa_stat_bgwriter',
+$${
+{checkpoints_timed, bigint}, {checkpoints_req, bigint},
+{checkpoint_write_time, double precision},
+{checkpoint_sync_time, double precision},
+{buffers_checkpoint, bigint}, {buffers_clean, bigint},
+{maxwritten_clean, bigint},
+{buffers_backend, bigint}, {buffers_backend_fsync, bigint},
+{buffers_alloc, bigint}
+}$$);
 
--- It combines info from pg_stat_all_indexes and pg_statio_all_indexes
-CREATE TYPE @extschema@.powa_all_indexes_history_record AS (
-    ts timestamp with time zone,
-    -- pg_stat_all_indexes fields
-    idx_scan bigint,
-    last_idx_scan timestamp with time zone,
-    idx_tup_read bigint,
-    idx_tup_fetch bigint,
-    -- pg_statio_all_indexes fields
-    idx_blks_read bigint,
-    idx_blks_hit bigint
-);
+SELECT @extschema@.powa_generic_datasource_setup('powa_kcache',
+$${
+{plan_reads, bigint}, {plan_writes, bigint},
+{plan_user_time, double precision}, {plan_system_time, double precision},
+{plan_minflts, bigint}, {plan_majflts, bigint},
+{plan_nswaps, bigint},
+{plan_msgsnds, bigint}, {plan_msgrcvs, bigint},
+{plan_nsignals, bigint},
+{plan_nvcsws, bigint}, {plan_nivcsws, bigint},
+{exec_reads, bigint}, {exec_writes, bigint},
+{exec_user_time, double precision}, {exec_system_time, double precision},
+{exec_minflts, bigint}, {exec_majflts, bigint},
+{exec_nswaps, bigint},
+{exec_msgsnds, bigint}, {exec_msgrcvs, bigint},
+{exec_nsignals, bigint},
+{exec_nvcsws, bigint}, {exec_nivcsws, bigint}
+}$$);
 
-/* pg_stat_all_indexes operator support */
-CREATE TYPE @extschema@.powa_all_indexes_history_diff AS (
-    intvl interval,
-    idx_scan bigint,
-    idx_tup_read bigint,
-    idx_tup_fetch bigint,
-    idx_blks_read bigint,
-    idx_blks_hit bigint
-);
+SELECT @extschema@.powa_generic_datasource_setup('powa_qualstats',
+$${
+{occurences, bigint}, {execution_count, bigint}, {nbfiltered, bigint},
+{mean_err_estimate_ratio, double precision},
+{mean_err_estimate_num, double precision}
+}$$,
+'{"rate": {"suffix": {"mean_err_estimate_ratio": "",
+                      "mean_err_estimate_num": ""}}}');
 
-CREATE OR REPLACE FUNCTION @extschema@.powa_all_indexes_history_mi(
-    a @extschema@.powa_all_indexes_history_record,
-    b @extschema@.powa_all_indexes_history_record)
-RETURNS @extschema@.powa_all_indexes_history_diff AS
-$_$
-DECLARE
-    res @extschema@.powa_all_indexes_history_diff;
-BEGIN
-    res.intvl = a.ts - b.ts;
-    res.idx_scan = a.idx_scan - b.idx_scan;
-    res.idx_tup_read = a.idx_tup_read - b.idx_tup_read;
-    res.idx_tup_fetch = a.idx_tup_fetch - b.idx_tup_fetch;
-    res.idx_blks_read = a.idx_blks_read - b.idx_blks_read;
-    res.idx_blks_hit = a.idx_blks_hit - b.idx_blks_hit;
+SELECT @extschema@.powa_generic_datasource_setup('powa_wait_sampling',
+$${
+{count, bigint}
+}$$);
 
-    return res;
-END;
-$_$
-LANGUAGE plpgsql IMMUTABLE STRICT;
-
-CREATE OPERATOR @extschema@.- (
-    PROCEDURE = @extschema@.powa_all_indexes_history_mi,
-    LEFTARG = @extschema@.powa_all_indexes_history_record,
-    RIGHTARG = @extschema@.powa_all_indexes_history_record
-);
-
-CREATE TYPE @extschema@.powa_all_indexes_history_rate AS (
-    sec integer,
-    idx_scan_per_sec double precision,
-    idx_tup_read_per_sec double precision,
-    idx_tup_fetch_per_sec double precision,
-    idx_blks_read_per_sec double precision,
-    idx_blks_hit_per_sec double precision
-);
-
-CREATE OR REPLACE FUNCTION @extschema@.powa_all_indexes_history_div(
-    a @extschema@.powa_all_indexes_history_record,
-    b @extschema@.powa_all_indexes_history_record)
-RETURNS @extschema@.powa_all_indexes_history_rate AS
-$_$
-DECLARE
-    res @extschema@.powa_all_indexes_history_rate;
-    sec integer;
-BEGIN
-    res.sec = extract(EPOCH FROM (a.ts - b.ts));
-    IF res.sec = 0 THEN
-        sec = 1;
-    ELSE
-        sec = res.sec;
-    END IF;
-    res.idx_scan_per_sec = (a.idx_scan - b.idx_scan)::double precision / sec;
-    res.idx_tup_read_per_sec = (a.idx_tup_read - b.idx_tup_read)::double precision / sec;
-    res.idx_tup_fetch_per_sec = (a.idx_tup_fetch - b.idx_tup_fetch)::double precision / sec;
-    res.idx_blks_read_per_sec = (a.idx_blks_read - b.idx_blks_read)::double precision / sec;
-    res.idx_blks_hit_per_sec = (a.idx_blks_hit - b.idx_blks_hit)::double precision / sec;
-
-    return res;
-END;
-$_$
-LANGUAGE plpgsql IMMUTABLE STRICT;
-
-CREATE OPERATOR @extschema@./ (
-    PROCEDURE = @extschema@.powa_all_indexes_history_div,
-    LEFTARG = @extschema@.powa_all_indexes_history_record,
-    RIGHTARG = @extschema@.powa_all_indexes_history_record
-);
-/* end of pg_stat_all_indexes operator support */
-
--- We need a type different than powa_all_indexes_history_record as we can't
--- aggregate the last last_* timestamps
-CREATE TYPE @extschema@.powa_all_indexes_history_db_record AS (
-    ts timestamp with time zone,
-    -- pg_stat_all_indexes fields
-    idx_scan bigint,
-    idx_tup_read bigint,
-    idx_tup_fetch bigint,
-    -- pg_statio_all_indexes fields
-    idx_blks_read bigint,
-    idx_blks_hit bigint
-);
-
-/* pg_stat_all_indexes_db operator support */
-CREATE OR REPLACE FUNCTION @extschema@.powa_all_indexes_history_db_mi(
-    a @extschema@.powa_all_indexes_history_db_record,
-    b @extschema@.powa_all_indexes_history_db_record)
-RETURNS @extschema@.powa_all_indexes_history_diff AS
-$_$
-DECLARE
-    res @extschema@.powa_all_indexes_history_diff;
-BEGIN
-    res.intvl = a.ts - b.ts;
-    res.idx_scan = a.idx_scan - b.idx_scan;
-    res.idx_tup_read = a.idx_tup_read - b.idx_tup_read;
-    res.idx_tup_fetch = a.idx_tup_fetch - b.idx_tup_fetch;
-    res.idx_blks_read = a.idx_blks_read - b.idx_blks_read;
-    res.idx_blks_hit = a.idx_blks_hit - b.idx_blks_hit;
-
-    return res;
-END;
-$_$
-LANGUAGE plpgsql IMMUTABLE STRICT;
-
-CREATE OPERATOR @extschema@.- (
-    PROCEDURE = @extschema@.powa_all_indexes_history_db_mi,
-    LEFTARG = @extschema@.powa_all_indexes_history_db_record,
-    RIGHTARG = @extschema@.powa_all_indexes_history_db_record
-);
-
-CREATE OR REPLACE FUNCTION @extschema@.powa_all_indexes_history_db_div(
-    a @extschema@.powa_all_indexes_history_db_record,
-    b @extschema@.powa_all_indexes_history_db_record)
-RETURNS @extschema@.powa_all_indexes_history_rate AS
-$_$
-DECLARE
-    res @extschema@.powa_all_indexes_history_rate;
-    sec integer;
-BEGIN
-    res.sec = extract(EPOCH FROM (a.ts - b.ts));
-    IF res.sec = 0 THEN
-        sec = 1;
-    ELSE
-        sec = res.sec;
-    END IF;
-    res.idx_scan_per_sec = (a.idx_scan - b.idx_scan)::double precision / sec;
-    res.idx_tup_read_per_sec = (a.idx_tup_read - b.idx_tup_read)::double precision / sec;
-    res.idx_tup_fetch_per_sec = (a.idx_tup_fetch - b.idx_tup_fetch)::double precision / sec;
-    res.idx_blks_read_per_sec = (a.idx_blks_read - b.idx_blks_read)::double precision / sec;
-    res.idx_blks_hit_per_sec = (a.idx_blks_hit - b.idx_blks_hit)::double precision / sec;
-
-    return res;
-END;
-$_$
-LANGUAGE plpgsql IMMUTABLE STRICT;
-
-CREATE OPERATOR @extschema@./ (
-    PROCEDURE = @extschema@.powa_all_indexes_history_db_div,
-    LEFTARG = @extschema@.powa_all_indexes_history_db_record,
-    RIGHTARG = @extschema@.powa_all_indexes_history_db_record
-);
-/* end of pg_stat_all_indexes_db operator support */
-
--- It combines info from pg_stat_all_tables and pg_statio_all_tables
-CREATE TYPE @extschema@.powa_all_tables_history_record AS (
-    ts timestamp with time zone,
-    -- pg_stat_all_tables fields
-    seq_scan bigint,
-    last_seq_scan timestamp with time zone,
-    seq_tup_read bigint,
-    idx_scan bigint,
-    last_idx_scan timestamp with time zone,
-    n_tup_ins bigint,
-    n_tup_upd bigint,
-    n_tup_del bigint,
-    n_tup_hot_upd bigint,
-    n_tup_newpage_upd bigint,
-    n_liv_tup bigint,
-    n_dead_tup bigint,
-    n_mod_since_analyze bigint,
-    n_ins_since_vacuum bigint,
-    last_vacuum timestamp with time zone,
-    last_autovacuum timestamp with time zone,
-    last_analyze timestamp with time zone,
-    last_autoanalyze timestamp with time zone,
-    vacuum_count bigint,
-    autovacuum_count bigint,
-    analyze_count bigint,
-    autoanalyze_count bigint,
-    -- pg_statio_all_tables fields
-    heap_blks_read bigint,
-    heap_blks_hit bigint,
-    idx_blks_read bigint,
-    idx_blks_hit bigint,
-    toast_blks_read bigint,
-    toast_blks_hit bigint,
-    tidx_blks_read bigint,
-    tidx_blks_hit bigint
-);
-
-/* pg_stat_all_tables operator support */
-CREATE TYPE @extschema@.powa_all_tables_history_diff AS (
-    intvl interval,
-    seq_scan bigint,
-    seq_tup_read bigint,
-    idx_scan bigint,
-    n_tup_ins bigint,
-    n_tup_upd bigint,
-    n_tup_del bigint,
-    n_tup_hot_upd bigint,
-    n_tup_newpage_upd bigint,
-    n_liv_tup bigint,
-    n_dead_tup bigint,
-    n_mod_since_analyze bigint,
-    n_ins_since_vacuum bigint,
-    vacuum_count bigint,
-    autovacuum_count bigint,
-    analyze_count bigint,
-    autoanalyze_count bigint,
-    heap_blks_read bigint,
-    heap_blks_hit bigint,
-    idx_blks_read bigint,
-    idx_blks_hit bigint,
-    toast_blks_read bigint,
-    toast_blks_hit bigint,
-    tidx_blks_read bigint,
-    tidx_blks_hit bigint
-);
-
-CREATE OR REPLACE FUNCTION @extschema@.powa_all_tables_history_mi(
-    a @extschema@.powa_all_tables_history_record,
-    b @extschema@.powa_all_tables_history_record)
-RETURNS @extschema@.powa_all_tables_history_diff AS
-$_$
-DECLARE
-    res @extschema@.powa_all_tables_history_diff;
-BEGIN
-    res.intvl = a.ts - b.ts;
-    res.seq_scan = a.seq_scan - b.seq_scan;
-    res.seq_tup_read = a.seq_tup_read - b.seq_tup_read;
-    res.idx_scan = a.idx_scan - b.idx_scan;
-    res.n_tup_ins = a.n_tup_ins - b.n_tup_ins;
-    res.n_tup_upd = a.n_tup_upd - b.n_tup_upd;
-    res.n_tup_del = a.n_tup_del - b.n_tup_del;
-    res.n_tup_hot_upd = a.n_tup_hot_upd - b.n_tup_hot_upd;
-    res.n_tup_newpage_upd = a.n_tup_newpage_upd - b.n_tup_newpage_upd;
-    res.n_liv_tup = a.n_liv_tup - b.n_liv_tup;
-    res.n_dead_tup = a.n_dead_tup - b.n_dead_tup;
-    res.n_mod_since_analyze = a.n_mod_since_analyze - b.n_mod_since_analyze;
-    res.n_ins_since_vacuum = a.n_ins_since_vacuum - b.n_ins_since_vacuum;
-    res.vacuum_count = a.vacuum_count - b.vacuum_count;
-    res.autovacuum_count = a.autovacuum_count - b.autovacuum_count;
-    res.analyze_count = a.analyze_count - b.analyze_count;
-    res.autoanalyze_count = a.autoanalyze_count - b.autoanalyze_count;
-    res.heap_blks_read = a.heap_blks_read - b.heap_blks_read;
-    res.heap_blks_hit = a.heap_blks_hit - b.heap_blks_hit;
-    res.idx_blks_read = a.idx_blks_read - b.idx_blks_read;
-    res.idx_blks_hit = a.idx_blks_hit - b.idx_blks_hit;
-    res.toast_blks_read = a.toast_blks_read - b.toast_blks_read;
-    res.toast_blks_hit = a.toast_blks_hit - b.toast_blks_hit;
-    res.tidx_blks_read = a.tidx_blks_read - b.tidx_blks_read;
-    res.tidx_blks_hit = a.tidx_blks_hit - b.tidx_blks_hit;
-
-    return res;
-END;
-$_$
-LANGUAGE plpgsql IMMUTABLE STRICT;
-
-CREATE OPERATOR @extschema@.- (
-    PROCEDURE = @extschema@.powa_all_tables_history_mi,
-    LEFTARG = @extschema@.powa_all_tables_history_record,
-    RIGHTARG = @extschema@.powa_all_tables_history_record
-);
-
-CREATE TYPE @extschema@.powa_all_tables_history_rate AS (
-    sec integer,
-    seq_scan_per_sec double precision,
-    seq_tup_read_per_sec double precision,
-    idx_scan_per_sec double precision,
-    n_tup_ins_per_sec double precision,
-    n_tup_upd_per_sec double precision,
-    n_tup_del_per_sec double precision,
-    n_tup_hot_upd_per_sec double precision,
-    n_tup_newpage_upd_per_sec double precision,
-    n_liv_tup_per_sec double precision,
-    n_dead_tup_per_sec double precision,
-    n_mod_since_analyze_per_sec double precision,
-    n_ins_since_vacuum_per_sec double precision,
-    vacuum_count_per_sec double precision,
-    autovacuum_count_per_sec double precision,
-    analyze_count_per_sec double precision,
-    autoanalyze_count_per_sec double precision,
-    heap_blks_read_per_sec double precision,
-    heap_blks_hit_per_sec double precision,
-    idx_blks_read_per_sec double precision,
-    idx_blks_hit_per_sec double precision,
-    toast_blks_read_per_sec double precision,
-    toast_blks_hit_per_sec double precision,
-    tidx_blks_read_per_sec double precision,
-    tidx_blks_hit_per_sec double precision
-);
-
-CREATE OR REPLACE FUNCTION @extschema@.powa_all_tables_history_div(
-    a @extschema@.powa_all_tables_history_record,
-    b @extschema@.powa_all_tables_history_record)
-RETURNS @extschema@.powa_all_tables_history_rate AS
-$_$
-DECLARE
-    res @extschema@.powa_all_tables_history_rate;
-    sec integer;
-BEGIN
-    res.sec = extract(EPOCH FROM (a.ts - b.ts));
-    IF res.sec = 0 THEN
-        sec = 1;
-    ELSE
-        sec = res.sec;
-    END IF;
-    res.seq_scan_per_sec = (a.seq_scan - b.seq_scan)::double precision / sec;
-    res.seq_tup_read_per_sec = (a.seq_tup_read - b.seq_tup_read)::double precision / sec;
-    res.idx_scan_per_sec = (a.idx_scan - b.idx_scan)::double precision / sec;
-    res.n_tup_ins_per_sec = (a.n_tup_ins - b.n_tup_ins)::double precision / sec;
-    res.n_tup_upd_per_sec = (a.n_tup_upd - b.n_tup_upd)::double precision / sec;
-    res.n_tup_del_per_sec = (a.n_tup_del - b.n_tup_del)::double precision / sec;
-    res.n_tup_hot_upd_per_sec = (a.n_tup_hot_upd - b.n_tup_hot_upd)::double precision / sec;
-    res.n_tup_newpage_upd_per_sec = (a.n_tup_newpage_upd - b.n_tup_newpage_upd)::double precision / sec;
-    res.n_liv_tup_per_sec = (a.n_liv_tup - b.n_liv_tup)::double precision / sec;
-    res.n_dead_tup_per_sec = (a.n_dead_tup - b.n_dead_tup)::double precision / sec;
-    res.n_mod_since_analyze_per_sec = (a.n_mod_since_analyze - b.n_mod_since_analyze)::double precision / sec;
-    res.n_ins_since_vacuum_per_sec = (a.n_ins_since_vacuum - b.n_ins_since_vacuum)::double precision / sec;
-    res.vacuum_count_per_sec = (a.vacuum_count - b.vacuum_count)::double precision / sec;
-    res.autovacuum_count_per_sec = (a.autovacuum_count - b.autovacuum_count)::double precision / sec;
-    res.analyze_count_per_sec = (a.analyze_count - b.analyze_count)::double precision / sec;
-    res.autoanalyze_count_per_sec = (a.autoanalyze_count - b.autoanalyze_count)::double precision / sec;
-    res.heap_blks_read_per_sec = (a.heap_blks_read - b.heap_blks_read)::double precision / sec;
-    res.heap_blks_hit_per_sec = (a.heap_blks_hit - b.heap_blks_hit)::double precision / sec;
-    res.idx_blks_read_per_sec = (a.idx_blks_read - b.idx_blks_read)::double precision / sec;
-    res.idx_blks_hit_per_sec = (a.idx_blks_hit - b.idx_blks_hit)::double precision / sec;
-    res.toast_blks_read_per_sec = (a.toast_blks_read - b.toast_blks_read)::double precision / sec;
-    res.toast_blks_hit_per_sec = (a.toast_blks_hit - b.toast_blks_hit)::double precision / sec;
-    res.tidx_blks_read_per_sec = (a.tidx_blks_read - b.tidx_blks_read)::double precision / sec;
-    res.tidx_blks_hit_per_sec = (a.tidx_blks_hit - b.tidx_blks_hit)::double precision / sec;
-
-    return res;
-END;
-$_$
-LANGUAGE plpgsql IMMUTABLE STRICT;
-
-CREATE OPERATOR @extschema@./ (
-    PROCEDURE = @extschema@.powa_all_tables_history_div,
-    LEFTARG = @extschema@.powa_all_tables_history_record,
-    RIGHTARG = @extschema@.powa_all_tables_history_record
-);
-/* end of pg_stat_all_tables operator support */
-
--- We need a type different than powa_all_tables_history_record as we can't
--- aggregate the last last_* timestamps
-CREATE TYPE @extschema@.powa_all_tables_history_db_record AS (
-    ts timestamp with time zone,
-    -- pg_stat_all_tables fields
-    seq_scan bigint,
-    seq_tup_read bigint,
-    idx_scan bigint,
-    n_tup_ins bigint,
-    n_tup_upd bigint,
-    n_tup_del bigint,
-    n_tup_hot_upd bigint,
-    n_tup_newpage_upd bigint,
-    n_liv_tup bigint,
-    n_dead_tup bigint,
-    n_mod_since_analyze bigint,
-    n_ins_since_vacuum bigint,
-    vacuum_count bigint,
-    autovacuum_count bigint,
-    analyze_count bigint,
-    autoanalyze_count bigint,
-    -- pg_statio_all_tables fields
-    heap_blks_read bigint,
-    heap_blks_hit bigint,
-    idx_blks_read bigint,
-    idx_blks_hit bigint,
-    toast_blks_read bigint,
-    toast_blks_hit bigint,
-    tidx_blks_read bigint,
-    tidx_blks_hit bigint
-);
-
-/* pg_stat_all_tables_db operator support */
-CREATE OR REPLACE FUNCTION @extschema@.powa_all_tables_history_db_mi(
-    a @extschema@.powa_all_tables_history_db_record,
-    b @extschema@.powa_all_tables_history_db_record)
-RETURNS @extschema@.powa_all_tables_history_diff AS
-$_$
-DECLARE
-    res @extschema@.powa_all_tables_history_diff;
-BEGIN
-    res.intvl = a.ts - b.ts;
-    res.seq_scan = a.seq_scan - b.seq_scan;
-    res.seq_tup_read = a.seq_tup_read - b.seq_tup_read;
-    res.idx_scan = a.idx_scan - b.idx_scan;
-    res.n_tup_ins = a.n_tup_ins - b.n_tup_ins;
-    res.n_tup_upd = a.n_tup_upd - b.n_tup_upd;
-    res.n_tup_del = a.n_tup_del - b.n_tup_del;
-    res.n_tup_hot_upd = a.n_tup_hot_upd - b.n_tup_hot_upd;
-    res.n_tup_newpage_upd = a.n_tup_newpage_upd - b.n_tup_newpage_upd;
-    res.n_liv_tup = a.n_liv_tup - b.n_liv_tup;
-    res.n_dead_tup = a.n_dead_tup - b.n_dead_tup;
-    res.n_mod_since_analyze = a.n_mod_since_analyze - b.n_mod_since_analyze;
-    res.n_ins_since_vacuum = a.n_ins_since_vacuum - b.n_ins_since_vacuum;
-    res.vacuum_count = a.vacuum_count - b.vacuum_count;
-    res.autovacuum_count = a.autovacuum_count - b.autovacuum_count;
-    res.analyze_count = a.analyze_count - b.analyze_count;
-    res.autoanalyze_count = a.autoanalyze_count - b.autoanalyze_count;
-    res.heap_blks_read = a.heap_blks_read - b.heap_blks_read;
-    res.heap_blks_hit = a.heap_blks_hit - b.heap_blks_hit;
-    res.idx_blks_read = a.idx_blks_read - b.idx_blks_read;
-    res.idx_blks_hit = a.idx_blks_hit - b.idx_blks_hit;
-    res.toast_blks_read = a.toast_blks_read - b.toast_blks_read;
-    res.toast_blks_hit = a.toast_blks_hit - b.toast_blks_hit;
-    res.tidx_blks_read = a.tidx_blks_read - b.tidx_blks_read;
-    res.tidx_blks_hit = a.tidx_blks_hit - b.tidx_blks_hit;
-
-    return res;
-END;
-$_$
-LANGUAGE plpgsql IMMUTABLE STRICT;
-
-CREATE OPERATOR @extschema@.- (
-    PROCEDURE = @extschema@.powa_all_tables_history_db_mi,
-    LEFTARG = @extschema@.powa_all_tables_history_db_record,
-    RIGHTARG = @extschema@.powa_all_tables_history_db_record
-);
-
-CREATE OR REPLACE FUNCTION @extschema@.powa_all_tables_history_db_div(
-    a @extschema@.powa_all_tables_history_db_record,
-    b @extschema@.powa_all_tables_history_db_record)
-RETURNS @extschema@.powa_all_tables_history_rate AS
-$_$
-DECLARE
-    res @extschema@.powa_all_tables_history_rate;
-    sec integer;
-BEGIN
-    res.sec = extract(EPOCH FROM (a.ts - b.ts));
-    IF res.sec = 0 THEN
-        sec = 1;
-    ELSE
-        sec = res.sec;
-    END IF;
-    res.seq_scan_per_sec = (a.seq_scan - b.seq_scan)::double precision / sec;
-    res.seq_tup_read_per_sec = (a.seq_tup_read - b.seq_tup_read)::double precision / sec;
-    res.idx_scan_per_sec = (a.idx_scan - b.idx_scan)::double precision / sec;
-    res.n_tup_ins_per_sec = (a.n_tup_ins - b.n_tup_ins)::double precision / sec;
-    res.n_tup_upd_per_sec = (a.n_tup_upd - b.n_tup_upd)::double precision / sec;
-    res.n_tup_del_per_sec = (a.n_tup_del - b.n_tup_del)::double precision / sec;
-    res.n_tup_hot_upd_per_sec = (a.n_tup_hot_upd - b.n_tup_hot_upd)::double precision / sec;
-    res.n_tup_newpage_upd_per_sec = (a.n_tup_newpage_upd - b.n_tup_newpage_upd)::double precision / sec;
-    res.n_liv_tup_per_sec = (a.n_liv_tup - b.n_liv_tup)::double precision / sec;
-    res.n_dead_tup_per_sec = (a.n_dead_tup - b.n_dead_tup)::double precision / sec;
-    res.n_mod_since_analyze_per_sec = (a.n_mod_since_analyze - b.n_mod_since_analyze)::double precision / sec;
-    res.n_ins_since_vacuum_per_sec = (a.n_ins_since_vacuum - b.n_ins_since_vacuum)::double precision / sec;
-    res.vacuum_count_per_sec = (a.vacuum_count - b.vacuum_count)::double precision / sec;
-    res.autovacuum_count_per_sec = (a.autovacuum_count - b.autovacuum_count)::double precision / sec;
-    res.analyze_count_per_sec = (a.analyze_count - b.analyze_count)::double precision / sec;
-    res.autoanalyze_count_per_sec = (a.autoanalyze_count - b.autoanalyze_count)::double precision / sec;
-    res.heap_blks_read_per_sec = (a.heap_blks_read - b.heap_blks_read)::double precision / sec;
-    res.heap_blks_hit_per_sec = (a.heap_blks_hit - b.heap_blks_hit)::double precision / sec;
-    res.idx_blks_read_per_sec = (a.idx_blks_read - b.idx_blks_read)::double precision / sec;
-    res.idx_blks_hit_per_sec = (a.idx_blks_hit - b.idx_blks_hit)::double precision / sec;
-    res.toast_blks_read_per_sec = (a.toast_blks_read - b.toast_blks_read)::double precision / sec;
-    res.toast_blks_hit_per_sec = (a.toast_blks_hit - b.toast_blks_hit)::double precision / sec;
-    res.tidx_blks_read_per_sec = (a.tidx_blks_read - b.tidx_blks_read)::double precision / sec;
-    res.tidx_blks_hit_per_sec = (a.tidx_blks_hit - b.tidx_blks_hit)::double precision / sec;
-
-    return res;
-END;
-$_$
-LANGUAGE plpgsql IMMUTABLE STRICT;
-
-CREATE OPERATOR @extschema@./ (
-    PROCEDURE = @extschema@.powa_all_tables_history_db_div,
-    LEFTARG = @extschema@.powa_all_tables_history_db_record,
-    RIGHTARG = @extschema@.powa_all_tables_history_db_record
-);
-/* end of pg_stat_all_tables_db operator support */
-
-CREATE TYPE @extschema@.powa_stat_bgwriter_history_record AS (
-    ts timestamp with time zone,
-    checkpoints_timed bigint,
-    checkpoints_req bigint,
-    checkpoint_write_time double precision,
-    checkpoint_sync_time double precision,
-    buffers_checkpoint bigint,
-    buffers_clean bigint,
-    maxwritten_clean bigint,
-    buffers_backend bigint,
-    buffers_backend_fsync bigint,
-    buffers_alloc bigint
-);
-
-/*pg_stat_bgwriter operator support */
-CREATE TYPE @extschema@.powa_stat_bgwriter_history_diff AS (
-    intvl interval,
-    checkpoints_timed bigint,
-    checkpoints_req bigint,
-    checkpoint_write_time double precision,
-    checkpoint_sync_time double precision,
-    buffers_checkpoint bigint,
-    buffers_clean bigint,
-    maxwritten_clean bigint,
-    buffers_backend bigint,
-    buffers_backend_fsync bigint,
-    buffers_alloc bigint
-);
-
-CREATE OR REPLACE FUNCTION @extschema@.powa_stat_bgwriter_history_mi(
-    a @extschema@.powa_stat_bgwriter_history_record,
-    b @extschema@.powa_stat_bgwriter_history_record)
-RETURNS @extschema@.powa_stat_bgwriter_history_diff AS
-$_$
-DECLARE
-    res @extschema@.powa_stat_bgwriter_history_diff;
-BEGIN
-    res.intvl = a.ts - b.ts;
-    res.checkpoints_timed = a.checkpoints_timed - b.checkpoints_timed;
-    res.checkpoints_req = a.checkpoints_req - b.checkpoints_req;
-    res.checkpoint_write_time = a.checkpoint_write_time - b.checkpoint_write_time;
-    res.checkpoint_sync_time = a.checkpoint_sync_time - b.checkpoint_sync_time;
-    res.buffers_checkpoint = a.buffers_checkpoint - b.buffers_checkpoint;
-    res.buffers_clean = a.buffers_clean - b.buffers_clean;
-    res.maxwritten_clean = a.maxwritten_clean - b.maxwritten_clean;
-    res.buffers_backend = a.buffers_backend - b.buffers_backend;
-    res.buffers_backend_fsync = a.buffers_backend_fsync - b.buffers_backend_fsync;
-    res.buffers_alloc = a.buffers_alloc - b.buffers_alloc;
-
-    return res;
-END;
-$_$
-LANGUAGE plpgsql IMMUTABLE STRICT;
-
-CREATE OPERATOR @extschema@.- (
-    PROCEDURE = @extschema@.powa_stat_bgwriter_history_mi,
-    LEFTARG = @extschema@.powa_stat_bgwriter_history_record,
-    RIGHTARG = @extschema@.powa_stat_bgwriter_history_record
-);
-
-CREATE TYPE @extschema@.powa_stat_bgwriter_history_rate AS (
-    sec integer,
-    checkpoints_timed_per_sec double precision,
-    checkpoints_req_per_sec double precision,
-    checkpoint_write_time_per_sec double precision,
-    checkpoint_sync_time_per_sec double precision,
-    buffers_checkpoint_per_sec double precision,
-    buffers_clean_per_sec double precision,
-    maxwritten_clean_per_sec double precision,
-    buffers_backend_per_sec double precision,
-    buffers_backend_fsync_per_sec double precision,
-    buffers_alloc_per_sec double precision
-);
-
-CREATE OR REPLACE FUNCTION @extschema@.powa_stat_bgwriter_history_div(
-    a @extschema@.powa_stat_bgwriter_history_record,
-    b @extschema@.powa_stat_bgwriter_history_record)
-RETURNS @extschema@.powa_stat_bgwriter_history_rate AS
-$_$
-DECLARE
-    res @extschema@.powa_stat_bgwriter_history_rate;
-    sec integer;
-BEGIN
-    res.sec = extract(EPOCH FROM (a.ts - b.ts));
-    IF res.sec = 0 THEN
-        sec = 1;
-    ELSE
-        sec = res.sec;
-    END IF;
-    res.checkpoints_timed_per_sec = (a.checkpoints_timed - b.checkpoints_timed)::double precision / sec;
-    res.checkpoints_req_per_sec = (a.checkpoints_req - b.checkpoints_req)::double precision / sec;
-    res.checkpoint_write_time_per_sec = (a.checkpoint_write_time - b.checkpoint_write_time)::double precision / sec;
-    res.checkpoint_sync_time_per_sec = (a.checkpoint_sync_time - b.checkpoint_sync_time)::double precision / sec;
-    res.buffers_checkpoint_per_sec = (a.buffers_checkpoint - b.buffers_checkpoint)::double precision / sec;
-    res.buffers_clean_per_sec = (a.buffers_clean - b.buffers_clean)::double precision / sec;
-    res.maxwritten_clean_per_sec = (a.maxwritten_clean - b.maxwritten_clean)::double precision / sec;
-    res.buffers_backend_per_sec = (a.buffers_backend - b.buffers_backend)::double precision / sec;
-    res.buffers_backend_fsync_per_sec = (a.buffers_backend_fsync - b.buffers_backend_fsync)::double precision / sec;
-    res.buffers_alloc_per_sec = (a.buffers_alloc - b.buffers_alloc)::double precision / sec;
-
-    return res;
-END;
-$_$
-LANGUAGE plpgsql IMMUTABLE STRICT;
-
-CREATE OPERATOR @extschema@./ (
-    PROCEDURE = @extschema@.powa_stat_bgwriter_history_div,
-    LEFTARG = @extschema@.powa_stat_bgwriter_history_record,
-    RIGHTARG = @extschema@.powa_stat_bgwriter_history_record
-);
-/* end of pg_stat_bgwriter operator support */
+DROP FUNCTION @extschema@.powa_generic_datasource_setup(text, text[], jsonb);
 
 /* pg_catalog import support */
 CREATE UNLOGGED TABLE @extschema@.powa_catalog_class_src_tmp (
@@ -2793,189 +2264,6 @@ CREATE UNLOGGED TABLE @extschema@.powa_kcache_src_tmp (
     exec_nivcsws     bigint
 );
 
-CREATE TYPE @extschema@.powa_kcache_history_record AS (
-    ts timestamptz,
-    plan_reads       bigint,             /* total reads, in bytes */
-    plan_writes      bigint,             /* total writes, in bytes */
-    plan_user_time   double precision,   /* total user CPU time used */
-    plan_system_time double precision,   /* total system CPU time used */
-    plan_minflts     bigint,             /* total page reclaims (soft page faults) */
-    plan_majflts     bigint,             /* total page faults (hard page faults) */
-    plan_nswaps      bigint,             /* total swaps */
-    plan_msgsnds     bigint,             /* total IPC messages sent */
-    plan_msgrcvs     bigint,             /* total IPC messages received */
-    plan_nsignals    bigint,             /* total signals received */
-    plan_nvcsws      bigint,             /* total voluntary context switches */
-    plan_nivcsws     bigint,             /* total involuntary context switches */
-    exec_reads       bigint,             /* total reads, in bytes */
-    exec_writes      bigint,             /* total writes, in bytes */
-    exec_user_time   double precision,   /* total user CPU time used */
-    exec_system_time double precision,   /* total system CPU time used */
-    exec_minflts     bigint,             /* total page reclaims (soft page faults) */
-    exec_majflts     bigint,             /* total page faults (hard page faults) */
-    exec_nswaps      bigint,             /* total swaps */
-    exec_msgsnds     bigint,             /* total IPC messages sent */
-    exec_msgrcvs     bigint,             /* total IPC messages received */
-    exec_nsignals    bigint,             /* total signals received */
-    exec_nvcsws      bigint,             /* total voluntary context switches */
-    exec_nivcsws     bigint              /* total involuntary context switches */
-);
-
-/* pg_stat_kcache operator support */
-CREATE TYPE @extschema@.powa_kcache_history_diff AS (
-    intvl interval,
-    plan_reads       bigint,
-    plan_writes      bigint,
-    plan_user_time   double precision,
-    plan_system_time double precision,
-    plan_minflts     bigint,
-    plan_majflts     bigint,
-    plan_nswaps      bigint,
-    plan_msgsnds     bigint,
-    plan_msgrcvs     bigint,
-    plan_nsignals    bigint,
-    plan_nvcsws      bigint,
-    plan_nivcsws     bigint,
-    exec_reads       bigint,
-    exec_writes      bigint,
-    exec_user_time   double precision,
-    exec_system_time double precision,
-    exec_minflts     bigint,
-    exec_majflts     bigint,
-    exec_nswaps      bigint,
-    exec_msgsnds     bigint,
-    exec_msgrcvs     bigint,
-    exec_nsignals    bigint,
-    exec_nvcsws      bigint,
-    exec_nivcsws     bigint
-);
-
-CREATE OR REPLACE FUNCTION @extschema@.powa_kcache_history_mi(
-    a @extschema@.powa_kcache_history_record,
-    b @extschema@.powa_kcache_history_record)
-RETURNS @extschema@.powa_kcache_history_diff AS
-$_$
-DECLARE
-    res @extschema@.powa_kcache_history_diff;
-BEGIN
-    res.intvl = a.ts - b.ts;
-    res.plan_reads = a.plan_reads - b.plan_reads;
-    res.plan_writes = a.plan_writes - b.plan_writes;
-    res.plan_user_time = a.plan_user_time - b.plan_user_time;
-    res.plan_system_time = a.plan_system_time - b.plan_system_time;
-    res.plan_minflts = a.plan_minflts - b.plan_minflts;
-    res.plan_majflts = a.plan_majflts - b.plan_majflts;
-    res.plan_nswaps = a.plan_nswaps - b.plan_nswaps;
-    res.plan_msgsnds = a.plan_msgsnds - b.plan_msgsnds;
-    res.plan_msgrcvs = a.plan_msgrcvs - b.plan_msgrcvs;
-    res.plan_nsignals = a.plan_nsignals - b.plan_nsignals;
-    res.plan_nvcsws = a.plan_nvcsws - b.plan_nvcsws;
-    res.plan_nivcsws = a.plan_nivcsws - b.plan_nivcsws;
-    res.exec_reads = a.exec_reads - b.exec_reads;
-    res.exec_writes = a.exec_writes - b.exec_writes;
-    res.exec_user_time = a.exec_user_time - b.exec_user_time;
-    res.exec_system_time = a.exec_system_time - b.exec_system_time;
-    res.exec_minflts = a.exec_minflts - b.exec_minflts;
-    res.exec_majflts = a.exec_majflts - b.exec_majflts;
-    res.exec_nswaps = a.exec_nswaps - b.exec_nswaps;
-    res.exec_msgsnds = a.exec_msgsnds - b.exec_msgsnds;
-    res.exec_msgrcvs = a.exec_msgrcvs - b.exec_msgrcvs;
-    res.exec_nsignals = a.exec_nsignals - b.exec_nsignals;
-    res.exec_nvcsws = a.exec_nvcsws - b.exec_nvcsws;
-    res.exec_nivcsws = a.exec_nivcsws - b.exec_nivcsws;
-
-    return res;
-END;
-$_$
-LANGUAGE plpgsql IMMUTABLE STRICT;
-
-CREATE OPERATOR @extschema@.- (
-    PROCEDURE = @extschema@.powa_kcache_history_mi,
-    LEFTARG = @extschema@.powa_kcache_history_record,
-    RIGHTARG = @extschema@.powa_kcache_history_record
-);
-
-CREATE TYPE @extschema@.powa_kcache_history_rate AS (
-    sec integer,
-    plan_reads_per_sec       double precision,
-    plan_writes_per_sec      double precision,
-    plan_user_time_per_sec   double precision,
-    plan_system_time_per_sec double precision,
-    plan_minflts_per_sec     double precision,
-    plan_majflts_per_sec     double precision,
-    plan_nswaps_per_sec      double precision,
-    plan_msgsnds_per_sec     double precision,
-    plan_msgrcvs_per_sec     double precision,
-    plan_nsignals_per_sec    double precision,
-    plan_nvcsws_per_sec      double precision,
-    plan_nivcsws_per_sec     double precision,
-    exec_reads_per_sec       double precision,
-    exec_writes_per_sec      double precision,
-    exec_user_time_per_sec   double precision,
-    exec_system_time_per_sec double precision,
-    exec_minflts_per_sec     double precision,
-    exec_majflts_per_sec     double precision,
-    exec_nswaps_per_sec      double precision,
-    exec_msgsnds_per_sec     double precision,
-    exec_msgrcvs_per_sec     double precision,
-    exec_nsignals_per_sec    double precision,
-    exec_nvcsws_per_sec      double precision,
-    exec_nivcsws_per_sec     double precision
-);
-
-CREATE OR REPLACE FUNCTION @extschema@.powa_kcache_history_div(
-    a @extschema@.powa_kcache_history_record,
-    b @extschema@.powa_kcache_history_record)
-RETURNS @extschema@.powa_kcache_history_rate AS
-$_$
-DECLARE
-    res @extschema@.powa_kcache_history_rate;
-    sec integer;
-BEGIN
-    res.sec = extract(EPOCH FROM (a.ts - b.ts));
-    IF res.sec = 0 THEN
-        sec = 1;
-    ELSE
-        sec = res.sec;
-    END IF;
-    res.plan_reads_per_sec = (a.plan_reads - b.plan_reads)::double precision / sec;
-    res.plan_writes_per_sec = (a.plan_writes - b.plan_writes)::double precision / sec;
-    res.plan_user_time_per_sec = (a.plan_user_time - b.plan_user_time)::double precision / sec;
-    res.plan_system_time_per_sec = (a.plan_system_time - b.plan_system_time)::double precision / sec;
-    res.plan_minflts_per_sec = (a.plan_minflts - b.plan_minflts)::double precision / sec;
-    res.plan_majflts_per_sec = (a.plan_majflts - b.plan_majflts)::double precision / sec;
-    res.plan_nswaps_per_sec = (a.plan_nswaps - b.plan_nswaps)::double precision / sec;
-    res.plan_msgsnds_per_sec = (a.plan_msgsnds - b.plan_msgsnds)::double precision / sec;
-    res.plan_msgrcvs_per_sec = (a.plan_msgrcvs - b.plan_msgrcvs)::double precision / sec;
-    res.plan_nsignals_per_sec = (a.plan_nsignals - b.plan_nsignals)::double precision / sec;
-    res.plan_nvcsws_per_sec = (a.plan_nvcsws - b.plan_nvcsws)::double precision / sec;
-    res.plan_nivcsws_per_sec = (a.plan_nivcsws - b.plan_nivcsws)::double precision / sec;
-    res.exec_reads_per_sec = (a.exec_reads - b.exec_reads)::double precision / sec;
-    res.exec_writes_per_sec = (a.exec_writes - b.exec_writes)::double precision / sec;
-    res.exec_user_time_per_sec = (a.exec_user_time - b.exec_user_time)::double precision / sec;
-    res.exec_system_time_per_sec = (a.exec_system_time - b.exec_system_time)::double precision / sec;
-    res.exec_minflts_per_sec = (a.exec_minflts - b.exec_minflts)::double precision / sec;
-    res.exec_majflts_per_sec = (a.exec_majflts - b.exec_majflts)::double precision / sec;
-    res.exec_nswaps_per_sec = (a.exec_nswaps - b.exec_nswaps)::double precision / sec;
-    res.exec_msgsnds_per_sec = (a.exec_msgsnds - b.exec_msgsnds)::double precision / sec;
-    res.exec_msgrcvs_per_sec = (a.exec_msgrcvs - b.exec_msgrcvs)::double precision / sec;
-    res.exec_nsignals_per_sec = (a.exec_nsignals - b.exec_nsignals)::double precision / sec;
-    res.exec_nvcsws_per_sec = (a.exec_nvcsws - b.exec_nvcsws)::double precision / sec;
-    res.exec_nivcsws_per_sec = (a.exec_nivcsws - b.exec_nivcsws)::double precision / sec;
-
-    return res;
-END;
-$_$
-LANGUAGE plpgsql IMMUTABLE STRICT;
-
-CREATE OPERATOR @extschema@./ (
-    PROCEDURE = @extschema@.powa_kcache_history_div,
-    LEFTARG = @extschema@.powa_kcache_history_record,
-    RIGHTARG = @extschema@.powa_kcache_history_record
-);
-
-/* end of pg_stat_kcache operator support */
-
 CREATE TABLE @extschema@.powa_kcache_metrics (
     srvid integer NOT NULL,
     coalesce_range tstzrange NOT NULL,
@@ -3047,15 +2335,6 @@ CREATE TYPE @extschema@.qual_values AS (
     mean_err_estimate_num double precision
 );
 
-CREATE TYPE @extschema@.powa_qualstats_history_record AS (
-  ts timestamptz,
-  occurences bigint,
-  execution_count bigint,
-  nbfiltered bigint,
-  mean_err_estimate_ratio double precision,
-  mean_err_estimate_num double precision
-);
-
 CREATE UNLOGGED TABLE @extschema@.powa_qualstats_src_tmp (
     srvid integer NOT NULL,
     ts timestamp with time zone NOT NULL,
@@ -3072,84 +2351,6 @@ CREATE UNLOGGED TABLE @extschema@.powa_qualstats_src_tmp (
     constvalues varchar[] NOT NULL,
     quals @extschema@.qual_type[] NOT NULL
 );
-
-/* pg_qualstats operator support */
-CREATE TYPE @extschema@.powa_qualstats_history_diff AS (
-    intvl interval,
-    occurences bigint,
-    execution_count bigint,
-    nbfiltered bigint,
-    mean_err_estimate_ratio double precision,
-    mean_err_estimate_num double precision
-);
-
-CREATE OR REPLACE FUNCTION @extschema@.powa_qualstats_history_mi(
-    a @extschema@.powa_qualstats_history_record,
-    b @extschema@.powa_qualstats_history_record)
-RETURNS @extschema@.powa_qualstats_history_diff AS
-$_$
-DECLARE
-    res @extschema@.powa_qualstats_history_diff;
-BEGIN
-    res.intvl = a.ts - b.ts;
-    res.occurences = a.occurences - b.occurences;
-    res.execution_count = a.execution_count - b.execution_count;
-    res.nbfiltered = a.nbfiltered - b.nbfiltered;
-    res.mean_err_estimate_ratio = a.mean_err_estimate_ratio - b.mean_err_estimate_ratio;
-    res.mean_err_estimate_num = a.mean_err_estimate_num - b.mean_err_estimate_num;
-
-    return res;
-END;
-$_$
-LANGUAGE plpgsql IMMUTABLE STRICT;
-
-CREATE OPERATOR @extschema@.- (
-    PROCEDURE = @extschema@.powa_qualstats_history_mi,
-    LEFTARG = @extschema@.powa_qualstats_history_record,
-    RIGHTARG = @extschema@.powa_qualstats_history_record
-);
-
-CREATE TYPE @extschema@.powa_qualstats_history_rate AS (
-    sec integer,
-    occurences_per_sec double precision,
-    execution_count_per_sec double precision,
-    nbfiltered_per_sec double precision,
-    mean_err_estimate_ratio double precision,
-    mean_err_estimate_num double precision
-);
-
-CREATE OR REPLACE FUNCTION @extschema@.powa_qualstats_history_div(
-    a @extschema@.powa_qualstats_history_record,
-    b @extschema@.powa_qualstats_history_record)
-RETURNS @extschema@.powa_qualstats_history_rate AS
-$_$
-DECLARE
-    res @extschema@.powa_qualstats_history_rate;
-    sec integer;
-BEGIN
-    res.sec = extract(EPOCH FROM (a.ts - b.ts));
-    IF res.sec = 0 THEN
-        sec = 1;
-    ELSE
-        sec = res.sec;
-    END IF;
-    res.occurences_per_sec = (a.occurences - b.occurences)::double precision / sec;
-    res.execution_count_per_sec = (a.execution_count - b.execution_count)::double precision / sec;
-    res.nbfiltered_per_sec = (a.nbfiltered - b.nbfiltered)::double precision / sec;
-    res.mean_err_estimate_ratio = (a.mean_err_estimate_ratio - b.mean_err_estimate_ratio)::double precision / sec;
-    res.mean_err_estimate_num = (a.mean_err_estimate_num - b.mean_err_estimate_num)::double precision / sec;
-
-    return res;
-END;
-$_$
-LANGUAGE plpgsql IMMUTABLE STRICT;
-
-CREATE OPERATOR @extschema@./ (
-    PROCEDURE = @extschema@.powa_qualstats_history_div,
-    LEFTARG = @extschema@.powa_qualstats_history_record,
-    RIGHTARG = @extschema@.powa_qualstats_history_record
-);
-/* end of pg_qualstats operator support */
 
 CREATE TABLE @extschema@.powa_qualstats_quals (
     srvid integer NOT NULL,
@@ -3245,74 +2446,6 @@ CREATE UNLOGGED TABLE @extschema@.powa_wait_sampling_src_tmp (
     queryid bigint NOT NULL,
     count numeric NOT NULL
 );
-
-CREATE TYPE @extschema@.powa_wait_sampling_history_record AS (
-    ts timestamptz,
-    count bigint
-);
-
-/* pg_wait_sampling operator support */
-CREATE TYPE @extschema@.powa_wait_sampling_history_diff AS (
-    intvl interval,
-    count bigint
-);
-
-CREATE OR REPLACE FUNCTION @extschema@.powa_wait_sampling_history_mi(
-    a @extschema@.powa_wait_sampling_history_record,
-    b @extschema@.powa_wait_sampling_history_record)
-RETURNS @extschema@.powa_wait_sampling_history_diff AS
-$_$
-DECLARE
-    res @extschema@.powa_wait_sampling_history_diff;
-BEGIN
-    res.intvl = a.ts - b.ts;
-    res.count = a.count - b.count;
-
-    return res;
-END;
-$_$
-LANGUAGE plpgsql IMMUTABLE STRICT;
-
-CREATE OPERATOR @extschema@.- (
-    PROCEDURE = @extschema@.powa_wait_sampling_history_mi,
-    LEFTARG = @extschema@.powa_wait_sampling_history_record,
-    RIGHTARG = @extschema@.powa_wait_sampling_history_record
-);
-
-CREATE TYPE @extschema@.powa_wait_sampling_history_rate AS (
-    sec integer,
-    count_per_sec double precision
-);
-
-CREATE OR REPLACE FUNCTION @extschema@.powa_wait_sampling_history_div(
-    a @extschema@.powa_wait_sampling_history_record,
-    b @extschema@.powa_wait_sampling_history_record)
-RETURNS @extschema@.powa_wait_sampling_history_rate AS
-$_$
-DECLARE
-    res @extschema@.powa_wait_sampling_history_rate;
-    sec integer;
-BEGIN
-    res.sec = extract(EPOCH FROM (a.ts - b.ts));
-    IF res.sec = 0 THEN
-        sec = 1;
-    ELSE
-        sec = res.sec;
-    END IF;
-    res.count_per_sec = (a.count - b.count)::double precision / sec;
-
-    return res;
-END;
-$_$
-LANGUAGE plpgsql IMMUTABLE STRICT;
-
-CREATE OPERATOR @extschema@./ (
-    PROCEDURE = @extschema@.powa_wait_sampling_history_div,
-    LEFTARG = @extschema@.powa_wait_sampling_history_record,
-    RIGHTARG = @extschema@.powa_wait_sampling_history_record
-);
-
-/* end of pg_wait_sampling operator support */
 
 CREATE TABLE @extschema@.powa_wait_sampling_history (
     srvid integer NOT NULL REFERENCES @extschema@.powa_servers(id)
