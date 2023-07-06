@@ -1670,7 +1670,7 @@ CREATE TYPE @extschema@.qual_values AS (
     mean_err_estimate_num double precision
 );
 
-CREATE TYPE @extschema@.powa_qualstats_history_item AS (
+CREATE TYPE @extschema@.powa_qualstats_history_record AS (
   ts timestamptz,
   occurences bigint,
   execution_count bigint,
@@ -1707,8 +1707,8 @@ CREATE TYPE @extschema@.powa_qualstats_history_diff AS (
 );
 
 CREATE OR REPLACE FUNCTION @extschema@.powa_qualstats_history_mi(
-    a @extschema@.powa_qualstats_history_item,
-    b @extschema@.powa_qualstats_history_item)
+    a @extschema@.powa_qualstats_history_record,
+    b @extschema@.powa_qualstats_history_record)
 RETURNS @extschema@.powa_qualstats_history_diff AS
 $_$
 DECLARE
@@ -1728,8 +1728,8 @@ LANGUAGE plpgsql IMMUTABLE STRICT;
 
 CREATE OPERATOR @extschema@.- (
     PROCEDURE = @extschema@.powa_qualstats_history_mi,
-    LEFTARG = @extschema@.powa_qualstats_history_item,
-    RIGHTARG = @extschema@.powa_qualstats_history_item
+    LEFTARG = @extschema@.powa_qualstats_history_record,
+    RIGHTARG = @extschema@.powa_qualstats_history_record
 );
 
 CREATE TYPE @extschema@.powa_qualstats_history_rate AS (
@@ -1742,8 +1742,8 @@ CREATE TYPE @extschema@.powa_qualstats_history_rate AS (
 );
 
 CREATE OR REPLACE FUNCTION @extschema@.powa_qualstats_history_div(
-    a @extschema@.powa_qualstats_history_item,
-    b @extschema@.powa_qualstats_history_item)
+    a @extschema@.powa_qualstats_history_record,
+    b @extschema@.powa_qualstats_history_record)
 RETURNS @extschema@.powa_qualstats_history_rate AS
 $_$
 DECLARE
@@ -1769,8 +1769,8 @@ LANGUAGE plpgsql IMMUTABLE STRICT;
 
 CREATE OPERATOR @extschema@./ (
     PROCEDURE = @extschema@.powa_qualstats_history_div,
-    LEFTARG = @extschema@.powa_qualstats_history_item,
-    RIGHTARG = @extschema@.powa_qualstats_history_item
+    LEFTARG = @extschema@.powa_qualstats_history_record,
+    RIGHTARG = @extschema@.powa_qualstats_history_record
 );
 /* end of pg_qualstats operator support */
 
@@ -1794,9 +1794,9 @@ CREATE TABLE @extschema@.powa_qualstats_quals_history (
     dbid oid,
     userid oid,
     coalesce_range tstzrange,
-    records @extschema@.powa_qualstats_history_item[],
-    mins_in_range @extschema@.powa_qualstats_history_item,
-    maxs_in_range @extschema@.powa_qualstats_history_item,
+    records @extschema@.powa_qualstats_history_record[],
+    mins_in_range @extschema@.powa_qualstats_history_record,
+    maxs_in_range @extschema@.powa_qualstats_history_record,
     FOREIGN KEY (srvid, qualid, queryid, dbid, userid) REFERENCES @extschema@.powa_qualstats_quals (srvid, qualid, queryid, dbid, userid) MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
 );
 
@@ -4198,13 +4198,13 @@ BEGIN
       max(ts),'[]'),
       array_agg((ts, occurences, execution_count, nbfiltered,
             mean_err_estimate_ratio,
-            mean_err_estimate_num)::@extschema@.powa_qualstats_history_item),
+            mean_err_estimate_num)::@extschema@.powa_qualstats_history_record),
     ROW(min(ts), min(occurences), min(execution_count), min(nbfiltered),
         min(mean_err_estimate_ratio), min(mean_err_estimate_num)
-    )::@extschema@.powa_qualstats_history_item,
+    )::@extschema@.powa_qualstats_history_record,
     ROW(max(ts), max(occurences), max(execution_count), max(nbfiltered),
         max(mean_err_estimate_ratio), max(mean_err_estimate_num)
-    )::@extschema@.powa_qualstats_history_item
+    )::@extschema@.powa_qualstats_history_record
     FROM @extschema@.powa_qualstats_quals_history_current
     WHERE srvid = _srvid
     GROUP BY srvid, qualid, queryid, dbid, userid;
