@@ -1869,24 +1869,24 @@ CREATE UNLOGGED TABLE @extschema@.powa_wait_sampling_src_tmp(
     count numeric NOT NULL
 );
 
-CREATE TYPE @extschema@.wait_sampling_type AS (
+CREATE TYPE @extschema@.powa_wait_sampling_history_record AS (
     ts timestamptz,
     count bigint
 );
 
 /* pg_wait_sampling operator support */
-CREATE TYPE @extschema@.wait_sampling_diff AS (
+CREATE TYPE @extschema@.powa_wait_sampling_history_diff AS (
     intvl interval,
     count bigint
 );
 
-CREATE OR REPLACE FUNCTION @extschema@.wait_sampling_mi(
-    a @extschema@.wait_sampling_type,
-    b @extschema@.wait_sampling_type)
-RETURNS @extschema@.wait_sampling_diff AS
+CREATE OR REPLACE FUNCTION @extschema@.powa_wait_sampling_history_mi(
+    a @extschema@.powa_wait_sampling_history_record,
+    b @extschema@.powa_wait_sampling_history_record)
+RETURNS @extschema@.powa_wait_sampling_history_diff AS
 $_$
 DECLARE
-    res @extschema@.wait_sampling_diff;
+    res @extschema@.powa_wait_sampling_history_diff;
 BEGIN
     res.intvl = a.ts - b.ts;
     res.count = a.count - b.count;
@@ -1897,23 +1897,23 @@ $_$
 LANGUAGE plpgsql IMMUTABLE STRICT;
 
 CREATE OPERATOR @extschema@.- (
-    PROCEDURE = @extschema@.wait_sampling_mi,
-    LEFTARG = @extschema@.wait_sampling_type,
-    RIGHTARG = @extschema@.wait_sampling_type
+    PROCEDURE = @extschema@.powa_wait_sampling_history_mi,
+    LEFTARG = @extschema@.powa_wait_sampling_history_record,
+    RIGHTARG = @extschema@.powa_wait_sampling_history_record
 );
 
-CREATE TYPE @extschema@.wait_sampling_rate AS (
+CREATE TYPE @extschema@.powa_wait_sampling_history_rate AS (
     sec integer,
     count_per_sec double precision
 );
 
-CREATE OR REPLACE FUNCTION @extschema@.wait_sampling_div(
-    a @extschema@.wait_sampling_type,
-    b @extschema@.wait_sampling_type)
-RETURNS @extschema@.wait_sampling_rate AS
+CREATE OR REPLACE FUNCTION @extschema@.powa_wait_sampling_history_div(
+    a @extschema@.powa_wait_sampling_history_record,
+    b @extschema@.powa_wait_sampling_history_record)
+RETURNS @extschema@.powa_wait_sampling_history_rate AS
 $_$
 DECLARE
-    res @extschema@.wait_sampling_rate;
+    res @extschema@.powa_wait_sampling_history_rate;
     sec integer;
 BEGIN
     res.sec = extract(EPOCH FROM (a.ts - b.ts));
@@ -1930,9 +1930,9 @@ $_$
 LANGUAGE plpgsql IMMUTABLE STRICT;
 
 CREATE OPERATOR @extschema@./ (
-    PROCEDURE = @extschema@.wait_sampling_div,
-    LEFTARG = @extschema@.wait_sampling_type,
-    RIGHTARG = @extschema@.wait_sampling_type
+    PROCEDURE = @extschema@.powa_wait_sampling_history_div,
+    LEFTARG = @extschema@.powa_wait_sampling_history_record,
+    RIGHTARG = @extschema@.powa_wait_sampling_history_record
 );
 
 /* end of pg_wait_sampling operator support */
@@ -1945,9 +1945,9 @@ CREATE TABLE @extschema@.powa_wait_sampling_history (
     dbid oid NOT NULL,
     event_type text NOT NULL,
     event text NOT NULL,
-    records @extschema@.wait_sampling_type[] NOT NULL,
-    mins_in_range @extschema@.wait_sampling_type NOT NULL,
-    maxs_in_range @extschema@.wait_sampling_type NOT NULL,
+    records @extschema@.powa_wait_sampling_history_record[] NOT NULL,
+    mins_in_range @extschema@.powa_wait_sampling_history_record NOT NULL,
+    maxs_in_range @extschema@.powa_wait_sampling_history_record NOT NULL,
     PRIMARY KEY (srvid, coalesce_range, queryid, dbid, event_type, event)
 );
 
@@ -1960,9 +1960,9 @@ CREATE TABLE @extschema@.powa_wait_sampling_history_db (
     dbid oid NOT NULL,
     event_type text NOT NULL,
     event text NOT NULL,
-    records @extschema@.wait_sampling_type[] NOT NULL,
-    mins_in_range @extschema@.wait_sampling_type NOT NULL,
-    maxs_in_range @extschema@.wait_sampling_type NOT NULL,
+    records @extschema@.powa_wait_sampling_history_record[] NOT NULL,
+    mins_in_range @extschema@.powa_wait_sampling_history_record NOT NULL,
+    maxs_in_range @extschema@.powa_wait_sampling_history_record NOT NULL,
     PRIMARY KEY (srvid, coalesce_range, dbid, event_type, event)
 );
 
@@ -1975,7 +1975,7 @@ CREATE TABLE @extschema@.powa_wait_sampling_history_current (
     dbid oid NOT NULL,
     event_type text NOT NULL,
     event text NOT NULL,
-    record @extschema@.wait_sampling_type NOT NULL
+    record @extschema@.powa_wait_sampling_history_record NOT NULL
 );
 CREATE INDEX ON @extschema@.powa_wait_sampling_history_current(srvid);
 
@@ -1985,7 +1985,7 @@ CREATE TABLE @extschema@.powa_wait_sampling_history_current_db (
     dbid oid NOT NULL,
     event_type text NOT NULL,
     event text NOT NULL,
-    record @extschema@.wait_sampling_type NOT NULL
+    record @extschema@.powa_wait_sampling_history_record NOT NULL
 );
 CREATE INDEX ON @extschema@.powa_wait_sampling_history_current_db(srvid);
 
@@ -4457,14 +4457,16 @@ BEGIN
     by_query AS (
         INSERT INTO @extschema@.powa_wait_sampling_history_current (srvid, queryid, dbid,
                 event_type, event, record)
-            SELECT _srvid, queryid, dbid, event_type, event, (ts, count)::@extschema@.wait_sampling_type
+            SELECT _srvid, queryid, dbid, event_type, event,
+                (ts, count)::@extschema@.powa_wait_sampling_history_record
             FROM capture
     ),
 
     by_database AS (
         INSERT INTO @extschema@.powa_wait_sampling_history_current_db (srvid, dbid,
                 event_type, event, record)
-            SELECT _srvid AS srvid, dbid, event_type, event, (ts, sum(count))::@extschema@.wait_sampling_type
+            SELECT _srvid AS srvid, dbid, event_type, event,
+                (ts, sum(count))::@extschema@.powa_wait_sampling_history_record
             FROM capture
             GROUP BY srvid, ts, dbid, event_type, event
     )
@@ -4504,9 +4506,9 @@ BEGIN
         SELECT tstzrange(min((record).ts), max((record).ts),'[]'),
             srvid, queryid, dbid, event_type, event, array_agg(record),
         ROW(min((record).ts),
-            min((record).count))::@extschema@.wait_sampling_type,
+            min((record).count))::@extschema@.powa_wait_sampling_history_record,
         ROW(max((record).ts),
-            max((record).count))::@extschema@.wait_sampling_type
+            max((record).count))::@extschema@.powa_wait_sampling_history_record
         FROM @extschema@.powa_wait_sampling_history_current
         WHERE srvid = _srvid
         GROUP BY srvid, queryid, dbid, event_type, event;
@@ -4523,9 +4525,9 @@ BEGIN
         SELECT tstzrange(min((record).ts), max((record).ts),'[]'), srvid, dbid,
             event_type, event, array_agg(record),
         ROW(min((record).ts),
-            min((record).count))::@extschema@.wait_sampling_type,
+            min((record).count))::@extschema@.powa_wait_sampling_history_record,
         ROW(max((record).ts),
-            max((record).count))::@extschema@.wait_sampling_type
+            max((record).count))::@extschema@.powa_wait_sampling_history_record
         FROM @extschema@.powa_wait_sampling_history_current_db
         WHERE srvid = _srvid
         GROUP BY srvid, dbid, event_type, event;
