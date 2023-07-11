@@ -98,6 +98,10 @@ SELECT * FROM "PoWA".powa_functions ORDER BY srvid, name, operation, function_na
      0 | module    | pg_database        | snapshot  | f        | powa_catalog_database_snapshot | powa_catalog_database_src |                                            | t       |      100
      0 | module    | pg_role            | reset     | f        | powa_catalog_role_reset        |                           |                                            | t       |      100
      0 | module    | pg_role            | snapshot  | f        | powa_catalog_role_snapshot     | powa_catalog_role_src     |                                            | t       |      100
+     0 | module    | pg_stat_activity   | aggregate | f        | powa_stat_activity_aggregate   |                           |                                            | t       |      100
+     0 | module    | pg_stat_activity   | purge     | f        | powa_stat_activity_purge       |                           |                                            | t       |      100
+     0 | module    | pg_stat_activity   | reset     | f        | powa_stat_activity_reset       |                           |                                            | t       |      100
+     0 | module    | pg_stat_activity   | snapshot  | f        | powa_stat_activity_snapshot    | powa_stat_activity_src    |                                            | t       |      100
      0 | module    | pg_stat_bgwriter   | aggregate | f        | powa_stat_bgwriter_aggregate   |                           |                                            | t       |      100
      0 | module    | pg_stat_bgwriter   | purge     | f        | powa_stat_bgwriter_purge       |                           |                                            | t       |      100
      0 | module    | pg_stat_bgwriter   | reset     | f        | powa_stat_bgwriter_reset       |                           |                                            | t       |      100
@@ -116,6 +120,10 @@ SELECT * FROM "PoWA".powa_functions ORDER BY srvid, name, operation, function_na
      1 | extension | pg_qualstats       | snapshot  | f        | powa_qualstats_snapshot        | powa_qualstats_src        | SELECT {pg_qualstats}.pg_qualstats_reset() | t       |       10
      1 | module    | pg_role            | reset     | f        | powa_catalog_role_reset        |                           |                                            | t       |      100
      1 | module    | pg_role            | snapshot  | f        | powa_catalog_role_snapshot     | powa_catalog_role_src     |                                            | t       |      100
+     1 | module    | pg_stat_activity   | aggregate | f        | powa_stat_activity_aggregate   |                           |                                            | t       |      100
+     1 | module    | pg_stat_activity   | purge     | f        | powa_stat_activity_purge       |                           |                                            | t       |      100
+     1 | module    | pg_stat_activity   | reset     | f        | powa_stat_activity_reset       |                           |                                            | t       |      100
+     1 | module    | pg_stat_activity   | snapshot  | f        | powa_stat_activity_snapshot    | powa_stat_activity_src    |                                            | t       |      100
      1 | module    | pg_stat_bgwriter   | aggregate | f        | powa_stat_bgwriter_aggregate   |                           |                                            | t       |      100
      1 | module    | pg_stat_bgwriter   | purge     | f        | powa_stat_bgwriter_purge       |                           |                                            | t       |      100
      1 | module    | pg_stat_bgwriter   | reset     | f        | powa_stat_bgwriter_reset       |                           |                                            | t       |      100
@@ -126,7 +134,7 @@ SELECT * FROM "PoWA".powa_functions ORDER BY srvid, name, operation, function_na
      1 | extension | pg_stat_statements | reset     | f        | powa_statements_reset          |                           |                                            | t       |       10
      1 | extension | pg_stat_statements | snapshot  | f        | powa_databases_snapshot        | powa_databases_src        |                                            | t       |       -3
      1 | extension | pg_stat_statements | snapshot  | f        | powa_statements_snapshot       | powa_statements_src       |                                            | t       |       -2
-(32 rows)
+(40 rows)
 
 SELECT * FROM "PoWA".powa_activate_extension(1, 'pg_stat_kcache');
  powa_activate_extension 
@@ -148,6 +156,10 @@ SELECT * FROM "PoWA".powa_functions ORDER BY srvid, name, operation, function_na
      0 | module    | pg_database        | snapshot  | f        | powa_catalog_database_snapshot | powa_catalog_database_src |                                            | t       |      100
      0 | module    | pg_role            | reset     | f        | powa_catalog_role_reset        |                           |                                            | t       |      100
      0 | module    | pg_role            | snapshot  | f        | powa_catalog_role_snapshot     | powa_catalog_role_src     |                                            | t       |      100
+     0 | module    | pg_stat_activity   | aggregate | f        | powa_stat_activity_aggregate   |                           |                                            | t       |      100
+     0 | module    | pg_stat_activity   | purge     | f        | powa_stat_activity_purge       |                           |                                            | t       |      100
+     0 | module    | pg_stat_activity   | reset     | f        | powa_stat_activity_reset       |                           |                                            | t       |      100
+     0 | module    | pg_stat_activity   | snapshot  | f        | powa_stat_activity_snapshot    | powa_stat_activity_src    |                                            | t       |      100
      0 | module    | pg_stat_bgwriter   | aggregate | f        | powa_stat_bgwriter_aggregate   |                           |                                            | t       |      100
      0 | module    | pg_stat_bgwriter   | purge     | f        | powa_stat_bgwriter_purge       |                           |                                            | t       |      100
      0 | module    | pg_stat_bgwriter   | reset     | f        | powa_stat_bgwriter_reset       |                           |                                            | t       |      100
@@ -166,6 +178,10 @@ SELECT * FROM "PoWA".powa_functions ORDER BY srvid, name, operation, function_na
      1 | extension | pg_qualstats       | snapshot  | f        | powa_qualstats_snapshot        | powa_qualstats_src        | SELECT {pg_qualstats}.pg_qualstats_reset() | t       |       10
      1 | module    | pg_role            | reset     | f        | powa_catalog_role_reset        |                           |                                            | t       |      100
      1 | module    | pg_role            | snapshot  | f        | powa_catalog_role_snapshot     | powa_catalog_role_src     |                                            | t       |      100
+     1 | module    | pg_stat_activity   | aggregate | f        | powa_stat_activity_aggregate   |                           |                                            | t       |      100
+     1 | module    | pg_stat_activity   | purge     | f        | powa_stat_activity_purge       |                           |                                            | t       |      100
+     1 | module    | pg_stat_activity   | reset     | f        | powa_stat_activity_reset       |                           |                                            | t       |      100
+     1 | module    | pg_stat_activity   | snapshot  | f        | powa_stat_activity_snapshot    | powa_stat_activity_src    |                                            | t       |      100
      1 | module    | pg_stat_bgwriter   | aggregate | f        | powa_stat_bgwriter_aggregate   |                           |                                            | t       |      100
      1 | module    | pg_stat_bgwriter   | purge     | f        | powa_stat_bgwriter_purge       |                           |                                            | t       |      100
      1 | module    | pg_stat_bgwriter   | reset     | f        | powa_stat_bgwriter_reset       |                           |                                            | t       |      100
@@ -180,7 +196,7 @@ SELECT * FROM "PoWA".powa_functions ORDER BY srvid, name, operation, function_na
      1 | extension | pg_stat_statements | reset     | f        | powa_statements_reset          |                           |                                            | t       |       10
      1 | extension | pg_stat_statements | snapshot  | f        | powa_databases_snapshot        | powa_databases_src        |                                            | t       |       -3
      1 | extension | pg_stat_statements | snapshot  | f        | powa_statements_snapshot       | powa_statements_src       |                                            | t       |       -2
-(36 rows)
+(44 rows)
 
 SELECT * FROM "PoWA".powa_deactivate_extension(1, 'pg_stat_kcache');
  powa_deactivate_extension 
@@ -201,6 +217,10 @@ SELECT * FROM "PoWA".powa_functions ORDER BY srvid, name, operation, function_na
      0 | module    | pg_database        | snapshot  | f        | powa_catalog_database_snapshot | powa_catalog_database_src |                                            | t       |      100
      0 | module    | pg_role            | reset     | f        | powa_catalog_role_reset        |                           |                                            | t       |      100
      0 | module    | pg_role            | snapshot  | f        | powa_catalog_role_snapshot     | powa_catalog_role_src     |                                            | t       |      100
+     0 | module    | pg_stat_activity   | aggregate | f        | powa_stat_activity_aggregate   |                           |                                            | t       |      100
+     0 | module    | pg_stat_activity   | purge     | f        | powa_stat_activity_purge       |                           |                                            | t       |      100
+     0 | module    | pg_stat_activity   | reset     | f        | powa_stat_activity_reset       |                           |                                            | t       |      100
+     0 | module    | pg_stat_activity   | snapshot  | f        | powa_stat_activity_snapshot    | powa_stat_activity_src    |                                            | t       |      100
      0 | module    | pg_stat_bgwriter   | aggregate | f        | powa_stat_bgwriter_aggregate   |                           |                                            | t       |      100
      0 | module    | pg_stat_bgwriter   | purge     | f        | powa_stat_bgwriter_purge       |                           |                                            | t       |      100
      0 | module    | pg_stat_bgwriter   | reset     | f        | powa_stat_bgwriter_reset       |                           |                                            | t       |      100
@@ -219,6 +239,10 @@ SELECT * FROM "PoWA".powa_functions ORDER BY srvid, name, operation, function_na
      1 | extension | pg_qualstats       | snapshot  | f        | powa_qualstats_snapshot        | powa_qualstats_src        | SELECT {pg_qualstats}.pg_qualstats_reset() | t       |       10
      1 | module    | pg_role            | reset     | f        | powa_catalog_role_reset        |                           |                                            | t       |      100
      1 | module    | pg_role            | snapshot  | f        | powa_catalog_role_snapshot     | powa_catalog_role_src     |                                            | t       |      100
+     1 | module    | pg_stat_activity   | aggregate | f        | powa_stat_activity_aggregate   |                           |                                            | t       |      100
+     1 | module    | pg_stat_activity   | purge     | f        | powa_stat_activity_purge       |                           |                                            | t       |      100
+     1 | module    | pg_stat_activity   | reset     | f        | powa_stat_activity_reset       |                           |                                            | t       |      100
+     1 | module    | pg_stat_activity   | snapshot  | f        | powa_stat_activity_snapshot    | powa_stat_activity_src    |                                            | t       |      100
      1 | module    | pg_stat_bgwriter   | aggregate | f        | powa_stat_bgwriter_aggregate   |                           |                                            | t       |      100
      1 | module    | pg_stat_bgwriter   | purge     | f        | powa_stat_bgwriter_purge       |                           |                                            | t       |      100
      1 | module    | pg_stat_bgwriter   | reset     | f        | powa_stat_bgwriter_reset       |                           |                                            | t       |      100
@@ -233,7 +257,7 @@ SELECT * FROM "PoWA".powa_functions ORDER BY srvid, name, operation, function_na
      1 | extension | pg_stat_statements | reset     | f        | powa_statements_reset          |                           |                                            | t       |       10
      1 | extension | pg_stat_statements | snapshot  | f        | powa_databases_snapshot        | powa_databases_src        |                                            | t       |       -3
      1 | extension | pg_stat_statements | snapshot  | f        | powa_statements_snapshot       | powa_statements_src       |                                            | t       |       -2
-(36 rows)
+(44 rows)
 
 SELECT alias FROM "PoWA".powa_servers WHERE id = 1;
  alias 

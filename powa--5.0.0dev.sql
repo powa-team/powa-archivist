@@ -963,7 +963,8 @@ AS '$libdir/powa', 'powa_stat_all_rel';
 CREATE FUNCTION @extschema@.powa_generic_datatype_setup(
     _datasource text,
     _cols text[],
-    _extra jsonb DEFAULT '{}'
+    _extra jsonb DEFAULT '{}',
+    _need_operators boolean default true
 )
 RETURNS void AS
 $$
@@ -978,6 +979,7 @@ DECLARE
     v_kind text;
     c_no_agg text[];
     v_has_no_agg_col bool;
+    v_has_no_minmax_col bool;
 BEGIN
     IF quote_ident(_datasource) != _datasource THEN
         RAISE EXCEPTION '% require quoting, which is not supported',
@@ -993,7 +995,10 @@ BEGIN
     -- some specific datatypes.  For those we need to create a *_history_db
     -- version datatype without such columns, as we can't do a per-db
     -- aggregation of such data.
+    -- Similarly, we need to create a specific datatype for the min/max
+    -- aggregated records for datatypes that don't support min/max.
     v_has_no_agg_col := false;
+    v_has_no_minmax_col := false;
     FOREACH v_prefix IN ARRAY ARRAY['_history', '_history_db'] LOOP
         -- we only need _db version of the infrastructure if we skipped some
         -- columns
@@ -1024,16 +1029,39 @@ ts timestamp with time zone',
             -- datasources should only use a few of native system types
             IF v_coltype NOT IN ('timestamp with time zone', 'oid',  'bigint',
                                  'integer', 'numeric', 'double precision',
-                                 'text')
+                                 'text', 'inet', 'xid')
             THEN
                 RAISE EXCEPTION 'invalid data type % for col %.%',
                                 v_coltype, _datasource, v_colname;
+            END IF;
+
+            IF v_coltype = 'xid' THEN
+                v_has_no_minmax_col := true;
             END IF;
 
             v_sql := v_sql || ',' || chr(10) || v_colname || ' ' || v_coltype;
         END LOOP;
         v_sql := v_sql || ')';
         EXECUTE v_sql;
+
+        -- Create a specific min/max record if needed
+        IF v_prefix = '_history' AND v_has_no_minmax_col THEN
+            v_sql := format('CREATE TYPE @extschema@.%I AS (
+ts timestamp with time zone',
+                            v_record_name || '_minmax');
+            FOR i IN 1..array_upper(_cols, 1) LOOP
+                v_colname := _cols[i][1];
+                v_coltype := _cols[i][2];
+
+                CONTINUE WHEN v_coltype = 'xid';
+
+                v_sql := v_sql || ',' || chr(10) || v_colname || ' ' || v_coltype;
+            END LOOP;
+            v_sql := v_sql || ')';
+            EXECUTE v_sql;
+        END IF;
+
+        CONTINUE WHEN NOT _need_operators;
 
         -- add a *history_rate and a *history_diff type, and remember if we saw
         -- (and skipped) any timestamptz column
@@ -1169,7 +1197,9 @@ END;
 $$ LANGUAGE plpgsql; /* end of powa_generic_datatype_setup */
 
 CREATE FUNCTION @extschema@.powa_generic_module_setup(_pg_module text,
-                                                      _cols text[])
+                                                      _cols text[],
+                                                      _nullable text[] DEFAULT '{}',
+                                                      _need_operators boolean default true)
 RETURNS void AS
 $$
 DECLARE
@@ -1180,6 +1210,9 @@ DECLARE
     v_colname text;
     v_coltype text;
     v_kind text;
+    v_null text;
+    v_has_no_minmax_col bool;
+    v_suffix text;
 BEGIN
     IF quote_ident(_pg_module) != _pg_module THEN
         RAISE EXCEPTION '% require quoting, which is not supported',
@@ -1201,16 +1234,22 @@ BEGIN
         (_pg_module, 'purge',     v_module || '_purge',     NULL),
         (_pg_module, 'reset',     v_module || '_reset',     NULL);
 
-    -- create the underlying record datatype(s) and operators
-    EXECUTE @extschema@.powa_generic_datatype_setup(v_module, _cols);
+    -- create the underlying record datatype(s) and operators if needed
+    EXECUTE @extschema@.powa_generic_datatype_setup(v_module, _cols,
+                                                    _need_operators => _need_operators);
     -- create the *_src_tmp unlogged table
     v_sql := format('CREATE UNLOGGED TABLE @extschema@.%I (
     srvid integer NOT NULL,
     ts timestamp with time zone NOT NULL',
                     v_module || '_src_tmp');
+    v_has_no_minmax_col := false;
     FOR i IN 1..array_upper(_cols, 1) LOOP
         v_colname := _cols[i][1];
         v_coltype := _cols[i][2];
+
+        IF v_coltype = 'xid' THEN
+            v_has_no_minmax_col := true;
+        END IF;
 
         -- as this is the first iteration over the columns, make sure that none
         -- of them require quoting
@@ -1222,31 +1261,48 @@ BEGIN
         -- datasources should only use a few of native system types
         IF v_coltype NOT IN ('timestamp with time zone', 'oid',  'bigint',
                              'integer', 'numeric', 'double precision',
-                             'text')
+                             'text', 'inet', 'xid')
         THEN
             RAISE EXCEPTION 'invalid data type % for col %.%',
                             v_coltype, v_module, v_colname;
         END IF;
 
-        v_sql := v_sql || ',' || chr(10) || format('    %I %s NOT NULL',
-                                                   v_colname, v_coltype);
+        IF v_colname = ANY (_nullable) THEN
+            _nullable := array_remove(_nullable, v_colname);
+            v_null := '';
+        ELSE
+            v_null := ' NOT NULL';
+        END IF;
+        v_sql := v_sql || ',' || chr(10) || format('    %I %s%s',
+                                                   v_colname, v_coltype,
+                                                   v_null);
     END LOOP;
+
+    IF array_upper(_nullable, 1) IS NOT NULL THEN
+        RAISE EXCEPTION 'Columns % declared as nullable, but not found in the '
+                        'list of columns', _nullable;
+    END IF;
+
     v_sql := v_sql || ')';
     EXECUTE v_sql;
 
     -- create the *_history table and its index
+    v_suffix := v_module || '_history_record';
+    IF v_has_no_minmax_col THEN
+        v_suffix := v_suffix || '_minmax';
+    END IF;
     v_sql := format('CREATE TABLE @extschema@.%1$I (
     srvid integer NOT NULL,
     coalesce_range tstzrange NOT NULL,
     records @extschema@.%2$I[] NOT NULL,
-    mins_in_range @extschema@.%2$I NOT NULL,
-    maxs_in_range @extschema@.%2$I NOT NULL,
+    mins_in_range @extschema@.%3$I NOT NULL,
+    maxs_in_range @extschema@.%3$I NOT NULL,
     FOREIGN KEY (srvid) REFERENCES @extschema@.powa_servers(id)
       MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
 );
-CREATE INDEX %3$I ON @extschema@.%1$I USING gist(srvid, coalesce_range);',
+CREATE INDEX %4$I ON @extschema@.%1$I USING gist(srvid, coalesce_range);',
                     v_module || '_history', v_module || '_history_record',
-                    v_module || '_history_ts');
+                    v_suffix, v_module || '_history_ts');
     EXECUTE v_sql;
 
     -- and the *_history_current table and index
@@ -1342,13 +1398,16 @@ BEGIN
 
         FOR i IN 1..array_upper(_cols, 1) LOOP
             v_colname := _cols[i][1];
+            v_coltype := _cols[i][2];
 
-            v_sql := v_sql || format(',
-                %s((record).%I)', v_kind, v_colname);
+            IF v_coltype != 'xid' THEN
+                v_sql := v_sql || format(',
+                    %s((record).%I)', v_kind, v_colname);
+            END IF;
         END LOOP;
 
         v_sql := v_sql || format(')::@extschema@.%I',
-                                 v_module || '_history_record');
+                                 v_suffix);
     END LOOP;
 
     v_sql := v_sql || format('
@@ -1470,6 +1529,24 @@ $${
 {tidx_blks_read, bigint}, {tidx_blks_hit, bigint}
 }$$);
 
+SELECT @extschema@.powa_generic_module_setup('pg_stat_activity',
+$${
+{cur_txid, xid},
+{datid, oid}, {pid, integer}, {leader_pid, integer}, {usesysid, oid},
+{application_name, text}, {client_addr, inet},
+{backend_start, timestamp with time zone},
+{xact_start, timestamp with time zone},
+{query_start, timestamp with time zone},
+{state_change, timestamp with time zone},
+{state, text}, {backend_xid, xid}, {backend_xmin, xid},
+{query_id, bigint}, {backend_type, text}
+}$$,
+$${
+cur_txid, datid, leader_pid, usesysid, client_addr, xact_start, query_start,
+state_change, state, backend_xid, backend_xmin, query_id, backend_type
+}$$,
+_need_operators => false);
+
 SELECT @extschema@.powa_generic_module_setup('pg_stat_bgwriter',
 $${
 {checkpoints_timed, bigint}, {checkpoints_req, bigint},
@@ -1513,8 +1590,8 @@ $${
 {count, bigint}
 }$$);
 
-DROP FUNCTION @extschema@.powa_generic_datatype_setup(text, text[], jsonb);
-DROP FUNCTION @extschema@.powa_generic_module_setup(text, text[]);
+DROP FUNCTION @extschema@.powa_generic_datatype_setup(text, text[], jsonb, boolean);
+DROP FUNCTION @extschema@.powa_generic_module_setup(text, text[], text[], boolean);
 
 /* pg_catalog import support */
 CREATE UNLOGGED TABLE @extschema@.powa_catalog_class_src_tmp (
@@ -3647,6 +3724,89 @@ BEGIN
     result := true;
 END;
 $PROC$ language plpgsql; /* end of powa_all_tables_snapshot */
+
+CREATE OR REPLACE FUNCTION @extschema@.powa_stat_activity_src(IN _srvid integer,
+    OUT ts timestamp with time zone,
+    OUT cur_txid xid,
+    OUT datid oid,
+    OUT pid integer,
+    OUT leader_pid integer,
+    OUT usesysid oid,
+    OUT application_name text,
+    OUT client_addr inet,
+    OUT backend_start timestamp with time zone,
+    OUT xact_start timestamp with time zone,
+    OUT query_start timestamp with time zone,
+    OUT state_change timestamp with time zone,
+    OUT state text,
+    OUT backend_xid xid,
+    OUT backend_xmin xid,
+    OUT query_id bigint,
+    OUT backend_type text
+) RETURNS SETOF record STABLE AS $PROC$
+DECLARE
+    txid xid;
+BEGIN
+    IF (_srvid = 0) THEN
+        IF pg_catalog.pg_is_in_recovery() THEN
+            txid = NULL;
+        ELSE
+            txid = pg_catalog.txid_current();
+        END IF;
+
+        -- query_id added in pg14
+        IF current_setting('server_version_num')::int >= 140000 THEN
+            RETURN QUERY SELECT now(),
+                txid,
+                s.datid, s.pid, s.leader_pid, s.usesysid,
+                s.application_name, s.client_addr, s.backend_start,
+                s.xact_start,
+                s.query_start, s.state_change, s.state, s.backend_xid,
+                s.backend_xmin, s.query_id, s.backend_type
+            FROM pg_catalog.pg_stat_activity AS s;
+        -- leader_pid added in pg13+
+        ELSIF current_setting('server_version_num')::int >= 130000 THEN
+            RETURN QUERY SELECT now(),
+                txid,
+                s.datid, s.pid, s.leader_pid, s.usesysid,
+                s.application_name, s.client_addr, s.backend_start,
+                s.xact_start,
+                s.query_start, s.state_change, s.state, s.backend_xid,
+                s.backend_xmin, NULL AS query_id, s.backend_type
+            FROM pg_catalog.pg_stat_activity AS s;
+        -- backend_type added in pg10+
+        ELSIF current_setting('server_version_num')::int >= 100000 THEN
+            RETURN QUERY SELECT now(),
+                txid,
+                s.datid, s.pid, NULL AS leader_pid, s.usesysid,
+                s.application_name, s.client_addr, s.backend_start,
+                s.xact_start,
+                s.query_start, s.state_change, s.state, s.backend_xid,
+                s.backend_xmin, NULL AS query_id, s.backend_type
+            FROM pg_catalog.pg_stat_activity AS s;
+        ELSE
+            RETURN QUERY SELECT now(),
+                txid,
+                s.datid, s.pid, NULL AS leader_pid, s.usesysid,
+                s.application_name, s.client_addr, s.backend_start,
+                s.xact_start,
+                s.query_start, s.state_change, s.state, s.backend_xid,
+                s.backend_xmin, NULL AS query_id, NULL AS backend_type
+            FROM pg_catalog.pg_stat_activity AS s;
+        END IF;
+    ELSE
+        RETURN QUERY SELECT s.ts,
+            s.cur_txid,
+            s.datid, s.pid, s.leader_pid, s.usesysid,
+            s.application_name, s.client_addr, s.backend_start,
+            s.xact_start,
+            s.query_start, s.state_change, s.state, s.backend_xid,
+            s.backend_xmin, s.query_id, s.backend_type
+        FROM @extschema@.powa_stat_activity_src_tmp AS s
+        WHERE s.srvid = _srvid;
+    END IF;
+END;
+$PROC$ LANGUAGE plpgsql; /* end of powa_stat_activity_src */
 
 CREATE OR REPLACE FUNCTION @extschema@.powa_stat_bgwriter_src(IN _srvid integer,
     OUT ts timestamp with time zone,
