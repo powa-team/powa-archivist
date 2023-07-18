@@ -135,7 +135,7 @@ ORDER BY db_module COLLATE "C", operation COLLATE "C";
      1 | pg_stat_all_tables     | aggregate | powa_all_tables_aggregate     |         |                                                                                 |                                    | t       |       10
      1 | pg_stat_all_tables     | purge     | powa_all_tables_purge         |         |                                                                                 |                                    | t       |       10
      1 | pg_stat_all_tables     | reset     | powa_all_tables_reset         |         |                                                                                 |                                    | t       |       10
-     1 | pg_stat_all_tables     | snapshot  | powa_all_tables_snapshot      |         | SELECT relid,                                                                  +| "PoWA".powa_all_tables_src_tmp     | t       |       10
+     1 | pg_stat_all_tables     | snapshot  | powa_all_tables_snapshot      |         | SELECT relid, pg_table_size(relid) AS tbl_size,                                +| "PoWA".powa_all_tables_src_tmp     | t       |       10
        |                        |           |                               |         |         seq_scan, NULL AS last_seq_scan, seq_tup_read,                         +|                                    |         | 
        |                        |           |                               |         |         idx_scan, NULL AS last_idx_scan, idx_tup_fetch,                        +|                                    |         | 
        |                        |           |                               |         |         n_tup_ins, n_tup_upd, n_tup_del, n_tup_hot_upd, 0 AS n_tup_newpage_upd,+|                                    |         | 
@@ -158,7 +158,7 @@ SELECT query_source FROM "PoWA".powa_db_functions(1, 120012)
 WHERE db_module = 'pg_stat_all_tables' AND operation = 'snapshot';
                                   query_source                                   
 ---------------------------------------------------------------------------------
- SELECT relid,                                                                  +
+ SELECT relid, pg_table_size(relid) AS tbl_size,                                +
          seq_scan, NULL AS last_seq_scan, seq_tup_read,                         +
          idx_scan, NULL AS last_idx_scan, idx_tup_fetch,                        +
          n_tup_ins, n_tup_upd, n_tup_del, n_tup_hot_upd, 0 AS n_tup_newpage_upd,+

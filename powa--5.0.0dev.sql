@@ -332,7 +332,7 @@ INSERT INTO @extschema@.powa_db_module_src_queries
     (db_module, min_version, added_manually, query_source) VALUES
     -- pg_stat_all_tables
     ('pg_stat_all_tables', 0, false,
-     'SELECT relid,
+     'SELECT relid, pg_table_size(relid) AS tbl_size,
         seq_scan, NULL AS last_seq_scan, seq_tup_read,
         idx_scan, NULL AS last_idx_scan, idx_tup_fetch,
         n_tup_ins, n_tup_upd, n_tup_del, n_tup_hot_upd, 0 AS n_tup_newpage_upd,
@@ -345,7 +345,7 @@ INSERT INTO @extschema@.powa_db_module_src_queries
      JOIN pg_catalog.pg_statio_all_tables sit USING (relid)'),
     -- pg_stat_all_tables pg13+, n_ins_since_vacuum added
     ('pg_stat_all_tables', 130000, false,
-     'SELECT relid,
+     'SELECT relid, pg_table_size(relid) AS tbl_size,
         seq_scan, NULL AS last_seq_scan, seq_tup_read,
         idx_scan, NULL AS last_idx_scan, idx_tup_fetch,
         n_tup_ins, n_tup_upd, n_tup_del, n_tup_hot_upd, 0 AS n_tup_newpage_upd,
@@ -359,7 +359,7 @@ INSERT INTO @extschema@.powa_db_module_src_queries
     -- pg_stat_all_tables pg16+, last_seq_scan, last_idx_scan and
     -- n_tup_newpage_upd added
     ('pg_stat_all_tables', 160000, false,
-     'SELECT relid,
+     'SELECT relid, pg_table_size(relid) AS tbl_size,
         seq_scan,  last_seq_scan, seq_tup_read,
         idx_scan,  last_idx_scan, idx_tup_fetch,
         n_tup_ins, n_tup_upd, n_tup_del, n_tup_hot_upd, n_tup_newpage_upd,
@@ -372,13 +372,15 @@ INSERT INTO @extschema@.powa_db_module_src_queries
      JOIN pg_catalog.pg_statio_all_tables sit USING (relid)'),
     -- pg_stat_all_indexes
     ('pg_stat_all_indexes', 0, false,
-     'SELECT si.relid, indexrelid, idx_scan, NULL AS last_idx_scan,
+     'SELECT si.relid, indexrelid, pg_table_size(indexrelid) AS idx_size,
+        idx_scan, NULL AS last_idx_scan,
         idx_tup_read, idx_tup_fetch, idx_blks_read, idx_blks_hit
       FROM pg_catalog.pg_stat_all_indexes si
       JOIN pg_catalog.pg_statio_all_indexes sit USING (indexrelid)'),
     -- pg_stat_all_indexes pg16+
     ('pg_stat_all_indexes', 160000, false,
-     'SELECT si.relid, indexrelid, idx_scan, last_idx_scan,
+     'SELECT si.relid, indexrelid, pg_table_size(indexrelid) AS idx_size,
+        idx_scan, last_idx_scan,
         idx_tup_read, idx_tup_fetch, idx_blks_read, idx_blks_hit
       FROM pg_catalog.pg_stat_all_indexes si
       JOIN pg_catalog.pg_statio_all_indexes sit USING (indexrelid)'),
@@ -1501,6 +1503,7 @@ $${
 -- pg_statio_all_indexes
 SELECT @extschema@.powa_generic_datatype_setup('powa_all_indexes',
 $${
+{idx_size, bigint},
 {idx_scan, bigint}, {last_idx_scan, timestamp with time zone},
 {idx_tup_read, bigint}, {idx_tup_fetch, bigint},
 {idx_blks_read, bigint}, {idx_blks_hit, bigint}
@@ -1510,6 +1513,7 @@ $${
 -- pg_statio_all_tablees
 SELECT @extschema@.powa_generic_datatype_setup('powa_all_tables',
 $${
+{tbl_size, bigint},
 {seq_scan, bigint}, {last_seq_scan, timestamp with time zone},
 {seq_tup_read, bigint}, {idx_scan, bigint},
 {last_idx_scan, timestamp with time zone},
@@ -1676,6 +1680,7 @@ CREATE UNLOGGED TABLE @extschema@.powa_all_indexes_src_tmp (
     dbid oid NOT NULL,
     relid oid NOT NULL,
     indexrelid oid NOT NULL,
+    idx_size bigint NOT NULL,
     idx_scan bigint,
     last_idx_scan timestamp with time zone,
     idx_tup_read bigint,
@@ -1689,6 +1694,7 @@ CREATE UNLOGGED TABLE @extschema@.powa_all_tables_src_tmp (
     ts  timestamp with time zone NOT NULL,
     dbid oid NOT NULL,
     relid oid NOT NULL,
+    tbl_size bigint NOT NULL,
     seq_scan bigint,
     last_seq_scan timestamp with time zone,
     seq_tup_read bigint,
@@ -3626,7 +3632,9 @@ BEGIN
         INSERT INTO @extschema@.powa_all_indexes_history_current
             (srvid, dbid, relid, indexrelid, record)
             SELECT _srvid, dbid, relid, indexrelid,
-            ROW(ts, idx_scan, last_idx_scan, idx_tup_read, idx_tup_fetch,
+            ROW(ts,
+                idx_size,
+                idx_scan, last_idx_scan, idx_tup_read, idx_tup_fetch,
                 idx_blks_read, idx_blks_hit
             )::@extschema@.powa_all_indexes_history_record AS record
             FROM rel
@@ -3637,6 +3645,7 @@ BEGIN
         (srvid, dbid, record)
             SELECT _srvid AS srvid, dbid,
             ROW(ts,
+                sum(idx_size),
                 sum(idx_scan), sum(idx_tup_read), sum(idx_tup_fetch),
                 sum(idx_blks_read), sum(idx_blks_hit)
             )::@extschema@.powa_all_indexes_history_db_record
@@ -3680,6 +3689,7 @@ BEGIN
             (srvid, dbid, relid, record)
             SELECT _srvid, dbid, relid,
             ROW(ts,
+                tbl_size,
                 seq_scan, last_seq_scan, seq_tup_read, idx_scan,
                 last_idx_scan, n_tup_ins, n_tup_upd, n_tup_del, n_tup_hot_upd,
                 n_tup_newpage_upd, n_liv_tup, n_dead_tup, n_mod_since_analyze,
@@ -3698,6 +3708,7 @@ BEGIN
             (srvid, dbid, record)
             SELECT _srvid AS srvid, dbid,
             ROW(ts,
+                sum(tbl_size),
                 sum(seq_scan), sum(seq_tup_read), sum(idx_scan),
                 sum(n_tup_ins), sum(n_tup_upd), sum(n_tup_del),
                 sum(n_tup_hot_upd), sum(n_tup_newpage_upd), sum(n_liv_tup),
@@ -4445,11 +4456,13 @@ BEGIN
             tstzrange(min((record).ts), max((record).ts),'[]'),
             array_agg(record),
             ROW(min((record).ts),
+                min((record).idx_size),
                 min((record).idx_scan), min((record).last_idx_scan),
                 min((record).idx_tup_read), min((record).idx_tup_fetch),
                 min((record).idx_blks_read), min((record).idx_blks_hit)
             )::@extschema@.powa_all_indexes_history_record,
             ROW(max((record).ts),
+                max((record).idx_size),
                 max((record).idx_scan), max((record).last_idx_scan),
                 max((record).idx_tup_read), max((record).idx_tup_fetch),
                 max((record).idx_blks_read), max((record).idx_blks_hit)
@@ -4471,11 +4484,13 @@ BEGIN
             tstzrange(min((record).ts), max((record).ts),'[]'),
             array_agg(record),
             ROW(min((record).ts),
+                min((record).idx_size),
                 min((record).idx_scan),
                 min((record).idx_tup_read), min((record).idx_tup_fetch),
                 min((record).idx_blks_read), min((record).idx_blks_hit)
             )::@extschema@.powa_all_indexes_history_db_record,
             ROW(max((record).ts),
+                max((record).idx_size),
                 max((record).idx_scan),
                 max((record).idx_tup_read), max((record).idx_tup_fetch),
                 max((record).idx_blks_read), max((record).idx_blks_hit)
@@ -4511,6 +4526,7 @@ BEGIN
             tstzrange(min((record).ts), max((record).ts),'[]'),
             array_agg(record),
             ROW(min((record).ts),
+                min((record).tbl_size),
                 min((record).seq_scan), min((record).last_seq_scan),
                 min((record).seq_tup_read), min((record).idx_scan),
                 min((record).last_idx_scan), min((record).n_tup_ins),
@@ -4529,6 +4545,7 @@ BEGIN
                 min((record).tidx_blks_hit)
             )::@extschema@.powa_all_tables_history_record,
             ROW(max((record).ts),
+                max((record).tbl_size),
                 max((record).seq_scan), max((record).last_seq_scan),
                 max((record).seq_tup_read), max((record).idx_scan),
                 max((record).last_idx_scan), max((record).n_tup_ins),
@@ -4563,6 +4580,7 @@ BEGIN
             tstzrange(min((record).ts), max((record).ts),'[]'),
             array_agg(record),
             ROW(min((record).ts),
+                min((record).tbl_size),
                 min((record).seq_scan), min((record).seq_tup_read),
                 min((record).idx_scan), min((record).n_tup_ins),
                 min((record).n_tup_upd), min((record).n_tup_del),
@@ -4578,6 +4596,7 @@ BEGIN
                 min((record).tidx_blks_hit)
             )::@extschema@.powa_all_tables_history_db_record,
             ROW(max((record).ts),
+                max((record).tbl_size),
                 max((record).seq_scan), max((record).seq_tup_read),
                 max((record).idx_scan), max((record).n_tup_ins),
                 max((record).n_tup_upd), max((record).n_tup_del),
