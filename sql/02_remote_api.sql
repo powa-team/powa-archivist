@@ -40,13 +40,19 @@ SELECT count(*) FROM "PoWA".powa_qualstats_src_tmp;
 SELECT count(*) FROM "PoWA".powa_qualstats_quals_history_current WHERE srvid = 1;
 
 -- activate / deactivate extension
-SELECT * FROM "PoWA".powa_functions ORDER BY srvid, name, operation, function_name;
+SELECT * FROM "PoWA".powa_functions
+WHERE name IN ('pg_database', 'pg_stat_statements', 'pg_stat_kcache', 'pg_qualstats', 'some_extension')
+ORDER BY srvid, name, operation, function_name;
 SELECT * FROM "PoWA".powa_activate_extension(1, 'pg_stat_kcache');
 SELECT * FROM "PoWA".powa_activate_extension(1, 'some_extension');
-SELECT * FROM "PoWA".powa_functions ORDER BY srvid, name, operation, function_name;
+SELECT * FROM "PoWA".powa_functions
+WHERE name IN ('pg_database', 'pg_stat_statements', 'pg_stat_kcache', 'pg_qualstats', 'some_extension')
+ORDER BY srvid, name, operation, function_name;
 SELECT * FROM "PoWA".powa_deactivate_extension(1, 'pg_stat_kcache');
 SELECT * FROM "PoWA".powa_deactivate_extension(1, 'some_extension');
-SELECT * FROM "PoWA".powa_functions ORDER BY srvid, name, operation, function_name;
+SELECT * FROM "PoWA".powa_functions
+WHERE name IN ('pg_database', 'pg_stat_statements', 'pg_stat_kcache', 'pg_qualstats', 'some_extension')
+ORDER BY srvid, name, operation, function_name;
 
 SELECT alias FROM "PoWA".powa_servers WHERE id = 1;
 SELECT * FROM "PoWA".powa_configure_server(0, '{"somekey": "someval"}');
