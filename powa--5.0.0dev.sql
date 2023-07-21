@@ -1631,6 +1631,19 @@ state_change, state, backend_xid, backend_xmin, query_id, backend_type
 }$$,
 _need_operators => false);
 
+SELECT @extschema@.powa_generic_module_setup('pg_stat_archiver',
+$${
+{current_wal, text},
+{archived_count, bigint}, {last_archived_wal, text},
+{last_archived_time, timestamp with time zone},
+{failed_count, bigint},
+{last_failed_wal, text}, {last_failed_time, timestamp with time zone}
+}$$,
+$${
+current_wal, last_archived_wal, last_archived_time, last_failed_wal,
+last_failed_time
+}$$);
+
 SELECT @extschema@.powa_generic_module_setup('pg_stat_bgwriter',
 $${
 {checkpoints_timed, bigint}, {checkpoints_req, bigint},
@@ -3898,6 +3911,50 @@ BEGIN
     END IF;
 END;
 $PROC$ LANGUAGE plpgsql; /* end of powa_stat_activity_src */
+
+CREATE OR REPLACE FUNCTION @extschema@.powa_stat_archiver_src(IN _srvid integer,
+    OUT ts timestamp with time zone,
+    OUT current_wal text,
+    OUT archived_count bigint,
+    OUT last_archived_wal text,
+    OUT last_archived_time timestamp with time zone,
+    OUT failed_count bigint,
+    OUT last_failed_wal text,
+    OUT last_failed_time timestamp with time zone
+) RETURNS SETOF record STABLE AS $PROC$
+DECLARE
+    v_current_wal text;
+BEGIN
+    IF (_srvid = 0) THEN
+        -- get the current WAL name if possible
+        IF pg_is_in_recovery() THEN
+            -- there's no reliable way to get either the current WAL offset
+            -- (not exposed for pure WAL-shipping replication), nor the
+            -- underlying WAL file name for a given WAL offset on a standby
+            v_current_wal := NULL;
+        ELSE
+            IF current_setting('server_version_num')::int < 100000 THEN
+                v_current_wal :=  pg_walfile_name(pg_last_wal_receive_lsn());
+            ELSE
+                v_current_wal :=  pg_walfile_name(pg_current_wal_lsn());
+            END IF;
+        END IF;
+
+        RETURN QUERY SELECT now(),
+            v_current_wal,
+            s.archived_count, s.last_archived_wal, s.last_archived_time,
+            s.failed_count, s.last_failed_wal, s.last_failed_time
+        FROM pg_catalog.pg_stat_archiver AS s;
+    ELSE
+        RETURN QUERY SELECT s.ts,
+            s.current_wal,
+            s.archived_count, s.last_archived_wal, s.last_archived_time,
+            s.failed_count, s.last_failed_wal, s.last_failed_time
+        FROM @extschema@.powa_stat_archiver_src_tmp AS s
+        WHERE s.srvid = _srvid;
+    END IF;
+END;
+$PROC$ LANGUAGE plpgsql; /* end of powa_stat_archiver_src */
 
 CREATE OR REPLACE FUNCTION @extschema@.powa_stat_bgwriter_src(IN _srvid integer,
     OUT ts timestamp with time zone,
