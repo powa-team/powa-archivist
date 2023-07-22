@@ -1031,7 +1031,7 @@ ts timestamp with time zone',
             -- datasources should only use a few of native system types
             IF v_coltype NOT IN ('timestamp with time zone', 'oid',  'bigint',
                                  'integer', 'numeric', 'double precision',
-                                 'text', 'inet', 'xid')
+                                 'text', 'inet', 'xid', 'pg_lsn', 'interval')
             THEN
                 RAISE EXCEPTION 'invalid data type % for col %.%',
                                 v_coltype, _datasource, v_colname;
@@ -1301,7 +1301,7 @@ BEGIN
         -- datasources should only use a few of native system types
         IF v_coltype NOT IN ('timestamp with time zone', 'oid',  'bigint',
                              'integer', 'numeric', 'double precision',
-                             'text', 'inet', 'xid')
+                             'text', 'inet', 'xid', 'pg_lsn', 'interval')
         THEN
             RAISE EXCEPTION 'invalid data type % for col %.%',
                             v_coltype, v_module, v_colname;
@@ -1653,6 +1653,23 @@ $${
 {maxwritten_clean, bigint},
 {buffers_backend, bigint}, {buffers_backend_fsync, bigint},
 {buffers_alloc, bigint}
+}$$);
+
+SELECT @extschema@.powa_generic_module_setup('pg_stat_replication',
+$${
+{current_lsn, pg_lsn},
+{pid, integer}, {usename, text}, {application_name, text}, {client_addr, inet},
+{backend_start, timestamp with time zone}, {backend_xmin, xid}, {state, text},
+{sent_lsn, pg_lsn},
+{write_lsn, pg_lsn}, {flush_lsn, pg_lsn}, {replay_lsn, pg_lsn},
+{write_lag, interval}, {flush_lag, interval}, {replay_lag, interval},
+{sync_priority, integer}, {sync_state, text},
+{reply_time, timestamp with time zone}
+}$$,
+$${
+pid, usename, application_name, client_addr, backend_start, backend_xmin,
+state, sent_lsn, write_lsn, flush_lsn, replay_lsn, write_lag, flush_lag,
+replay_lag, sync_priority, sync_state, reply_time
 }$$);
 
 SELECT @extschema@.powa_generic_datatype_setup('powa_kcache',
@@ -3988,6 +4005,69 @@ BEGIN
     END IF;
 END;
 $PROC$ LANGUAGE plpgsql; /* end of powa_stat_bgwriter_src */
+
+CREATE OR REPLACE FUNCTION @extschema@.powa_stat_replication_src(IN _srvid integer,
+    OUT ts timestamp with time zone,
+    OUT current_lsn pg_lsn,
+    OUT pid integer,
+    OUT usename text,
+    OUT application_name text,
+    OUT client_addr inet,
+    OUT backend_start timestamp with time zone,
+    OUT backend_xmin xid,
+    OUT state text,
+    OUT sent_lsn pg_lsn,
+    OUT write_lsn pg_lsn,
+    OUT flush_lsn pg_lsn,
+    OUT replay_lsn pg_lsn,
+    OUT write_lag interval,
+    OUT flush_lag interval,
+    OUT replay_lag interval,
+    OUT sync_priority integer,
+    OUT sync_state text,
+    OUT reply_time timestamp with time zone
+) RETURNS SETOF record STABLE AS $PROC$
+DECLARE
+    v_current_lsn pg_lsn;
+BEGIN
+    IF (_srvid = 0) THEN
+        IF current_setting('server_version_num')::int < 100000 THEN
+            IF pg_is_in_recovery() THEN
+                v_current_lsn := pg_last_xlog_receive_location();
+            ELSE
+                v_current_lsn := pg_current_xlog_location();
+            END IF;
+        ELSE
+            IF pg_is_in_recovery() THEN
+                v_current_lsn := pg_last_wal_receive_lsn();
+            ELSE
+                v_current_lsn := pg_current_wal_lsn();
+            END IF;
+        END IF;
+
+        -- We use a LEFT JOIN on the pg_stat_replication view to make sure that
+        -- we always return at least one (all-NULL) row, so client apps can
+        -- detect when all the replication connections are down.
+        RETURN QUERY SELECT now,
+        v_current_lsn,
+        s.pid, s.usename::text AS usename, s.application_name, s.client_addr,
+        s.backend_start, s.backend_xmin, s.state, s.sent_lsn, s.write_lsn,
+        s.flush_lsn, s.replay_lsn, s.write_lag, s.flush_lag, s.replay_lag,
+        s.sync_priority, s.sync_state, s.reply_time
+        FROM (SELECT now() AS now) n
+        LEFT JOIN pg_catalog.pg_stat_replication AS s ON true;
+    ELSE
+        RETURN QUERY SELECT s.ts,
+        s.current_lsn,
+        s.pid, s.usename, s.application_name, s.client_addr,
+        s.backend_start, s.backend_xmin, s.state, s.sent_lsn, s.write_lsn,
+        s.flush_lsn, s.replay_lsn, s.write_lag, s.flush_lag, s.replay_lag,
+        s.sync_priority, s.sync_state, s.reply_time
+        FROM @extschema@.powa_stat_replication_src_tmp AS s
+        WHERE s.srvid = _srvid;
+    END IF;
+END;
+$PROC$ LANGUAGE plpgsql; /* end of powa_stat_replication_src */
 
 CREATE OR REPLACE FUNCTION @extschema@.powa_catalog_database_src(IN _srvid integer,
     OUT oid oid,
