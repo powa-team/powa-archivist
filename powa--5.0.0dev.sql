@@ -981,6 +981,7 @@ DECLARE
     v_kind text;
     c_no_agg text[];
     v_has_no_agg_col bool;
+    c_no_minmax text[];
     v_has_no_minmax_col bool;
 BEGIN
     IF quote_ident(_datasource) != _datasource THEN
@@ -991,7 +992,10 @@ BEGIN
     -- we don't put any fields for any of those datatypes in the *_history_db
     -- records, as aggregating them per-database or computing a rate wouldn't
     -- make sense
-    c_no_agg = ARRAY['timestamp with time zone', 'timestamptz'];
+    c_no_agg := ARRAY['timestamp with time zone', 'timestamptz'];
+    -- Similarly, don't put any field with datatypes that don't support min/max
+    -- in the mins_in_range / maxs_in_range records
+    c_no_minmax := ARRAY['xid', 'boolean'];
 
     -- we loop over the whole process in case we find some columns with
     -- some specific datatypes.  For those we need to create a *_history_db
@@ -1031,13 +1035,14 @@ ts timestamp with time zone',
             -- datasources should only use a few of native system types
             IF v_coltype NOT IN ('timestamp with time zone', 'oid',  'bigint',
                                  'integer', 'numeric', 'double precision',
-                                 'text', 'inet', 'xid', 'pg_lsn', 'interval')
+                                 'text', 'inet', 'xid', 'pg_lsn', 'interval',
+                                 'boolean')
             THEN
                 RAISE EXCEPTION 'invalid data type % for col %.%',
                                 v_coltype, _datasource, v_colname;
             END IF;
 
-            IF v_coltype = 'xid' THEN
+            IF v_coltype = ANY (c_no_minmax) THEN
                 v_has_no_minmax_col := true;
             END IF;
 
@@ -1055,7 +1060,7 @@ ts timestamp with time zone',
                 v_colname := _cols[i][1];
                 v_coltype := _cols[i][2];
 
-                CONTINUE WHEN v_coltype = 'xid';
+                CONTINUE WHEN v_coltype = ANY (c_no_minmax);
 
                 v_sql := v_sql || ',' || chr(10) || v_colname || ' ' || v_coltype;
             END LOOP;
@@ -1287,7 +1292,7 @@ BEGIN
         v_colname := _counter_cols[i][1];
         v_coltype := _counter_cols[i][2];
 
-        IF v_coltype = 'xid' THEN
+        IF v_coltype IN ('xid', 'boolean') THEN
             v_has_no_minmax_col := true;
         END IF;
 
@@ -1301,7 +1306,8 @@ BEGIN
         -- datasources should only use a few of native system types
         IF v_coltype NOT IN ('timestamp with time zone', 'oid',  'bigint',
                              'integer', 'numeric', 'double precision',
-                             'text', 'inet', 'xid', 'pg_lsn', 'interval')
+                             'text', 'inet', 'xid', 'pg_lsn', 'interval',
+                             'boolean')
         THEN
             RAISE EXCEPTION 'invalid data type % for col %.%',
                             v_coltype, v_module, v_colname;
@@ -1482,7 +1488,7 @@ BEGIN
             v_colname := _counter_cols[i][1];
             v_coltype := _counter_cols[i][2];
 
-            IF v_coltype != 'xid' THEN
+            IF v_coltype NOT IN ('xid', 'boolean') THEN
                 v_sql := v_sql || format(',
                     %s((record).%I)', v_kind, v_colname);
             END IF;
@@ -1612,6 +1618,25 @@ $${
 {toast_blks_read, bigint}, {toast_blks_hit, bigint},
 {tidx_blks_read, bigint}, {tidx_blks_hit, bigint}
 }$$);
+
+SELECT @extschema@.powa_generic_module_setup('pg_replication_slots',
+$${
+{cur_txid, xid}, {current_lsn, pg_lsn},
+{active, boolean}, {active_pid, integer},
+{slot_xmin, xid}, {catalog_xmin, xid}, {restart_lsn, pg_lsn},
+{confirmed_flush_lsn, pg_lsn}, {wal_status, text}, {safe_wal_size, bigint},
+{two_phase, boolean}, {conflicting, boolean}
+}$$,
+$${
+cur_txid, active, active_pid,
+slot_xmin, catalog_xmin, restart_lsn, confirmed_flush_lsn, wal_status,
+safe_wal_size, two_phase, conflicting
+}$$,
+_key_cols => $${
+{slot_name, text}, {plugin, text}, {slot_type, text}, {datoid, oid},
+{temporary, boolean}
+}$$,
+_key_nullable => true);
 
 SELECT @extschema@.powa_generic_module_setup('pg_stat_activity',
 $${
@@ -3845,6 +3870,153 @@ BEGIN
     result := true;
 END;
 $PROC$ language plpgsql; /* end of powa_all_tables_snapshot */
+
+CREATE OR REPLACE FUNCTION @extschema@.powa_replication_slots_src(IN _srvid integer,
+    OUT ts timestamp with time zone,
+    OUT slot_name text,
+    OUT plugin text,
+    OUT slot_type text,
+    OUT datoid oid,
+    OUT temporary boolean,
+    OUT cur_txid xid,
+    OUT current_lsn pg_lsn,
+    OUT active bool,
+    OUT active_pid int,
+    OUT slot_xmin xid,
+    OUT catalog_xmin xid,
+    OUT restart_lsn pg_lsn,
+    OUT confirmed_flush_lsn pg_lsn,
+    OUT wal_status text,
+    OUT safe_wal_size bigint,
+    OUT two_phase boolean,
+    OUT conflicting boolean
+) RETURNS SETOF record STABLE AS $PROC$
+DECLARE
+    v_txid xid;
+    v_current_lsn pg_lsn;
+BEGIN
+    IF (_srvid = 0) THEN
+        IF pg_catalog.pg_is_in_recovery() THEN
+            v_txid = NULL;
+        ELSE
+            v_txid = pg_catalog.txid_current();
+        END IF;
+
+        IF current_setting('server_version_num')::int < 100000 THEN
+            IF pg_is_in_recovery() THEN
+                v_current_lsn := pg_last_xlog_receive_location();
+            ELSE
+                v_current_lsn := pg_current_xlog_location();
+            END IF;
+        ELSE
+            IF pg_is_in_recovery() THEN
+                v_current_lsn := pg_last_wal_receive_lsn();
+            ELSE
+                v_current_lsn := pg_current_wal_lsn();
+            END IF;
+        END IF;
+
+        -- We want to always return a row, even if no replication slots is
+        -- found, so the UI can properly graph that no slot exists.
+
+        -- conflicting added in pg16
+        IF current_setting('server_version_num')::int >= 160000 THEN
+            RETURN QUERY SELECT n.now,
+                s.slot_name::text AS slot_name, s.plugin::text AS plugin,
+                s.slot_type, s.datoid, s.temporary,
+                v_txid, v_current_lsn,
+                s.active,
+                s.active_pid, s.xmin AS slot_xmin, s.catalog_xmin,
+                s.restart_lsn, s.confirmed_flush_lsn, s.wal_status,
+                s.safe_wal_size, s.two_phase, s.conflicting
+            FROM (SELECT now() AS now) n
+            LEFT JOIN pg_catalog.pg_replication_slots AS s ON true;
+        -- two_phase added in pg14
+        ELSIF current_setting('server_version_num')::int >= 140000 THEN
+            RETURN QUERY SELECT n.now,
+                s.slot_name::text AS slot_name, s.plugin::text AS plugin,
+                s.slot_type, s.datoid, s.temporary,
+                v_txid, v_current_lsn,
+                s.active,
+                s.active_pid, s.xmin AS slot_xmin, s.catalog_xmin,
+                s.restart_lsn, s.confirmed_flush_lsn, s.wal_status,
+                s.safe_wal_size, s.two_phase, false AS conflicting
+            FROM (SELECT now() AS now) n
+            LEFT JOIN pg_catalog.pg_replication_slots AS s ON true;
+        -- wal_status and safe_wal_size added in pg13
+        ELSIF current_setting('server_version_num')::int >= 130000 THEN
+            RETURN QUERY SELECT n.now,
+                s.slot_name::text AS slot_name, s.plugin::text AS plugin,
+                s.slot_type, s.datoid, s.temporary,
+                v_txid, v_current_lsn,
+                s.active,
+                s.active_pid, s.xmin AS slot_xmin, s.catalog_xmin,
+                s.restart_lsn, s.confirmed_flush_lsn, s.wal_status,
+                s.safe_wal_size, false AS two_phase, false AS conflicting
+            FROM (SELECT now() AS now) n
+            LEFT JOIN pg_catalog.pg_replication_slots AS s ON true;
+        -- temporary added in pg10
+        ELSIF current_setting('server_version_num')::int >= 100000 THEN
+            RETURN QUERY SELECT n.now,
+                s.slot_name::text AS slot_name, s.plugin::text AS plugin,
+                s.slot_type, s.datoid, s.temporary,
+                v_txid, v_current_lsn,
+                s.active,
+                s.active_pid, s.xmin AS slot_xmin, s.catalog_xmin,
+                s.restart_lsn, s.confirmed_flush_lsn, NULL as wal_status,
+                NULL as safe_wal_size, false AS two_phase, false AS conflicting
+            FROM (SELECT now() AS now) n
+            LEFT JOIN pg_catalog.pg_replication_slots AS s ON true;
+        -- confirmed_flush_lsn added in pg9.6
+        ELSIF current_setting('server_version_num')::int >= 90600 THEN
+            RETURN QUERY SELECT n.now,
+                s.slot_name::text AS slot_name, s.plugin::text AS plugin,
+                s.slot_type, s.datoid, false AS temporary,
+                v_txid, v_current_lsn,
+                s.active,
+                s.active_pid, s.xmin AS slot_xmin, s.catalog_xmin,
+                s.restart_lsn, s.confirmed_flush_lsn, NULL as wal_status,
+                NULL as safe_wal_size, false AS two_phase, false AS conflicting
+            FROM (SELECT now() AS now) n
+            LEFT JOIN pg_catalog.pg_replication_slots AS s ON true;
+        -- active_pid added in pg9.5
+        ELSIF current_setting('server_version_num')::int >= 90500 THEN
+            RETURN QUERY SELECT n.now,
+                s.slot_name::text AS slot_name, s.plugin::text AS plugin,
+                s.slot_type, s.datoid, false AS temporary,
+                v_txid, v_current_lsn,
+                s.active,
+                s.active_pid, s.xmin AS slot_xmin, s.catalog_xmin,
+                s.restart_lsn, NULL AS confirmed_flush_lsn, NULL as wal_status,
+                NULL as safe_wal_size, false AS two_phase, false AS conflicting
+            FROM (SELECT now() AS now) n
+            LEFT JOIN pg_catalog.pg_replication_slots AS s ON true;
+        ELSE
+            RETURN QUERY SELECT n.now,
+                s.slot_name::text AS slot_name, s.plugin::text AS plugin,
+                s.slot_type, s.datoid, false AS temporary,
+                v_txid, v_current_lsn,
+                s.active,
+                NULL AS active_pid, s.xmin AS slot_xmin, s.catalog_xmin,
+                s.restart_lsn, NULL AS confirmed_flush_lsn, NULL as wal_status,
+                NULL as safe_wal_size, false AS two_phase, false AS conflicting
+            FROM (SELECT now() AS now) n
+            LEFT JOIN pg_catalog.pg_replication_slots AS s ON true;
+        END IF;
+    ELSE
+        RETURN QUERY SELECT s.ts,
+            s.slot_name, s.plugin,
+            s.slot_type, s.datoid, s.temporary,
+            s.cur_txid, s.current_lsn,
+            s.active,
+            s.active_pid, s.xmin AS slot_xmin, s.catalog_xmin,
+            s.restart_lsn, s.confirmed_flush_lsn, s.wal_status,
+            s.safe_wal_size, s.two_phase, s.conflicting
+        FROM @extschema@.powa_replication_slots_src_tmp AS s
+        WHERE s.srvid = _srvid;
+    END IF;
+END;
+$PROC$ LANGUAGE plpgsql; /* end of powa_replication_slots_src */
 
 CREATE OR REPLACE FUNCTION @extschema@.powa_stat_activity_src(IN _srvid integer,
     OUT ts timestamp with time zone,
