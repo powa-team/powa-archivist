@@ -1680,6 +1680,31 @@ $${
 {buffers_alloc, bigint}
 }$$);
 
+SELECT @extschema@.powa_generic_module_setup('pg_stat_database',
+$${
+{numbackends, integer},
+{xact_commit, bigint}, {xact_rollback, bigint},
+{blks_read, bigint}, {blks_hit, bigint},
+{tup_returned, bigint}, {tup_fetched, bigint}, {tup_inserted, bigint},
+{tup_updated, bigint}, {tup_deleted, bigint},
+{conflicts, bigint}, {temp_files, bigint}, {temp_bytes, bigint},
+{deadlocks, bigint},
+{checksum_failures, bigint}, {checksum_last_failure, timestamp with time zone},
+{blk_read_time, double precision}, {blk_write_time, double precision},
+{session_time, double precision}, {active_time, double precision},
+{idle_in_transaction_time, double precision}, {sessions, bigint},
+{sessions_abandoned, bigint}, {sessions_fatal, bigint},
+{sessions_killed, bigint}, {stats_reset, timestamp with time zone}
+}$$,
+$${
+checksum_failures, checksum_last_failure, session_time, active_time,
+idle_in_transaction_time, sessions, sessions_abandoned, sessions_fatal,
+sessions_killed, stats_reset
+}$$,
+_key_cols => $${
+{datid, oid}
+}$$);
+
 SELECT @extschema@.powa_generic_module_setup('pg_stat_replication',
 $${
 {current_lsn, pg_lsn},
@@ -4177,6 +4202,98 @@ BEGIN
     END IF;
 END;
 $PROC$ LANGUAGE plpgsql; /* end of powa_stat_bgwriter_src */
+
+CREATE OR REPLACE FUNCTION @extschema@.powa_stat_database_src(IN _srvid integer,
+    OUT ts timestamp with time zone,
+    OUT datid oid,
+    OUT numbackends integer,
+    OUT xact_commit bigint,
+    OUT xact_rollback bigint,
+    OUT blks_read bigint,
+    OUT blks_hit bigint,
+    OUT tup_returned bigint,
+    OUT tup_fetched bigint,
+    OUT tup_inserted bigint,
+    OUT tup_updated bigint,
+    OUT tup_deleted bigint,
+    OUT conflicts bigint,
+    OUT temp_files bigint,
+    OUT temp_bytes bigint,
+    OUT deadlocks bigint,
+    OUT checksum_failures bigint,
+    OUT checksum_last_failure timestamp with time zone,
+    OUT blk_read_time double precision,
+    OUT blk_write_time double precision,
+    OUT session_time double precision,
+    OUT active_time double precision,
+    OUT idle_in_transaction_time double precision,
+    OUT sessions bigint,
+    OUT sessions_abandoned bigint,
+    OUT sessions_fatal bigint,
+    OUT sessions_killed bigint,
+    OUT stats_reset timestamp with time zone
+) RETURNS SETOF record STABLE AS $PROC$
+BEGIN
+    IF (_srvid = 0) THEN
+        -- pg14+, *_time and sessions_* added
+        IF current_setting('server_version_num')::int >= 140000 THEN
+            RETURN QUERY SELECT now(),
+            s.datid, s.numbackends, s.xact_commit, s.xact_rollback,
+            s.blks_read, s.blks_hit, s.tup_returned, s.tup_fetched,
+            s.tup_inserted, s.tup_updated, s.tup_deleted, s.conflicts,
+            s.temp_files, s.temp_bytes, s.deadlocks, s.checksum_failures,
+            s.checksum_last_failure, s.blk_read_time, s.blk_write_time,
+            s.session_time, s.active_time,
+            s.idle_in_transaction_time,
+            s.sessions, s.sessions_abandoned,
+            s.sessions_fatal, s.sessions_killed,
+            s.stats_reset
+            FROM pg_catalog.pg_stat_database AS s;
+        -- pg12+, checksum_failures and checksum_last_failure added
+        ELSIF current_setting('server_version_num')::int >= 120000 THEN
+            RETURN QUERY SELECT now(),
+            s.datid, s.numbackends, s.xact_commit, s.xact_rollback,
+            s.blks_read, s.blks_hit, s.tup_returned, s.tup_fetched,
+            s.tup_inserted, s.tup_updated, s.tup_deleted, s.conflicts,
+            s.temp_files, s.temp_bytes, s.deadlocks, s.checksum_failures,
+            s.checksum_last_failure, s.blk_read_time, s.blk_write_time,
+            NULL AS session_time, NULL AS active_time,
+            NULL AS idle_in_transaction_time,
+            NULL AS sessions, NULL AS sessions_abandoned,
+            NULL AS sessions_fatal, NULL AS sessions_killed,
+            s.stats_reset
+            FROM pg_catalog.pg_stat_database AS s;
+        ELSE
+            RETURN QUERY SELECT now(),
+            s.datid, s.numbackends, s.xact_commit, s.xact_rollback,
+            s.blks_read, s.blks_hit, s.tup_returned, s.tup_fetched,
+            s.tup_inserted, s.tup_updated, s.tup_deleted, s.conflicts,
+            s.temp_files, s.temp_bytes, s.deadlocks, 0 AS checksum_failures,
+            NULL AS checksum_last_failure, s.blk_read_time, s.blk_write_time,
+            NULL AS session_time, NULL AS active_time,
+            NULL AS idle_in_transaction_time,
+            NULL AS sessions, NULL AS sessions_abandoned,
+            NULL AS sessions_fatal, NULL AS sessions_killed,
+            s.stats_reset
+            FROM pg_catalog.pg_stat_database AS s;
+        END IF;
+    ELSE
+        RETURN QUERY SELECT s.ts,
+            s.datid, s.numbackends, s.xact_commit, s.xact_rollback,
+            s.blks_read, s.blks_hit, s.tup_returned, s.tup_fetched,
+            s.tup_inserted, s.tup_updated, s.tup_deleted, s.conflicts,
+            s.temp_files, s.temp_bytes, s.deadlocks, s.checksum_failures,
+            s.checksum_last_failure, s.blk_read_time, s.blk_write_time,
+            s.session_time, s.active_time,
+            s.idle_in_transaction_time,
+            s.sessions, s.sessions_abandoned,
+            s.sessions_fatal, s.sessions_killed,
+            s.stats_reset
+        FROM @extschema@.powa_stat_database_src_tmp AS s
+        WHERE s.srvid = _srvid;
+    END IF;
+END;
+$PROC$ LANGUAGE plpgsql; /* end of powa_stat_database_src */
 
 CREATE OR REPLACE FUNCTION @extschema@.powa_stat_replication_src(IN _srvid integer,
     OUT ts timestamp with time zone,
