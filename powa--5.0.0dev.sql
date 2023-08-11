@@ -1705,6 +1705,24 @@ _key_cols => $${
 {datid, oid}
 }$$);
 
+SELECT @extschema@.powa_generic_module_setup('pg_stat_io',
+$${
+{reads, bigint}, {read_time, double precision},
+{writes, bigint}, {write_time, double precision},
+{writebacks, bigint}, {writeback_time, double precision},
+{extends, bigint}, {extend_time, double precision},
+{op_bytes, bigint}, {hits, bigint}, {evictions, bigint}, {reuses, bigint},
+{fsyncs, bigint}, {fsync_time, double precision},
+{stats_reset, timestamp with time zone}
+}$$,
+$${
+reads, read_time, writebacks, writeback_time, extends, extend_time, hits,
+evictions, reuses, fsyncs, fsync_time
+}$$,
+_key_cols => $${
+{backend_type, text}, {object, text}, {context, text}
+}$$);
+
 SELECT @extschema@.powa_generic_module_setup('pg_stat_replication',
 $${
 {current_lsn, pg_lsn},
@@ -4294,6 +4312,73 @@ BEGIN
     END IF;
 END;
 $PROC$ LANGUAGE plpgsql; /* end of powa_stat_database_src */
+
+CREATE OR REPLACE FUNCTION @extschema@.powa_stat_io_src(IN _srvid integer,
+    OUT ts timestamp with time zone,
+    OUT backend_type text,
+    OUT object text,
+    OUT context text,
+    OUT reads bigint,
+    OUT read_time double precision,
+    OUT writes bigint,
+    OUT write_time double precision,
+    OUT writebacks bigint,
+    OUT writeback_time double precision,
+    OUT extends bigint,
+    OUT extend_time double precision,
+    OUT op_bytes bigint,
+    OUT hits bigint,
+    OUT evictions bigint,
+    OUT reuses bigint,
+    OUT fsyncs bigint,
+    OUT fsync_time double precision,
+    OUT stats_reset timestamp with time zone
+) RETURNS SETOF record STABLE AS $PROC$
+BEGIN
+    IF (_srvid = 0) THEN
+        -- pg16+, the view is introduced
+        IF current_setting('server_version_num')::int >= 160000 THEN
+            RETURN QUERY SELECT now(),
+            s.backend_type, s.object, s.context,
+            s.reads, s.read_time,
+            s.writes, s.write_time,
+            s.writebacks, s.writeback_time,
+            s.extends, s.extend_time,
+            s.op_bytes, s.hits,
+            s.evictions, s.reuses,
+            s.fsyncs, s.fsync_time,
+            s.stats_reset
+            FROM pg_catalog.pg_stat_io AS s;
+        ELSE -- return an empty dataset for pg15- servers
+            RETURN QUERY SELECT now(),
+            NULL::text AS backend_type, NULL::text AS object,
+            NULL::text AS context,
+            0::bigint AS reads, 0::double precision AS read_time,
+            0::bigint AS writes, 0::double precision AS write_time,
+            0::bigint AS writebacks, 0::double precision AS writeback_time,
+            0::bigint AS extends, 0::double precision AS extend_time,
+            NULL::bigint AS op_bytes, 0::bigint AS hits,
+            0::bigint AS evictions, 0::bigint AS reuses,
+            0::bigint AS fsyncs, 0::double precision AS fsync_time,
+            NULL::timestamp with time zone AS stats_reset
+            WHERE false;
+        END IF;
+    ELSE
+        RETURN QUERY SELECT s.ts,
+            s.backend_type, s.object, s.context,
+            s.reads, s.read_time,
+            s.writes, s.write_time,
+            s.writebacks, s.writeback_time,
+            s.extends, s.extend_time,
+            s.op_bytes, s.hits,
+            s.evictions, s.reuses,
+            s.fsyncs, s.fsync_time,
+            s.stats_reset
+        FROM @extschema@.powa_stat_io_src_tmp AS s
+        WHERE s.srvid = _srvid;
+    END IF;
+END;
+$PROC$ LANGUAGE plpgsql; /* end of powa_stat_io_src */
 
 CREATE OR REPLACE FUNCTION @extschema@.powa_stat_replication_src(IN _srvid integer,
     OUT ts timestamp with time zone,
