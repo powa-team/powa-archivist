@@ -265,6 +265,12 @@ powa_main(Datum main_arg)
 	int64		us_to_wait; /* Should be uint64 per postgresql's spec, but we
 							   may have negative result, in our tests */
 
+	if (IsBinaryUpgrade)
+	{
+		elog(LOG, "Binary upgrade mode detected, PoWA worker will exit");
+		proc_exit(0);
+	}
+
 	/* check powa_frequency validity, and if powa is enabled */
 	compute_powa_frequency();
 
