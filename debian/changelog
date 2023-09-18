@@ -4,6 +4,12 @@ powa-archivist (4.2.0-1) unstable; urgency=medium
 
  -- Julien Rouhaud <rjuju123@gmail.com>  Mon, 18 Sep 2023 17:40:39 +0800
 
+powa-archivist (4.1.4-2) unstable; urgency=medium
+
+  * Upload for PostgreSQL 15.
+
+ -- Christoph Berg <myon@debian.org>  Mon, 24 Oct 2022 16:50:59 +0200
+
 powa-archivist (4.1.4-1) unstable; urgency=medium
 
   * New upstream version
