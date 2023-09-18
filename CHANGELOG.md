@@ -1,3 +1,18 @@
+## 4.2.0
+
+  - New feature
+    - Add pg_stat_statements.toplevel field (Marc Cousin, Julien Rouhaud)
+  - Bugfixes
+    - Fix a possible long waiting time when the background worker is asleep and
+      another session is waiting for a pending event, like a DROP DATABASE
+      (Julien Rouhaud, thanks for github user anikin-aa for the report)
+  - Fix pg_stat_kcache support when not all metrics are available (Julien
+    Rouhaud)
+  - Misc
+    - Add compatibility with postgres 16 (Julien Rouhaud)
+    - Immediately exit the bgworker in binary upgrade mode, which could lead to
+      data corruption in the powa database (Julien Rouhaud)
+
 ## 4.1.4
 
   - Bugfixes

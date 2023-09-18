@@ -1,3 +1,9 @@
+powa-archivist (4.2.0-1) unstable; urgency=medium
+
+  * New upstream version with postgres 16 support
+
+ -- Julien Rouhaud <rjuju123@gmail.com>  Mon, 18 Sep 2023 17:40:39 +0800
+
 powa-archivist (4.1.4-1) unstable; urgency=medium
 
   * New upstream version
