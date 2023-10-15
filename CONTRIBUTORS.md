@@ -40,3 +40,4 @@ Contributors to PoWA :
   * github user gjedeer
   * github user arnobnq
   * github user anikin-aa
+  * Yuriy Vountesmery

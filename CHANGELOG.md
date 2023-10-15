@@ -1,3 +1,11 @@
+## 4.2.1
+
+  - Bugfixes
+    - Fix an issue in 4.1.4 - 4.2.0 extension script that can prevent
+      upgrading.  Versions 4.2.0 and 4.2.1 are identical, version 4.2.1 only
+      exist to provide a fixed 4.1.4 - 4.2.1 direct ugprade script (Julien
+      Rouhaud, thanks to Yuriy Vountesmery for the report)
+
 ## 4.2.0
 
   - New feature
