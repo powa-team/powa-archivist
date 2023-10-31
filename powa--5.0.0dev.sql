@@ -1572,7 +1572,9 @@ $${
 {local_blks_hit, bigint}, {local_blks_read, bigint},
 {local_blks_dirtied, bigint}, {local_blks_written, bigint},
 {temp_blks_read, bigint}, {temp_blks_written, bigint},
-{blk_read_time, double precision}, {blk_write_time, double precision},
+{shared_blk_read_time, double precision}, {shared_blk_write_time, double precision},
+{local_blk_read_time, double precision}, {local_blk_write_time, double precision},
+{temp_blk_read_time, double precision}, {temp_blk_write_time, double precision},
 {plans, bigint}, {total_plan_time, double precision},
 {wal_records, bigint}, {wal_fpi, bigint}, {wal_bytes, numeric}
 }$$,
@@ -1833,8 +1835,12 @@ CREATE UNLOGGED TABLE @extschema@.powa_statements_src_tmp (
     local_blks_written bigint NOT NULL,
     temp_blks_read bigint NOT NULL,
     temp_blks_written bigint NOT NULL,
-    blk_read_time double precision NOT NULL,
-    blk_write_time double precision NOT NULL,
+    shared_blk_read_time double precision NOT NULL,
+    shared_blk_write_time double precision NOT NULL,
+    local_blk_read_time double precision NOT NULL,
+    local_blk_write_time double precision NOT NULL,
+    temp_blk_read_time double precision NOT NULL,
+    temp_blk_write_time double precision NOT NULL,
     plans bigint NOT NULL,
     total_plan_time double precision NOT NULL,
     wal_records bigint NOT NULL,
@@ -3525,8 +3531,12 @@ CREATE OR REPLACE FUNCTION @extschema@.powa_statements_src(IN _srvid integer,
     OUT local_blks_written bigint,
     OUT temp_blks_read bigint,
     OUT temp_blks_written bigint,
-    OUT blk_read_time double precision,
-    OUT blk_write_time double precision,
+    OUT shared_blk_read_time double precision,
+    OUT shared_blk_write_time double precision,
+    OUT local_blk_read_time double precision,
+    OUT local_blk_write_time double precision,
+    OUT temp_blk_read_time double precision,
+    OUT temp_blk_write_time double precision,
     OUT plans bigint,
     OUT total_plan_time float8,
     OUT wal_records bigint,
@@ -3547,7 +3557,8 @@ BEGIN
         JOIN pg_catalog.pg_namespace n ON n.oid = e.extnamespace
         WHERE e.extname = 'pg_stat_statements';
 
-        IF (v_pgss[1] = 1 AND v_pgss[2] >= 10) THEN
+        -- pgss 1.11+, blk_(read|write)_time split in (shared|local_temp)
+        IF (v_pgss[1] = 1 AND v_pgss[2] >= 11) THEN
             RETURN QUERY EXECUTE format($$SELECT now(),
                 pgss.userid, pgss.dbid, pgss.toplevel, pgss.queryid, pgss.query,
                 pgss.calls, pgss.total_exec_time,
@@ -3556,7 +3567,10 @@ BEGIN
                 pgss.shared_blks_written, pgss.local_blks_hit,
                 pgss.local_blks_read, pgss.local_blks_dirtied,
                 pgss.local_blks_written, pgss.temp_blks_read,
-                pgss.temp_blks_written, pgss.blk_read_time, pgss.blk_write_time,
+                pgss.temp_blks_written,
+                pgss.shared_blk_read_time, pgss.shared_blk_write_time,
+                pgss.local_blk_read_time, pgss.local_blk_write_time,
+                pgss.temp_blk_read_time, pgss.temp_blk_write_time,
                 pgss.plans, pgss.total_plan_time,
                 pgss.wal_records, pgss.wal_fpi, pgss.wal_bytes
             FROM %I.pg_stat_statements pgss
@@ -3567,6 +3581,34 @@ BEGIN
                         @extschema@.powa_get_guc('powa.ignored_users', ''),
                         ',')))
             $$, v_nsp);
+        -- pgss 1.10+, toplevel field added
+        ELSIF (v_pgss[1] = 1 AND v_pgss[2] >= 10) THEN
+            RETURN QUERY EXECUTE format($$SELECT now(),
+                pgss.userid, pgss.dbid, pgss.toplevel, pgss.queryid, pgss.query,
+                pgss.calls, pgss.total_exec_time,
+                pgss.rows, pgss.shared_blks_hit,
+                pgss.shared_blks_read, pgss.shared_blks_dirtied,
+                pgss.shared_blks_written, pgss.local_blks_hit,
+                pgss.local_blks_read, pgss.local_blks_dirtied,
+                pgss.local_blks_written, pgss.temp_blks_read,
+                pgss.temp_blks_written,
+                pgss.blk_read_time AS shared_blk_read_time,
+                pgss.blk_write_time AS shared_blk_write_time,
+                0::double precision AS local_blk_read_time,
+                0::double precision AS local_blk_write_time,
+                0::double precision AS temp_blk_read_time,
+                0::double precision AS temp_blk_write_time,
+                pgss.plans, pgss.total_plan_time,
+                pgss.wal_records, pgss.wal_fpi, pgss.wal_bytes
+            FROM %I.pg_stat_statements pgss
+            JOIN pg_catalog.pg_database d ON d.oid = pgss.dbid
+            JOIN pg_catalog.pg_roles r ON pgss.userid = r.oid
+            WHERE pgss.query !~* '^[[:space:]]*(DEALLOCATE|BEGIN|PREPARE TRANSACTION|COMMIT PREPARED|ROLLBACK PREPARED)'
+            AND NOT (r.rolname = ANY (string_to_array(
+                        @extschema@.powa_get_guc('powa.ignored_users', ''),
+                        ',')))
+            $$, v_nsp);
+        -- pgss 1.8+, planning counters added
         ELSIF (v_pgss[1] = 1 AND v_pgss[2] >= 8) THEN
             RETURN QUERY EXECUTE format($$SELECT now(),
                 pgss.userid, pgss.dbid, true::boolean, pgss.queryid, pgss.query,
@@ -3576,7 +3618,13 @@ BEGIN
                 pgss.shared_blks_written, pgss.local_blks_hit,
                 pgss.local_blks_read, pgss.local_blks_dirtied,
                 pgss.local_blks_written, pgss.temp_blks_read,
-                pgss.temp_blks_written, pgss.blk_read_time, pgss.blk_write_time,
+                pgss.temp_blks_written,
+                pgss.blk_read_time AS shared_blk_read_time,
+                pgss.blk_write_time AS shared_blk_write_time,
+                0::double precision AS local_blk_read_time,
+                0::double precision AS local_blk_write_time,
+                0::double precision AS temp_blk_read_time,
+                0::double precision AS temp_blk_write_time,
                 pgss.plans, pgss.total_plan_time,
                 pgss.wal_records, pgss.wal_fpi, pgss.wal_bytes
             FROM %I.pg_stat_statements pgss
@@ -3596,7 +3644,13 @@ BEGIN
                 pgss.shared_blks_written, pgss.local_blks_hit,
                 pgss.local_blks_read, pgss.local_blks_dirtied,
                 pgss.local_blks_written, pgss.temp_blks_read,
-                pgss.temp_blks_written, pgss.blk_read_time,pgss.blk_write_time,
+                pgss.temp_blks_written,
+                pgss.blk_read_time AS shared_blk_read_time,
+                pgss.blk_write_time AS shared_blk_write_time,
+                0::double precision AS local_blk_read_time,
+                0::double precision AS local_blk_write_time,
+                0::double precision AS temp_blk_read_time,
+                0::double precision AS temp_blk_write_time,
                 0::bigint, 0::double precision,
                 0::bigint, 0::bigint, 0::numeric
             FROM %I.pg_stat_statements pgss
@@ -3617,7 +3671,10 @@ BEGIN
             pgss.shared_blks_written, pgss.local_blks_hit,
             pgss.local_blks_read, pgss.local_blks_dirtied,
             pgss.local_blks_written, pgss.temp_blks_read,
-            pgss.temp_blks_written, pgss.blk_read_time, pgss.blk_write_time,
+            pgss.temp_blks_written,
+            pgss.shared_blk_read_time, pgss.shared_blk_write_time,
+            pgss.local_blk_read_time, pgss.local_blk_write_time,
+            pgss.temp_blk_read_time, pgss.temp_blk_write_time,
             pgss.plans, pgss.total_plan_time,
             pgss.wal_records, pgss.wal_fpi, pgss.wal_bytes
         FROM @extschema@.powa_statements_src_tmp pgss WHERE srvid = _srvid;
@@ -3674,7 +3731,10 @@ BEGIN
                 shared_blks_hit, shared_blks_read, shared_blks_dirtied,
                 shared_blks_written, local_blks_hit, local_blks_read,
                 local_blks_dirtied, local_blks_written, temp_blks_read,
-                temp_blks_written, blk_read_time, blk_write_time,
+                temp_blks_written,
+                shared_blk_read_time, shared_blk_write_time,
+                local_blk_read_time, local_blk_write_time,
+                temp_blk_read_time, temp_blk_write_time,
                 plans, total_plan_time,
                 wal_records, wal_fpi, wal_bytes
             )::@extschema@.powa_statements_history_record AS record
@@ -3691,7 +3751,10 @@ BEGIN
                 sum(shared_blks_written), sum(local_blks_hit),
                 sum(local_blks_read), sum(local_blks_dirtied),
                 sum(local_blks_written), sum(temp_blks_read),
-                sum(temp_blks_written), sum(blk_read_time), sum(blk_write_time),
+                sum(temp_blks_written),
+                sum(shared_blk_read_time), sum(shared_blk_write_time),
+                sum(local_blk_read_time), sum(local_blk_write_time),
+                sum(temp_blk_read_time), sum(temp_blk_write_time),
                 sum(plans), sum(total_plan_time),
                 sum(wal_records), sum(wal_fpi), sum(wal_bytes)
             )::@extschema@.powa_statements_history_record AS record
@@ -4902,7 +4965,9 @@ BEGIN
                 min((record).local_blks_hit),min((record).local_blks_read),
                 min((record).local_blks_dirtied),min((record).local_blks_written),
                 min((record).temp_blks_read),min((record).temp_blks_written),
-                min((record).blk_read_time),min((record).blk_write_time),
+                min((record).shared_blk_read_time),min((record).shared_blk_write_time),
+                min((record).local_blk_read_time),min((record).local_blk_write_time),
+                min((record).temp_blk_read_time),min((record).temp_blk_write_time),
                 min((record).plans),min((record).total_plan_time),
                 min((record).wal_records),min((record).wal_fpi),
                 min((record).wal_bytes)
@@ -4915,7 +4980,9 @@ BEGIN
                 max((record).local_blks_hit),max((record).local_blks_read),
                 max((record).local_blks_dirtied),max((record).local_blks_written),
                 max((record).temp_blks_read),max((record).temp_blks_written),
-                max((record).blk_read_time),max((record).blk_write_time),
+                max((record).shared_blk_read_time),max((record).shared_blk_write_time),
+                max((record).local_blk_read_time),max((record).local_blk_write_time),
+                max((record).temp_blk_read_time),max((record).temp_blk_write_time),
                 max((record).plans),max((record).total_plan_time),
                 max((record).wal_records),max((record).wal_fpi),
                 max((record).wal_bytes)
@@ -4944,7 +5011,9 @@ BEGIN
                 min((record).local_blks_hit),min((record).local_blks_read),
                 min((record).local_blks_dirtied),min((record).local_blks_written),
                 min((record).temp_blks_read),min((record).temp_blks_written),
-                min((record).blk_read_time),min((record).blk_write_time),
+                min((record).shared_blk_read_time),min((record).shared_blk_write_time),
+                min((record).local_blk_read_time),min((record).local_blk_write_time),
+                min((record).temp_blk_read_time),min((record).temp_blk_write_time),
                 min((record).plans),min((record).total_plan_time),
                 min((record).wal_records),min((record).wal_fpi),
                 min((record).wal_bytes)
@@ -4957,7 +5026,9 @@ BEGIN
                 max((record).local_blks_hit),max((record).local_blks_read),
                 max((record).local_blks_dirtied),max((record).local_blks_written),
                 max((record).temp_blks_read),max((record).temp_blks_written),
-                max((record).blk_read_time),max((record).blk_write_time),
+                max((record).shared_blk_read_time),max((record).shared_blk_write_time),
+                max((record).local_blk_read_time),max((record).local_blk_write_time),
+                max((record).temp_blk_read_time),max((record).temp_blk_write_time),
                 max((record).plans),max((record).total_plan_time),
                 max((record).wal_records),max((record).wal_fpi),
                 max((record).wal_bytes)
