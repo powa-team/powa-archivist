@@ -1673,13 +1673,16 @@ last_failed_time
 
 SELECT @extschema@.powa_generic_module_setup('pg_stat_bgwriter',
 $${
-{checkpoints_timed, bigint}, {checkpoints_req, bigint},
-{checkpoint_write_time, double precision},
-{checkpoint_sync_time, double precision},
-{buffers_checkpoint, bigint}, {buffers_clean, bigint},
-{maxwritten_clean, bigint},
+{buffers_clean, bigint}, {maxwritten_clean, bigint},
 {buffers_backend, bigint}, {buffers_backend_fsync, bigint},
 {buffers_alloc, bigint}
+}$$);
+
+SELECT @extschema@.powa_generic_module_setup('pg_stat_checkpointer',
+$${
+{num_timed, bigint}, {num_requested, bigint},
+{write_time, double precision}, {sync_time, double precision},
+{buffers_written, bigint}
 }$$);
 
 SELECT @extschema@.powa_generic_module_setup('pg_stat_database',
@@ -4253,11 +4256,6 @@ $PROC$ LANGUAGE plpgsql; /* end of powa_stat_archiver_src */
 
 CREATE OR REPLACE FUNCTION @extschema@.powa_stat_bgwriter_src(IN _srvid integer,
     OUT ts timestamp with time zone,
-    OUT checkpoints_timed bigint,
-    OUT checkpoints_req bigint,
-    OUT checkpoint_write_time double precision,
-    OUT checkpoint_sync_time double precision,
-    OUT buffers_checkpoint bigint,
     OUT buffers_clean bigint,
     OUT maxwritten_clean bigint,
     OUT buffers_backend bigint,
@@ -4266,23 +4264,75 @@ CREATE OR REPLACE FUNCTION @extschema@.powa_stat_bgwriter_src(IN _srvid integer,
 ) RETURNS SETOF record STABLE AS $PROC$
 BEGIN
     IF (_srvid = 0) THEN
-        RETURN QUERY SELECT now(),
-            s.checkpoints_timed, s.checkpoints_req, s.checkpoint_write_time,
-            s.checkpoint_sync_time, s.buffers_checkpoint, s.buffers_clean,
-            s.maxwritten_clean, s.buffers_backend, s.buffers_backend_fsync,
-            s.buffers_alloc
-        FROM pg_catalog.pg_stat_bgwriter AS s;
+        -- pg17+, buffers_backend* removed.  We maintain them, extracted from
+        -- pg_stat_io to make UI job easier.
+        IF current_setting('server_version_num')::int >= 170000 THEN
+            RETURN QUERY SELECT now(),
+                s.buffers_clean,
+                s.maxwritten_clean, i.buffers_backend, i.buffers_backend_fsync,
+                s.buffers_alloc
+            FROM pg_catalog.pg_stat_bgwriter AS s
+            CROSS JOIN (
+                SELECT sum(writes + extends)::bigint AS buffers_backend,
+                    sum(fsyncs)::bigint AS buffers_backend_fsync
+                FROM pg_catalog.pg_stat_io
+                WHERE backend_type = 'client backend'
+            ) AS i;
+        ELSE
+            RETURN QUERY SELECT now(),
+                s.buffers_clean,
+                s.maxwritten_clean, s.buffers_backend, s.buffers_backend_fsync,
+                s.buffers_alloc
+            FROM pg_catalog.pg_stat_bgwriter AS s;
+        END IF;
     ELSE
         RETURN QUERY SELECT s.ts,
-            s.checkpoints_timed, s.checkpoints_req, s.checkpoint_write_time,
-            s.checkpoint_sync_time, s.buffers_checkpoint, s.buffers_clean,
-            s.maxwritten_clean, s.buffers_backend, s.buffers_backend_fsync,
+            s.buffers_clean,
+            s.maxwritten_clean,
+            s.buffers_backend, s.buffers_backend_fsync,
             s.buffers_alloc
         FROM @extschema@.powa_stat_bgwriter_src_tmp AS s
         WHERE s.srvid = _srvid;
     END IF;
 END;
 $PROC$ LANGUAGE plpgsql; /* end of powa_stat_bgwriter_src */
+
+CREATE OR REPLACE FUNCTION @extschema@.powa_stat_checkpointer_src(IN _srvid integer,
+    OUT ts timestamp with time zone,
+    OUT num_timed bigint,
+    OUT num_requested bigint,
+    OUT write_time double precision,
+    OUT sync_time double precision,
+    OUT buffers_written bigint
+) RETURNS SETOF record STABLE AS $PROC$
+BEGIN
+    IF (_srvid = 0) THEN
+        -- pg17+, the pg_stat_checkpointer view is introduced
+        IF current_setting('server_version_num')::int >= 170000 THEN
+            RETURN QUERY SELECT now(),
+                s.num_timed, s.num_requested,
+                s.write_time, s.sync_time, s.buffers_written
+            FROM pg_catalog.pg_stat_checkpointer AS s;
+        -- for older versions, simulate that view getting info from
+        -- pg_stat_bgwriter
+        ELSE
+            RETURN QUERY SELECT now(),
+                s.checkpoints_timed AS num_timed,
+                s.checkpoints_req AS num_requested,
+                s.checkpoint_write_time AS write_time,
+                s.checkpoint_sync_time AS sync_time,
+                s.buffers_checkpoint AS buffers_written
+            FROM pg_catalog.pg_stat_bgwriter AS s;
+        END IF;
+    ELSE
+        RETURN QUERY SELECT s.ts,
+            s.num_timed, s.num_requested,
+            s.write_time, s.sync_time, s.buffers_written
+        FROM @extschema@.powa_stat_checkpointer_src_tmp AS s
+        WHERE s.srvid = _srvid;
+    END IF;
+END;
+$PROC$ LANGUAGE plpgsql; /* end of powa_stat_checkpointer_src */
 
 CREATE OR REPLACE FUNCTION @extschema@.powa_stat_database_src(IN _srvid integer,
     OUT ts timestamp with time zone,
