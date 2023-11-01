@@ -46,13 +46,14 @@ ORDER BY ext.relname::text COLLATE "C";
  powa_stat_activity_src_tmp
  powa_stat_archiver_src_tmp
  powa_stat_bgwriter_src_tmp
+ powa_stat_checkpointer_src_tmp
  powa_stat_database_src_tmp
  powa_stat_io_src_tmp
  powa_stat_replication_src_tmp
  powa_statements_src_tmp
  powa_user_functions_src_tmp
  powa_wait_sampling_src_tmp
-(29 rows)
+(30 rows)
 
 -- Check for object that aren't in the "PoWA" schema
 WITH ext AS (
@@ -98,6 +99,10 @@ SELECT * FROM "PoWA".powa_functions ORDER BY name, operation, priority, function
      0 | module    | pg_stat_bgwriter     | purge     | f        | powa_stat_bgwriter_purge         |                            |               | t       |      100
      0 | module    | pg_stat_bgwriter     | reset     | f        | powa_stat_bgwriter_reset         |                            |               | t       |      100
      0 | module    | pg_stat_bgwriter     | snapshot  | f        | powa_stat_bgwriter_snapshot      | powa_stat_bgwriter_src     |               | t       |      100
+     0 | module    | pg_stat_checkpointer | aggregate | f        | powa_stat_checkpointer_aggregate |                            |               | t       |      100
+     0 | module    | pg_stat_checkpointer | purge     | f        | powa_stat_checkpointer_purge     |                            |               | t       |      100
+     0 | module    | pg_stat_checkpointer | reset     | f        | powa_stat_checkpointer_reset     |                            |               | t       |      100
+     0 | module    | pg_stat_checkpointer | snapshot  | f        | powa_stat_checkpointer_snapshot  | powa_stat_checkpointer_src |               | t       |      100
      0 | module    | pg_stat_database     | aggregate | f        | powa_stat_database_aggregate     |                            |               | t       |      100
      0 | module    | pg_stat_database     | purge     | f        | powa_stat_database_purge         |                            |               | t       |      100
      0 | module    | pg_stat_database     | reset     | f        | powa_stat_database_reset         |                            |               | t       |      100
@@ -116,7 +121,7 @@ SELECT * FROM "PoWA".powa_functions ORDER BY name, operation, priority, function
      0 | extension | pg_stat_statements   | reset     | f        | powa_statements_reset            |                            |               | t       |       10
      0 | extension | pg_stat_statements   | snapshot  | f        | powa_databases_snapshot          | powa_databases_src         |               | t       |       -3
      0 | extension | pg_stat_statements   | snapshot  | f        | powa_statements_snapshot         | powa_statements_src        |               | t       |       -2
-(38 rows)
+(42 rows)
 
 -- test C SRFs
 SELECT COUNT(*) = 0
