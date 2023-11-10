@@ -2420,7 +2420,6 @@ CREATE OR REPLACE FUNCTION powa_statements_src(IN _srvid integer,
     OUT ts timestamp with time zone,
     OUT userid oid,
     OUT dbid oid,
-    OUT toplevel boolean,
     OUT queryid bigint,
     OUT query text,
     OUT calls bigint,
@@ -2442,7 +2441,8 @@ CREATE OR REPLACE FUNCTION powa_statements_src(IN _srvid integer,
     OUT total_plan_time float8,
     OUT wal_records bigint,
     OUT wal_fpi bigint,
-    OUT wal_bytes numeric
+    OUT wal_bytes numeric,
+    OUT toplevel boolean
 )
 RETURNS SETOF record
 STABLE
@@ -2457,7 +2457,7 @@ BEGIN
 
         IF (v_pgss[1] = 1 AND v_pgss[2] >= 10) THEN
             RETURN QUERY SELECT now(),
-                pgss.userid, pgss.dbid, pgss.toplevel, pgss.queryid, pgss.query,
+                pgss.userid, pgss.dbid, pgss.queryid, pgss.query,
                 pgss.calls, pgss.total_exec_time,
                 pgss.rows, pgss.shared_blks_hit,
                 pgss.shared_blks_read, pgss.shared_blks_dirtied,
@@ -2466,7 +2466,7 @@ BEGIN
                 pgss.local_blks_written, pgss.temp_blks_read,
                 pgss.temp_blks_written, pgss.blk_read_time, pgss.blk_write_time,
                 pgss.plans, pgss.total_plan_time,
-                pgss.wal_records, pgss.wal_fpi, pgss.wal_bytes
+                pgss.wal_records, pgss.wal_fpi, pgss.wal_bytes, pgss.toplevel
             FROM pg_stat_statements pgss
             JOIN pg_database d ON d.oid = pgss.dbid
             JOIN pg_roles r ON pgss.userid = r.oid
@@ -2476,7 +2476,7 @@ BEGIN
                         ',')));
         ELSIF (v_pgss[1] = 1 AND v_pgss[2] >= 8) THEN
             RETURN QUERY SELECT now(),
-                pgss.userid, pgss.dbid, true::boolean, pgss.queryid, pgss.query,
+                pgss.userid, pgss.dbid, pgss.queryid, pgss.query,
                 pgss.calls, pgss.total_exec_time,
                 pgss.rows, pgss.shared_blks_hit,
                 pgss.shared_blks_read, pgss.shared_blks_dirtied,
@@ -2485,7 +2485,7 @@ BEGIN
                 pgss.local_blks_written, pgss.temp_blks_read,
                 pgss.temp_blks_written, pgss.blk_read_time, pgss.blk_write_time,
                 pgss.plans, pgss.total_plan_time,
-                pgss.wal_records, pgss.wal_fpi, pgss.wal_bytes
+                pgss.wal_records, pgss.wal_fpi, pgss.wal_bytes, true::boolean
             FROM pg_stat_statements pgss
             JOIN pg_database d ON d.oid = pgss.dbid
             JOIN pg_roles r ON pgss.userid = r.oid
@@ -2495,7 +2495,7 @@ BEGIN
                         ',')));
         ELSE
             RETURN QUERY SELECT now(),
-                pgss.userid, pgss.dbid, true::boolean, pgss.queryid, pgss.query,
+                pgss.userid, pgss.dbid, pgss.queryid, pgss.query,
                 pgss.calls, pgss.total_time,
                 pgss.rows, pgss.shared_blks_hit,
                 pgss.shared_blks_read, pgss.shared_blks_dirtied,
@@ -2504,7 +2504,7 @@ BEGIN
                 pgss.local_blks_written, pgss.temp_blks_read,
                 pgss.temp_blks_written, pgss.blk_read_time,pgss.blk_write_time,
                 0::bigint, 0::double precision,
-                0::bigint, 0::bigint, 0::numeric
+                0::bigint, 0::bigint, 0::numeric, true::boolean
 
             FROM pg_stat_statements pgss
             JOIN pg_database d ON d.oid = pgss.dbid
@@ -2516,7 +2516,7 @@ BEGIN
         END IF;
     ELSE
         RETURN QUERY SELECT pgss.ts,
-            pgss.userid, pgss.dbid, pgss.toplevel, pgss.queryid, pgss.query,
+            pgss.userid, pgss.dbid, pgss.queryid, pgss.query,
             pgss.calls, pgss.total_exec_time,
             pgss.rows, pgss.shared_blks_hit,
             pgss.shared_blks_read, pgss.shared_blks_dirtied,
@@ -2525,7 +2525,7 @@ BEGIN
             pgss.local_blks_written, pgss.temp_blks_read,
             pgss.temp_blks_written, pgss.blk_read_time, pgss.blk_write_time,
             pgss.plans, pgss.total_plan_time,
-            pgss.wal_records, pgss.wal_fpi, pgss.wal_bytes
+            pgss.wal_records, pgss.wal_fpi, pgss.wal_bytes, pgss.toplevel
         FROM powa_statements_src_tmp pgss WHERE srvid = _srvid;
     END IF;
 END;
