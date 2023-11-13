@@ -3654,8 +3654,8 @@ BEGIN
                 0::double precision AS local_blk_write_time,
                 0::double precision AS temp_blk_read_time,
                 0::double precision AS temp_blk_write_time,
-                0::bigint, 0::double precision,
-                0::bigint, 0::bigint, 0::numeric
+                0::bigint AS plans, 0::double precision AS total_plan_time,
+                0::bigint AS wal_records, 0::bigint AS wal_fpi, 0::numeric AS wal_bytes
             FROM %I.pg_stat_statements pgss
             JOIN pg_catalog.pg_database d ON d.oid = pgss.dbid
             JOIN pg_catalog.pg_roles r ON pgss.userid = r.oid
