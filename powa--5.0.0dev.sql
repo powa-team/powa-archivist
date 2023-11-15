@@ -1576,7 +1576,12 @@ $${
 {local_blk_read_time, double precision}, {local_blk_write_time, double precision},
 {temp_blk_read_time, double precision}, {temp_blk_write_time, double precision},
 {plans, bigint}, {total_plan_time, double precision},
-{wal_records, bigint}, {wal_fpi, bigint}, {wal_bytes, numeric}
+{wal_records, bigint}, {wal_fpi, bigint}, {wal_bytes, numeric},
+{jit_functions, bigint}, {jit_generation_time, double precision},
+{jit_inlining_count, bigint}, {jit_inlining_time, double precision},
+{jit_optimization_count, bigint}, {jit_optimization_time, double precision},
+{jit_emission_count, bigint}, {jit_emission_time, double precision},
+{jit_deform_count, bigint}, {jit_deform_time, double precision}
 }$$,
 '{"rate": {
     "colname": { "total_exec_time": "runtime", "total_plan_time": "plantime"}
@@ -1848,7 +1853,17 @@ CREATE UNLOGGED TABLE @extschema@.powa_statements_src_tmp (
     total_plan_time double precision NOT NULL,
     wal_records bigint NOT NULL,
     wal_fpi bigint NOT NULL,
-    wal_bytes numeric NOT NULL
+    wal_bytes numeric NOT NULL,
+    jit_functions bigint NOT NULL,
+    jit_generation_time double precision NOT NULL,
+    jit_inlining_count bigint NOT NULL,
+    jit_inlining_time double precision NOT NULL,
+    jit_optimization_count bigint NOT NULL,
+    jit_optimization_time double precision NOT NULL,
+    jit_emission_count bigint NOT NULL,
+    jit_emission_time double precision NOT NULL,
+    jit_deform_count bigint NOT NULL,
+    jit_deform_time double precision NOT NULL
 );
 
 CREATE UNLOGGED TABLE @extschema@.powa_user_functions_src_tmp (
@@ -3544,7 +3559,17 @@ CREATE OR REPLACE FUNCTION @extschema@.powa_statements_src(IN _srvid integer,
     OUT total_plan_time float8,
     OUT wal_records bigint,
     OUT wal_fpi bigint,
-    OUT wal_bytes numeric
+    OUT wal_bytes numeric,
+    OUT jit_functions bigint,
+    OUT jit_generation_time double precision,
+    OUT jit_inlining_count bigint,
+    OUT jit_inlining_time double precision,
+    OUT jit_optimization_count bigint,
+    OUT jit_optimization_time double precision,
+    OUT jit_emission_count bigint,
+    OUT jit_emission_time double precision,
+    OUT jit_deform_count bigint,
+    OUT jit_deform_time double precision
 )
 RETURNS SETOF record
 STABLE
@@ -3560,7 +3585,8 @@ BEGIN
         JOIN pg_catalog.pg_namespace n ON n.oid = e.extnamespace
         WHERE e.extname = 'pg_stat_statements';
 
-        -- pgss 1.11+, blk_(read|write)_time split in (shared|local_temp)
+        -- pgss 1.11+, blk_(read|write)_time split in (shared|local_temp) and
+        -- jit_deform_* added
         IF (v_pgss[1] = 1 AND v_pgss[2] >= 11) THEN
             RETURN QUERY EXECUTE format($$SELECT now(),
                 pgss.userid, pgss.dbid, pgss.toplevel, pgss.queryid, pgss.query,
@@ -3575,7 +3601,12 @@ BEGIN
                 pgss.local_blk_read_time, pgss.local_blk_write_time,
                 pgss.temp_blk_read_time, pgss.temp_blk_write_time,
                 pgss.plans, pgss.total_plan_time,
-                pgss.wal_records, pgss.wal_fpi, pgss.wal_bytes
+                pgss.wal_records, pgss.wal_fpi, pgss.wal_bytes,
+                pgss.jit_functions, pgss.jit_generation_time,
+                pgss.jit_inlining_count, pgss.jit_inlining_time,
+                pgss.jit_optimization_count, pgss.jit_optimization_time,
+                pgss.jit_emission_count, pgss.jit_emission_time,
+                pgss.jit_deform_count, pgss.jit_deform_time
             FROM %I.pg_stat_statements pgss
             JOIN pg_catalog.pg_database d ON d.oid = pgss.dbid
             JOIN pg_catalog.pg_roles r ON pgss.userid = r.oid
@@ -3584,7 +3615,7 @@ BEGIN
                         @extschema@.powa_get_guc('powa.ignored_users', ''),
                         ',')))
             $$, v_nsp);
-        -- pgss 1.10+, toplevel field added
+        -- pgss 1.10+, toplevel and some jit fields added
         ELSIF (v_pgss[1] = 1 AND v_pgss[2] >= 10) THEN
             RETURN QUERY EXECUTE format($$SELECT now(),
                 pgss.userid, pgss.dbid, pgss.toplevel, pgss.queryid, pgss.query,
@@ -3602,7 +3633,12 @@ BEGIN
                 0::double precision AS temp_blk_read_time,
                 0::double precision AS temp_blk_write_time,
                 pgss.plans, pgss.total_plan_time,
-                pgss.wal_records, pgss.wal_fpi, pgss.wal_bytes
+                pgss.wal_records, pgss.wal_fpi, pgss.wal_bytes,
+                pgss.jit_functions, pgss.jit_generation_time,
+                pgss.jit_inlining_count, pgss.jit_inlining_time,
+                pgss.jit_optimization_count, pgss.jit_optimization_time,
+                pgss.jit_emission_count, pgss.jit_emission_time,
+                0::bigint AS jit_deform_count, 0::double precision AS jit_deform_time
             FROM %I.pg_stat_statements pgss
             JOIN pg_catalog.pg_database d ON d.oid = pgss.dbid
             JOIN pg_catalog.pg_roles r ON pgss.userid = r.oid
@@ -3629,7 +3665,12 @@ BEGIN
                 0::double precision AS temp_blk_read_time,
                 0::double precision AS temp_blk_write_time,
                 pgss.plans, pgss.total_plan_time,
-                pgss.wal_records, pgss.wal_fpi, pgss.wal_bytes
+                pgss.wal_records, pgss.wal_fpi, pgss.wal_bytes,
+                0::bigint AS jit_functions, 0::double precision AS jit_generation_time,
+                0::bigint AS jit_inlining_count, 0::double precision AS jit_inlining_time,
+                0::bigint AS jit_optimization_count, 0::double precision AS jit_optimization_time,
+                0::bigint AS jit_emission_count, 0::double precision AS jit_emission_time,
+                0::bigint AS jit_deform_count, 0::double precision AS jit_deform_time
             FROM %I.pg_stat_statements pgss
             JOIN pg_catalog.pg_database d ON d.oid = pgss.dbid
             JOIN pg_catalog.pg_roles r ON pgss.userid = r.oid
@@ -3655,7 +3696,12 @@ BEGIN
                 0::double precision AS temp_blk_read_time,
                 0::double precision AS temp_blk_write_time,
                 0::bigint AS plans, 0::double precision AS total_plan_time,
-                0::bigint AS wal_records, 0::bigint AS wal_fpi, 0::numeric AS wal_bytes
+                0::bigint AS wal_records, 0::bigint AS wal_fpi, 0::numeric AS wal_bytes,
+                0::bigint AS jit_functions, 0::double precision AS jit_generation_time,
+                0::bigint AS jit_inlining_count, 0::double precision AS jit_inlining_time,
+                0::bigint AS jit_optimization_count, 0::double precision AS jit_optimization_time,
+                0::bigint AS jit_emission_count, 0::double precision AS jit_emission_time,
+                0::bigint AS jit_deform_count, 0::double precision AS jit_deform_time
             FROM %I.pg_stat_statements pgss
             JOIN pg_catalog.pg_database d ON d.oid = pgss.dbid
             JOIN pg_catalog.pg_roles r ON pgss.userid = r.oid
@@ -3679,7 +3725,12 @@ BEGIN
             pgss.local_blk_read_time, pgss.local_blk_write_time,
             pgss.temp_blk_read_time, pgss.temp_blk_write_time,
             pgss.plans, pgss.total_plan_time,
-            pgss.wal_records, pgss.wal_fpi, pgss.wal_bytes
+            pgss.wal_records, pgss.wal_fpi, pgss.wal_bytes,
+            pgss.jit_functions, pgss.jit_generation_time,
+            pgss.jit_inlining_count, pgss.jit_inlining_time,
+            pgss.jit_optimization_count, pgss.jit_optimization_time,
+            pgss.jit_emission_count, pgss.jit_emission_time,
+            pgss.jit_deform_count, pgss.jit_deform_time
         FROM @extschema@.powa_statements_src_tmp pgss WHERE srvid = _srvid;
     END IF;
 END;
@@ -3739,7 +3790,12 @@ BEGIN
                 local_blk_read_time, local_blk_write_time,
                 temp_blk_read_time, temp_blk_write_time,
                 plans, total_plan_time,
-                wal_records, wal_fpi, wal_bytes
+                wal_records, wal_fpi, wal_bytes,
+                jit_functions, jit_generation_time,
+                jit_inlining_count, jit_inlining_time,
+                jit_optimization_count, jit_optimization_time,
+                jit_emission_count, jit_emission_time,
+                jit_deform_count, jit_deform_time
             )::@extschema@.powa_statements_history_record AS record
             FROM capture
     ),
@@ -3759,7 +3815,12 @@ BEGIN
                 sum(local_blk_read_time), sum(local_blk_write_time),
                 sum(temp_blk_read_time), sum(temp_blk_write_time),
                 sum(plans), sum(total_plan_time),
-                sum(wal_records), sum(wal_fpi), sum(wal_bytes)
+                sum(wal_records), sum(wal_fpi), sum(wal_bytes),
+                sum(jit_functions), sum(jit_generation_time),
+                sum(jit_inlining_count), sum(jit_inlining_time),
+                sum(jit_optimization_count), sum(jit_optimization_time),
+                sum(jit_emission_count), sum(jit_emission_time),
+                sum(jit_deform_count), sum(jit_deform_time)
             )::@extschema@.powa_statements_history_record AS record
             FROM capture
             GROUP BY dbid, ts
@@ -5020,7 +5081,12 @@ BEGIN
                 min((record).temp_blk_read_time),min((record).temp_blk_write_time),
                 min((record).plans),min((record).total_plan_time),
                 min((record).wal_records),min((record).wal_fpi),
-                min((record).wal_bytes)
+                min((record).wal_bytes),
+                min((record).jit_functions), min((record).jit_generation_time),
+                min((record).jit_inlining_count), min((record).jit_inlining_time),
+                min((record).jit_optimization_count), min((record).jit_optimization_time),
+                min((record).jit_emission_count), min((record).jit_emission_time),
+                min((record).jit_deform_count), min((record).jit_deform_time)
             )::@extschema@.powa_statements_history_record,
             ROW(max((record).ts),
                 max((record).calls),max((record).total_exec_time),
@@ -5035,7 +5101,12 @@ BEGIN
                 max((record).temp_blk_read_time),max((record).temp_blk_write_time),
                 max((record).plans),max((record).total_plan_time),
                 max((record).wal_records),max((record).wal_fpi),
-                max((record).wal_bytes)
+                max((record).wal_bytes),
+                max((record).jit_functions), max((record).jit_generation_time),
+                max((record).jit_inlining_count), max((record).jit_inlining_time),
+                max((record).jit_optimization_count), max((record).jit_optimization_time),
+                max((record).jit_emission_count), max((record).jit_emission_time),
+                max((record).jit_deform_count), max((record).jit_deform_time)
             )::@extschema@.powa_statements_history_record
         FROM @extschema@.powa_statements_history_current
         WHERE srvid = _srvid
@@ -5066,7 +5137,12 @@ BEGIN
                 min((record).temp_blk_read_time),min((record).temp_blk_write_time),
                 min((record).plans),min((record).total_plan_time),
                 min((record).wal_records),min((record).wal_fpi),
-                min((record).wal_bytes)
+                min((record).wal_bytes),
+                min((record).jit_functions), min((record).jit_generation_time),
+                min((record).jit_inlining_count), min((record).jit_inlining_time),
+                min((record).jit_optimization_count), min((record).jit_optimization_time),
+                min((record).jit_emission_count), min((record).jit_emission_time),
+                min((record).jit_deform_count), min((record).jit_deform_time)
             )::@extschema@.powa_statements_history_record,
             ROW(max((record).ts),
                 max((record).calls),max((record).total_exec_time),
@@ -5081,7 +5157,12 @@ BEGIN
                 max((record).temp_blk_read_time),max((record).temp_blk_write_time),
                 max((record).plans),max((record).total_plan_time),
                 max((record).wal_records),max((record).wal_fpi),
-                max((record).wal_bytes)
+                max((record).wal_bytes),
+                max((record).jit_functions), max((record).jit_generation_time),
+                max((record).jit_inlining_count), max((record).jit_inlining_time),
+                max((record).jit_optimization_count), max((record).jit_optimization_time),
+                max((record).jit_emission_count), max((record).jit_emission_time),
+                max((record).jit_deform_count), max((record).jit_deform_time)
             )::@extschema@.powa_statements_history_record
         FROM @extschema@.powa_statements_history_current_db
         WHERE srvid = _srvid
