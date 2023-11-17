@@ -1715,6 +1715,16 @@ _key_cols => $${
 {datid, oid}
 }$$);
 
+SELECT @extschema@.powa_generic_module_setup('pg_stat_database_conflicts',
+$${
+{confl_tablespace, bigint}, {confl_lock, bigint}, {confl_snapshot, bigint},
+{confl_bufferpin, bigint}, {confl_deadlock, bigint},
+{confl_active_logicalslot, bigint}
+}$$,
+_key_cols => $${
+{datid, oid}
+}$$);
+
 SELECT @extschema@.powa_generic_module_setup('pg_stat_io',
 $${
 {reads, bigint}, {read_time, double precision},
@@ -4486,6 +4496,46 @@ BEGIN
     END IF;
 END;
 $PROC$ LANGUAGE plpgsql; /* end of powa_stat_database_src */
+
+CREATE OR REPLACE FUNCTION @extschema@.powa_stat_database_conflicts_src(IN _srvid integer,
+    OUT ts timestamp with time zone,
+    OUT datid oid,
+    OUT confl_tablespace bigint,
+    OUT confl_lock bigint,
+    OUT confl_snapshot bigint,
+    OUT confl_bufferpin bigint,
+    OUT confl_deadlock bigint,
+    OUT confl_active_logicalslot bigint
+) RETURNS SETOF record STABLE AS $PROC$
+BEGIN
+    IF (_srvid = 0) THEN
+        -- pg16+, confl_active_logicalslot added
+        IF current_setting('server_version_num')::int >= 160000 THEN
+            RETURN QUERY SELECT now(),
+            s.datid,
+            s.confl_tablespace, s.confl_lock, s.confl_snapshot,
+            s.confl_bufferpin, s.confl_deadlock,
+            s.confl_active_logicalslot
+            FROM pg_catalog.pg_stat_database_conflicts AS s;
+        ELSE
+            RETURN QUERY SELECT now(),
+            s.datid,
+            s.confl_tablespace, s.confl_lock, s.confl_snapshot,
+            s.confl_bufferpin, s.confl_deadlock,
+            0::bigint AS s.confl_active_logicalslot
+            FROM pg_catalog.pg_stat_database_conflicts AS s;
+        END IF;
+    ELSE
+        RETURN QUERY SELECT s.ts,
+            s.datid,
+            s.confl_tablespace, s.confl_lock, s.confl_snapshot,
+            s.confl_bufferpin, s.confl_deadlock,
+            s.confl_active_logicalslot
+        FROM @extschema@.powa_stat_database_conflicts_src_tmp AS s
+        WHERE s.srvid = _srvid;
+    END IF;
+END;
+$PROC$ LANGUAGE plpgsql; /* end of powa_stat_database_conflicts_src */
 
 CREATE OR REPLACE FUNCTION @extschema@.powa_stat_io_src(IN _srvid integer,
     OUT ts timestamp with time zone,

@@ -75,34 +75,35 @@ SELECT powa_role, relname, priv
 FROM check_has_privilege('powa_read_all_data',
     array ['SELECT'],
     array []::text[]);
-     powa_role      |            relname             |  priv  
---------------------+--------------------------------+--------
- powa_read_all_data | powa_all_indexes_src_tmp       | SELECT
- powa_read_all_data | powa_all_tables_src_tmp        | SELECT
- powa_read_all_data | powa_catalog_attribute_src_tmp | SELECT
- powa_read_all_data | powa_catalog_class_src_tmp     | SELECT
- powa_read_all_data | powa_catalog_collation_src_tmp | SELECT
- powa_read_all_data | powa_catalog_database_src_tmp  | SELECT
- powa_read_all_data | powa_catalog_language_src_tmp  | SELECT
- powa_read_all_data | powa_catalog_namespace_src_tmp | SELECT
- powa_read_all_data | powa_catalog_proc_src_tmp      | SELECT
- powa_read_all_data | powa_catalog_role_src_tmp      | SELECT
- powa_read_all_data | powa_catalog_type_src_tmp      | SELECT
- powa_read_all_data | powa_databases_src_tmp         | SELECT
- powa_read_all_data | powa_kcache_src_tmp            | SELECT
- powa_read_all_data | powa_qualstats_src_tmp         | SELECT
- powa_read_all_data | powa_replication_slots_src_tmp | SELECT
- powa_read_all_data | powa_stat_activity_src_tmp     | SELECT
- powa_read_all_data | powa_stat_archiver_src_tmp     | SELECT
- powa_read_all_data | powa_stat_bgwriter_src_tmp     | SELECT
- powa_read_all_data | powa_stat_checkpointer_src_tmp | SELECT
- powa_read_all_data | powa_stat_database_src_tmp     | SELECT
- powa_read_all_data | powa_stat_io_src_tmp           | SELECT
- powa_read_all_data | powa_stat_replication_src_tmp  | SELECT
- powa_read_all_data | powa_statements_src_tmp        | SELECT
- powa_read_all_data | powa_user_functions_src_tmp    | SELECT
- powa_read_all_data | powa_wait_sampling_src_tmp     | SELECT
-(25 rows)
+     powa_role      |               relname                |  priv  
+--------------------+--------------------------------------+--------
+ powa_read_all_data | powa_all_indexes_src_tmp             | SELECT
+ powa_read_all_data | powa_all_tables_src_tmp              | SELECT
+ powa_read_all_data | powa_catalog_attribute_src_tmp       | SELECT
+ powa_read_all_data | powa_catalog_class_src_tmp           | SELECT
+ powa_read_all_data | powa_catalog_collation_src_tmp       | SELECT
+ powa_read_all_data | powa_catalog_database_src_tmp        | SELECT
+ powa_read_all_data | powa_catalog_language_src_tmp        | SELECT
+ powa_read_all_data | powa_catalog_namespace_src_tmp       | SELECT
+ powa_read_all_data | powa_catalog_proc_src_tmp            | SELECT
+ powa_read_all_data | powa_catalog_role_src_tmp            | SELECT
+ powa_read_all_data | powa_catalog_type_src_tmp            | SELECT
+ powa_read_all_data | powa_databases_src_tmp               | SELECT
+ powa_read_all_data | powa_kcache_src_tmp                  | SELECT
+ powa_read_all_data | powa_qualstats_src_tmp               | SELECT
+ powa_read_all_data | powa_replication_slots_src_tmp       | SELECT
+ powa_read_all_data | powa_stat_activity_src_tmp           | SELECT
+ powa_read_all_data | powa_stat_archiver_src_tmp           | SELECT
+ powa_read_all_data | powa_stat_bgwriter_src_tmp           | SELECT
+ powa_read_all_data | powa_stat_checkpointer_src_tmp       | SELECT
+ powa_read_all_data | powa_stat_database_conflicts_src_tmp | SELECT
+ powa_read_all_data | powa_stat_database_src_tmp           | SELECT
+ powa_read_all_data | powa_stat_io_src_tmp                 | SELECT
+ powa_read_all_data | powa_stat_replication_src_tmp        | SELECT
+ powa_read_all_data | powa_statements_src_tmp              | SELECT
+ powa_read_all_data | powa_user_functions_src_tmp          | SELECT
+ powa_read_all_data | powa_wait_sampling_src_tmp           | SELECT
+(26 rows)
 
 -- powa_read_all_data should not have non-SELECT privilege on any table, and no
 -- privilege on sequences
@@ -143,13 +144,14 @@ FROM check_has_privilege('powa_read_all_metrics',
  powa_read_all_metrics | powa_stat_archiver_src_tmp                 | SELECT
  powa_read_all_metrics | powa_stat_bgwriter_src_tmp                 | SELECT
  powa_read_all_metrics | powa_stat_checkpointer_src_tmp             | SELECT
+ powa_read_all_metrics | powa_stat_database_conflicts_src_tmp       | SELECT
  powa_read_all_metrics | powa_stat_database_src_tmp                 | SELECT
  powa_read_all_metrics | powa_stat_io_src_tmp                       | SELECT
  powa_read_all_metrics | powa_stat_replication_src_tmp              | SELECT
  powa_read_all_metrics | powa_statements_src_tmp                    | SELECT
  powa_read_all_metrics | powa_user_functions_src_tmp                | SELECT
  powa_read_all_metrics | powa_wait_sampling_src_tmp                 | SELECT
-(27 rows)
+(28 rows)
 
 SELECT powa_role, relname, priv
 FROM check_has_not_privilege('powa_read_all_metrics',
