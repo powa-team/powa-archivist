@@ -1760,6 +1760,17 @@ state, sent_lsn, write_lsn, flush_lsn, replay_lsn, write_lag, flush_lag,
 replay_lag, sync_priority, sync_state, reply_time
 }$$);
 
+SELECT @extschema@.powa_generic_module_setup('pg_stat_slru',
+$${
+{blks_zeroed, bigint}, {blks_hit, bigint}, {blks_read, bigint},
+{blks_written, bigint}, {blks_exists, bigint},
+{flushes, bigint}, {truncates, bigint},
+{stats_reset, timestamp with time zone}
+}$$,
+_key_cols => $${
+{name, text}
+}$$);
+
 SELECT @extschema@.powa_generic_datatype_setup('powa_kcache',
 $${
 {plan_reads, bigint}, {plan_writes, bigint},
@@ -4666,6 +4677,52 @@ BEGIN
     END IF;
 END;
 $PROC$ LANGUAGE plpgsql; /* end of powa_stat_replication_src */
+
+CREATE OR REPLACE FUNCTION @extschema@.powa_stat_slru_src(IN _srvid integer,
+    OUT ts timestamp with time zone,
+    OUT name text,
+    OUT blks_zeroed bigint,
+    OUT blks_hit bigint,
+    OUT blks_read bigint,
+    OUT blks_written bigint,
+    OUT blks_exists bigint,
+    OUT flushes bigint,
+    OUT truncates bigint,
+    OUT stats_reset timestamp with time zone
+) RETURNS SETOF record STABLE AS $PROC$
+BEGIN
+    IF (_srvid = 0) THEN
+        -- pg13+, the view is introduced
+        IF current_setting('server_version_num')::int >= 130000 THEN
+            RETURN QUERY SELECT now(),
+            s.name,
+            s.blks_zeroed, s.blks_hit,
+            s.blks_read, s.blks_written, s.blks_exists,
+            s.flushes, s.truncates,
+            s.stats_reset
+            FROM pg_catalog.pg_stat_slru AS s;
+        ELSE -- return an empty dataset for pg15- servers
+            RETURN QUERY SELECT now(),
+            NULL::text AS name,
+            0::bigint AS blks_zeroed, 0::bigint AS blks_hit,
+            0::bigint AS blks_read, 0::bigint AS blks_written,
+            0::bigint AS blks_exists,
+            0::bigint AS flushes, 0::bigint as truncates
+            NULL::timestamp with time zone AS stats_reset
+            WHERE false;
+        END IF;
+    ELSE
+        RETURN QUERY SELECT s.ts,
+            s.name,
+            s.blks_zeroed, s.blks_hit,
+            s.blks_read, s.blks_written, s.blks_exists,
+            s.flushes, s.truncates,
+            s.stats_reset
+        FROM @extschema@.powa_stat_slru_src_tmp AS s
+        WHERE s.srvid = _srvid;
+    END IF;
+END;
+$PROC$ LANGUAGE plpgsql; /* end of powa_stat_slru_src */
 
 CREATE OR REPLACE FUNCTION @extschema@.powa_catalog_database_src(IN _srvid integer,
     OUT oid oid,
