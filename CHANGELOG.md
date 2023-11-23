@@ -1,4 +1,4 @@
-## 4.2.2 (WIP)
+## 4.2.2
 
   - Bugfixes
     - Fix the toplevel field position in powa_statements_src function (Julien
