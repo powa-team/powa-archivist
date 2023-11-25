@@ -1762,11 +1762,13 @@ replay_lag, sync_priority, sync_state, reply_time
 
 SELECT @extschema@.powa_generic_module_setup('pg_stat_slru',
 $${
-{name, text},
 {blks_zeroed, bigint}, {blks_hit, bigint}, {blks_read, bigint},
 {blks_written, bigint}, {blks_exists, bigint},
 {flushes, bigint}, {truncates, bigint},
 {stats_reset, timestamp with time zone}
+}$$,
+_key_cols => $${
+{name, text}
 }$$);
 
 SELECT @extschema@.powa_generic_datatype_setup('powa_kcache',
