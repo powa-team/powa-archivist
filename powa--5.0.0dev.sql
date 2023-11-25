@@ -1199,9 +1199,11 @@ END;
 $$ LANGUAGE plpgsql; /* end of powa_generic_datatype_setup */
 
 CREATE FUNCTION @extschema@.powa_generic_module_setup(_pg_module text,
-                                                      _cols text[],
+                                                      _counter_cols text[],
                                                       _nullable text[] DEFAULT '{}',
-                                                      _need_operators boolean default true)
+                                                      _need_operators boolean default true,
+                                                      _key_cols text[] DEFAULT '{}',
+                                                      _key_nullable boolean DEFAULT false)
 RETURNS void AS
 $$
 DECLARE
@@ -1215,6 +1217,7 @@ DECLARE
     v_null text;
     v_has_no_minmax_col bool;
     v_suffix text;
+    v_accum text;
 BEGIN
     IF quote_ident(_pg_module) != _pg_module THEN
         RAISE EXCEPTION '% require quoting, which is not supported',
@@ -1237,17 +1240,52 @@ BEGIN
         (_pg_module, 'reset',     v_module || '_reset',     NULL);
 
     -- create the underlying record datatype(s) and operators if needed
-    EXECUTE @extschema@.powa_generic_datatype_setup(v_module, _cols,
+    EXECUTE @extschema@.powa_generic_datatype_setup(v_module, _counter_cols,
                                                     _need_operators => _need_operators);
     -- create the *_src_tmp unlogged table
     v_sql := format('CREATE UNLOGGED TABLE @extschema@.%I (
     srvid integer NOT NULL,
     ts timestamp with time zone NOT NULL',
                     v_module || '_src_tmp');
+
+    -- iterate over the key columns first
+    IF _key_nullable THEN
+        v_null := '';
+    ELSE
+        v_null := ' NOT NULL';
+    END IF;
+    FOR i IN 1..coalesce(array_upper(_key_cols, 1), 0) LOOP
+        v_colname := _key_cols[i][1];
+        v_coltype := _key_cols[i][2];
+
+        -- as this is the first iteration over the columns, make sure that none
+        -- of them require quoting
+        IF quote_ident(v_colname) != v_colname THEN
+            RAISE EXCEPTION '% require quoting, which is not supported',
+                            v_colname;
+        END IF;
+
+        -- key columns should only use a few of native system types
+        IF v_coltype NOT IN ('boolean', 'integer', 'oid', 'text')
+        THEN
+            RAISE EXCEPTION 'invalid data type % for key col %.%',
+                            v_coltype, v_module, v_colname;
+        END IF;
+
+        IF v_colname = ANY (_nullable) THEN
+            RAISE EXCEPTION 'invalid nullable info for key col %.%',
+                            v_module, v_colname;
+        END IF;
+
+        v_sql := v_sql || ',' || chr(10) || format('    %I %s%s',
+                                                   v_colname, v_coltype, v_null);
+    END LOOP;
+
+    -- then iterate over the counter columns
     v_has_no_minmax_col := false;
-    FOR i IN 1..array_upper(_cols, 1) LOOP
-        v_colname := _cols[i][1];
-        v_coltype := _cols[i][2];
+    FOR i IN 1..array_upper(_counter_cols, 1) LOOP
+        v_colname := _counter_cols[i][1];
+        v_coltype := _counter_cols[i][2];
 
         IF v_coltype = 'xid' THEN
             v_has_no_minmax_col := true;
@@ -1294,7 +1332,19 @@ BEGIN
         v_suffix := v_suffix || '_minmax';
     END IF;
     v_sql := format('CREATE TABLE @extschema@.%1$I (
-    srvid integer NOT NULL,
+    srvid integer NOT NULL,', v_module || '_history');
+
+    IF _key_nullable THEN
+        v_null := '';
+    ELSE
+        v_null := ' NOT NULL';
+    END IF;
+    FOR i IN 1..coalesce(array_upper(_key_cols, 1), 0) LOOP
+        v_sql := v_sql || format('
+    %I %s%s,', _key_cols[i][1], _key_cols[i][2], v_null);
+    END LOOP;
+
+    v_sql := v_sql || format('
     coalesce_range tstzrange NOT NULL,
     records @extschema@.%2$I[] NOT NULL,
     mins_in_range @extschema@.%3$I NOT NULL,
@@ -1308,14 +1358,27 @@ CREATE INDEX %4$I ON @extschema@.%1$I USING gist(srvid, coalesce_range);',
     EXECUTE v_sql;
 
     -- and the *_history_current table and index
+    v_accum = 'srvid integer NOT NULL,';
+    IF _key_nullable THEN
+        v_null := '';
+    ELSE
+        v_null := ' NOT NULL';
+    END IF;
+    FOR i IN 1..coalesce(array_upper(_key_cols, 1), 0) LOOP
+        v_colname := _key_cols[i][1];
+        v_coltype := _key_cols[i][2];
+
+        v_accum := v_accum || format('
+    %I %s%s,', v_colname, v_coltype, v_null);
+    END LOOP;
     v_sql := format('CREATE TABLE @extschema@.%1$I (
-    srvid integer NOT NULL,
+    %3$s
     record @extschema@.%2$I NOT NULL,
     FOREIGN KEY (srvid) REFERENCES @extschema@.powa_servers(id)
       MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
 );
 CREATE INDEX ON @extschema@.%1$I (srvid);',
-    v_module || '_history_current', v_module || '_history_record');
+    v_module || '_history_current', v_module || '_history_record', v_accum);
     EXECUTE v_sql;
 
     -- make sure the *_history and  *_history_current tables are dumped
@@ -1323,6 +1386,12 @@ CREATE INDEX ON @extschema@.%1$I (srvid);',
     PERFORM pg_catalog.pg_extension_config_dump('@extschema@.' || v_module || '_history_current','');
 
     -- create the *_snapshot function
+    v_accum := '_srvid';
+    FOR i IN 1..coalesce(array_upper(_key_cols, 1), 0) LOOP
+        v_colname := _key_cols[i][1];
+
+        v_accum := v_accum || format(', %I', v_colname);
+    END LOOP;
     v_sql := format('CREATE FUNCTION @extschema@.%1$I (_srvid integer) RETURNS void AS $PROC$
 DECLARE
     result boolean;
@@ -1340,14 +1409,15 @@ BEGIN
         FROM @extschema@.%2$I(_srvid)
     )
     INSERT INTO @extschema@.%3$I
-        SELECT _srvid,
+        SELECT %4$s,
         ROW(ts',
                   v_module || '_snapshot',
                   v_module || '_src',
-                  v_module || '_history_current');
+                  v_module || '_history_current',
+                  v_accum);
 
-    FOR i IN 1..array_upper(_cols, 1) LOOP
-        v_colname := _cols[i][1];
+    FOR i IN 1..array_upper(_counter_cols, 1) LOOP
+        v_colname := _counter_cols[i][1];
 
         IF i > 1 AND (i - 1) % 3 = 0 THEN
             v_sql := v_sql || ',' || chr(10) || '            ';
@@ -1375,6 +1445,16 @@ $PROC$ language plpgsql;',
     EXECUTE v_sql;
 
     -- create the *_aggregate function
+    v_accum := 'srvid';
+    FOR i IN 1..coalesce(array_upper(_key_cols, 1), 0) LOOP
+        v_colname := _key_cols[i][1];
+        v_coltype := _key_cols[i][2];
+
+        v_sql := v_sql || format(',
+            (record).%I', v_colname);
+
+        v_accum := v_accum || ', ' || v_colname;
+    END LOOP;
     v_sql := format('CREATE FUNCTION @extschema@.%1$I(_srvid integer)
 RETURNS void AS $PROC$
 DECLARE
@@ -1388,19 +1468,19 @@ BEGIN
 
     -- aggregate %3$s history table
     INSERT INTO @extschema@.%2$I
-        SELECT srvid,
+        SELECT %4$s,
             tstzrange(min((record).ts), max((record).ts),''[]''),
             array_agg(record)',
                     v_module || '_aggregate', v_module || '_history',
-                    v_module);
+                    v_module, v_accum);
 
     FOREACH v_kind IN ARRAY ARRAY['min', 'max'] LOOP
         v_sql := v_sql || format(',
             ROW(%s((record).ts)', v_kind);
 
-        FOR i IN 1..array_upper(_cols, 1) LOOP
-            v_colname := _cols[i][1];
-            v_coltype := _cols[i][2];
+        FOR i IN 1..array_upper(_counter_cols, 1) LOOP
+            v_colname := _counter_cols[i][1];
+            v_coltype := _counter_cols[i][2];
 
             IF v_coltype != 'xid' THEN
                 v_sql := v_sql || format(',
@@ -1415,7 +1495,7 @@ BEGIN
     v_sql := v_sql || format('
         FROM @extschema@.%1$I
         WHERE srvid = _srvid
-        GROUP BY srvid;
+        GROUP BY %2$s;
 
     GET DIAGNOSTICS v_rowcount = ROW_COUNT;
     PERFORM @extschema@.powa_log(format(''%%s - rowcount: %%s'',
@@ -1424,7 +1504,7 @@ BEGIN
     DELETE FROM @extschema@.%1$I WHERE srvid = _srvid;
  END;
 $PROC$ LANGUAGE plpgsql',
-                    v_module || '_history_current', v_module || '_history');
+                    v_module || '_history_current', v_accum);
     EXECUTE v_sql;
 
     -- create the *_purge function
@@ -1595,7 +1675,7 @@ $${
 }$$);
 
 DROP FUNCTION @extschema@.powa_generic_datatype_setup(text, text[], jsonb, boolean);
-DROP FUNCTION @extschema@.powa_generic_module_setup(text, text[], text[], boolean);
+DROP FUNCTION @extschema@.powa_generic_module_setup(text, text[], text[], boolean, text[], boolean);
 
 /* pg_catalog import support */
 CREATE UNLOGGED TABLE @extschema@.powa_catalog_class_src_tmp (
