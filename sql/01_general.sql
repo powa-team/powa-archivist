@@ -2,6 +2,7 @@
 \set SHOW_CONTEXT never
 
 -- Check the relations that aren't dumped
+-- we ignore *_src_tmp are those should never be dumped
 WITH ext AS (
     SELECT c.oid, c.relname
     FROM pg_depend d
@@ -21,6 +22,30 @@ SELECT ext.relname
 FROM ext
 LEFT JOIN dmp USING (oid)
 WHERE dmp.oid IS NULL
+AND ext.relname NOT LIKE '%src_tmp'
+ORDER BY ext.relname::text COLLATE "C";
+
+-- Check that no *_src_tmp table are dumped
+WITH ext AS (
+    SELECT c.oid, c.relname
+    FROM pg_depend d
+    JOIN pg_extension e ON d.refclassid = 'pg_extension'::regclass
+        AND e.oid = d.refobjid
+        AND e.extname = 'powa'
+    JOIN pg_class c ON d.classid = 'pg_class'::regclass
+        AND c.oid = d.objid
+    WHERE c.relkind != 'v'
+),
+dmp AS (
+    SELECT unnest(extconfig) AS oid
+    FROM pg_extension
+    WHERE extname = 'powa'
+)
+SELECT ext.relname
+FROM ext
+LEFT JOIN dmp USING (oid)
+WHERE dmp.oid IS NOT NULL
+AND ext.relname LIKE '%src_tmp'
 ORDER BY ext.relname::text COLLATE "C";
 
 -- Check for object that aren't in the "PoWA" schema
