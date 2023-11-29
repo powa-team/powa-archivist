@@ -1271,7 +1271,7 @@ BEGIN
         END IF;
 
         -- key columns should only use a few of native system types
-        IF v_coltype NOT IN ('boolean', 'oid', 'text')
+        IF v_coltype NOT IN ('boolean', 'integer', 'oid', 'text')
         THEN
             RAISE EXCEPTION 'invalid data type % for key col %.%',
                             v_coltype, v_module, v_colname;
