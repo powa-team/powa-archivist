@@ -1779,6 +1779,23 @@ $${
 {stats_reset, timestamp with time zone}
 }$$);
 
+SELECT @extschema@.powa_generic_module_setup('pg_stat_wal_receiver',
+$${
+{pid, integer}, {status, text},
+{receive_start_lsn, pg_lsn}, {receive_start_tli, integer},
+{last_received_lsn, pg_lsn},
+{written_lsn, pg_lsn}, {flushed_lsn, pg_lsn},
+{received_tli, integer},
+{last_msg_send_time, timestamp with time zone},
+{last_msg_receipt_time, timestamp with time zone},
+{latest_end_lsn, pg_lsn}, {latest_end_time, timestamp with time zone},
+{conninfo, text}
+}$$,
+_key_cols => $${
+{slot_name, text}, {sender_host, text}, {sender_port, integer}
+}$$,
+_key_nullable => true);
+
 SELECT @extschema@.powa_generic_datatype_setup('powa_kcache',
 $${
 {plan_reads, bigint}, {plan_writes, bigint},
@@ -4774,6 +4791,130 @@ BEGIN
             s.wal_write_time, s.wal_sync_time,
             s.stats_reset
         FROM @extschema@.powa_stat_wal_src_tmp AS s
+        WHERE s.srvid = _srvid;
+    END IF;
+END;
+$PROC$ LANGUAGE plpgsql; /* end of powa_stat_wal_src */
+
+CREATE OR REPLACE FUNCTION @extschema@.powa_stat_wal_receiver_src(IN _srvid integer,
+    OUT ts timestamp with time zone,
+    OUT slot_name text,
+    OUT sender_host text,
+    OUT sender_port integer,
+    OUT pid integer,
+    OUT status text,
+    OUT receive_start_lsn pg_lsn,
+    OUT receive_start_tli integer,
+    OUT last_received_lsn pg_lsn,
+    OUT written_lsn pg_lsn,
+    OUT flushed_lsn pg_lsn,
+    OUT received_tli integer,
+    OUT last_msg_send_time timestamp with time zone,
+    OUT last_msg_receipt_time timestamp with time zone,
+    OUT latest_end_lsn pg_lsn,
+    OUT latest_end_time timestamp with time zone,
+    OUT conninfo text
+) RETURNS SETOF record STABLE AS $PROC$
+DECLARE
+    v_pg_version_num int;
+    v_current_lsn pg_lsn;
+BEGIN
+    IF (_srvid = 0) THEN
+        v_pg_version_num := current_setting('server_version_num')::int;
+
+         -- return an empty dataset for pg9.5- servers or non-standby
+        IF (NOT pg_is_in_recovery()
+            OR v_pg_version_num < 90600
+        ) THEN
+            RETURN QUERY SELECT now(),
+            ''::text AS slot_name,
+            ''::text AS sender_host, 0::integer AS sender_port,
+            0::integer pid, ''::text AS status,
+            NULL::pg_lsn AS receive_start_lsn, 0::integer AS receive_start_tli,
+            NULL::pg_lsn AS last_received_lsn,
+            NULL::pg_lsn AS written_lsn, NULL::pg_lsn AS flushed_lsn,
+            0::integer AS received_tli,
+            NULL::timestamp with time zone AS last_msg_send_time,
+            NULL::timestamp with time zone AS last_msg_receipt_time,
+            NULL::pg_lsn AS latest_end_lsn,
+            NULL::timestamp with time zone AS latest_end_time,
+            ''::text AS conninfo
+            WHERE false;
+        END IF;
+
+        IF v_pg_version_num < 100000 THEN
+            v_current_lsn := pg_last_xlog_receive_location();
+        ELSE
+            v_current_lsn := pg_last_wal_receive_lsn();
+        END IF;
+
+        -- pg13+, received_lsn split in written_lsn and flushed_lsn
+        IF v_pg_version_num >= 130000 THEN
+            RETURN QUERY SELECT now(),
+            s.slot_name,
+            s.sender_host, s.sender_port,
+            s.pid, s.status,
+            s.receive_start_lsn, s.receive_start_tli,
+            v_current_lsn,
+            s.written_lsn, s.flushed_lsn,
+            s.received_tli,
+            s.last_msg_send_time,
+            s.last_msg_receipt_time,
+            s.latest_end_lsn,
+            s.latest_end_time,
+            s.conninfo
+            FROM pg_catalog.pg_stat_wal_receiver AS s;
+        -- pg11+, sender_host and sender_port added
+        ELSIF v_pg_version_num >= 110000 THEN
+            RETURN QUERY SELECT now(),
+            s.slot_name,
+            s.sender_host, s.sender_port,
+            s.pid, s.status,
+            s.receive_start_lsn, s.receive_start_tli,
+            v_current_lsn,
+            NULL::pg_lsn AS written_lsn, s.received_lsn AS flushed_lsn,
+            s.received_tli,
+            s.last_msg_send_time,
+            s.last_msg_receipt_time,
+            s.latest_end_lsn,
+            s.latest_end_time,
+            s.conninfo
+            FROM pg_catalog.pg_stat_wal_receiver AS s;
+        -- pg9.6+, the view is introduced
+        ELSIF v_pg_version_num >= 90600 THEN
+            RETURN QUERY SELECT now(),
+            s.slot_name,
+            NULL::text AS sender_host, NULL::integer AS sender_port,
+            s.pid, s.status,
+            s.receive_start_lsn, s.receive_start_tli,
+            v_current_lsn,
+            NULL::pg_lsn AS written_lsn, s.received_lsn AS flushed_lsn,
+            s.received_tli,
+            s.last_msg_send_time,
+            s.last_msg_receipt_time,
+            s.latest_end_lsn,
+            s.latest_end_time,
+            s.conninfo
+            FROM pg_catalog.pg_stat_wal_receiver AS s;
+        ELSE
+            -- already handled above
+            RAISE EXCEPTION 'bug in powa_stat_wal_receiver_src_tmp';
+        END IF;
+    ELSE
+        RETURN QUERY SELECT s.ts,
+            s.slot_name,
+            s.sender_host, s.sender_port,
+            s.pid, s.status,
+            s.receive_start_lsn, s.receive_start_tli,
+            s.last_received_lsn,
+            s.written_lsn, s.flushed_lsn,
+            s.received_tli,
+            s.last_msg_send_time,
+            s.last_msg_receipt_time,
+            s.latest_end_lsn,
+            s.latest_end_time,
+            s.conninfo
+        FROM @extschema@.powa_stat_wal_receiver_src_tmp AS s
         WHERE s.srvid = _srvid;
     END IF;
 END;
