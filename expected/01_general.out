@@ -136,7 +136,11 @@ SELECT * FROM "PoWA".powa_functions ORDER BY name, operation, priority, function
      0 | module    | pg_stat_wal                | purge     | f        | powa_stat_wal_purge                    |                                  |               | t       |      100
      0 | module    | pg_stat_wal                | reset     | f        | powa_stat_wal_reset                    |                                  |               | t       |      100
      0 | module    | pg_stat_wal                | snapshot  | f        | powa_stat_wal_snapshot                 | powa_stat_wal_src                |               | t       |      100
-(54 rows)
+     0 | module    | pg_stat_wal_receiver       | aggregate | f        | powa_stat_wal_receiver_aggregate       |                                  |               | t       |      100
+     0 | module    | pg_stat_wal_receiver       | purge     | f        | powa_stat_wal_receiver_purge           |                                  |               | t       |      100
+     0 | module    | pg_stat_wal_receiver       | reset     | f        | powa_stat_wal_receiver_reset           |                                  |               | t       |      100
+     0 | module    | pg_stat_wal_receiver       | snapshot  | f        | powa_stat_wal_receiver_snapshot        | powa_stat_wal_receiver_src       |               | t       |      100
+(58 rows)
 
 -- test C SRFs
 SELECT COUNT(*) = 0
