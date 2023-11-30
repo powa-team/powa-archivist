@@ -4558,7 +4558,7 @@ BEGIN
             s.datid,
             s.confl_tablespace, s.confl_lock, s.confl_snapshot,
             s.confl_bufferpin, s.confl_deadlock,
-            0::bigint AS s.confl_active_logicalslot
+            0::bigint AS confl_active_logicalslot
             FROM pg_catalog.pg_stat_database_conflicts AS s;
         END IF;
     ELSE
