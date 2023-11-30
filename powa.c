@@ -697,8 +697,5 @@ powa_stat_common(PG_FUNCTION_ARGS, PowaStatKind kind)
 	pgstat_clear_snapshot();
 #endif
 
-	/* clean up and return the tuplestore */
-	tuplestore_donestoring(tupstore);
-
 	return (Datum) 0;
 }
