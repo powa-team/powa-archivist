@@ -1271,7 +1271,7 @@ BEGIN
         END IF;
 
         -- key columns should only use a few of native system types
-        IF v_coltype NOT IN ('boolean', 'integer', 'oid', 'text')
+        IF v_coltype NOT IN ('boolean', 'integer', 'name', 'oid', 'text')
         THEN
             RAISE EXCEPTION 'invalid data type % for key col %.%',
                             v_coltype, v_module, v_colname;
@@ -1769,6 +1769,21 @@ $${
 }$$,
 _key_cols => $${
 {name, text}
+}$$);
+
+SELECT @extschema@.powa_generic_module_setup('pg_stat_subscription',
+$${
+{worker_type, text}, {pid, integer}, {leader_pid, integer}, {relid, oid},
+{received_lsn, pg_lsn}, {last_msg_send_time, timestamp with time zone},
+{last_msg_receipt_time, timestamp with time zone},
+{latest_end_lsn, pg_lsn}, {latest_end_time, timestamp with time zone}
+}$$,
+$${
+worker_type, pid, leader_pid, relid, received_lsn, last_msg_send_time,
+last_msg_receipt_time, latest_end_lsn, latest_end_time
+}$$,
+_key_cols => $${
+{subid, oid}, {subname, name}
 }$$);
 
 SELECT @extschema@.powa_generic_module_setup('pg_stat_wal',
@@ -4748,6 +4763,82 @@ BEGIN
     END IF;
 END;
 $PROC$ LANGUAGE plpgsql; /* end of powa_stat_slru_src */
+
+CREATE OR REPLACE FUNCTION @extschema@.powa_stat_subscription_src(IN _srvid integer,
+    OUT ts timestamp with time zone,
+    OUT subid oid,
+    OUT subname name,
+    OUT worker_type text,
+    OUT pid integer,
+    OUT leader_pid integer,
+    OUT relid oid,
+    OUT received_lsn pg_lsn,
+    OUT last_msg_send_time timestamp with time zone,
+    OUT last_msg_receipt_time timestamp with time zone,
+    OUT latest_end_lsn pg_lsn,
+    OUT latest_end_time timestamp with time zone
+) RETURNS SETOF record STABLE AS $PROC$
+DECLARE
+    v_pg_version_num int;
+BEGIN
+    IF (_srvid = 0) THEN
+        v_pg_version_num := current_setting('server_version_num')::int;
+
+        -- pg17+, worker_type is added
+        IF v_pg_version_num >= 170000 THEN
+            RETURN QUERY SELECT now(),
+            s.subid, s.subname,
+            s.worker_type,
+            s.pid, s.leader_pid,
+            s.relid, s.received_lsn,
+            s.last_msg_send_time, s.last_msg_receipt_time,
+            s.latest_end_lsn, s.latest_end_time
+            FROM pg_catalog.pg_stat_subscription AS s;
+        -- pg16+, leader_pid is added
+        ELSIF v_pg_version_num >= 160000 THEN
+            RETURN QUERY SELECT now(),
+            s.subid, s.subname,
+            'apply'::text AS worker_type,
+            s.pid, s.leader_pid,
+            s.relid, s.received_lsn,
+            s.last_msg_send_time, s.last_msg_receipt_time,
+            s.latest_end_lsn, s.latest_end_time
+            FROM pg_catalog.pg_stat_subscription AS s;
+        -- pg10+, the view is introduced
+        ELSIF v_pg_version_num >= 100000 THEN
+            RETURN QUERY SELECT now(),
+            s.subid, s.subname,
+            'apply'::text AS worker_type,
+            s.pid, NULL::integer AS leader_pid,
+            s.relid, s.received_lsn,
+            s.last_msg_send_time, s.last_msg_receipt_time,
+            s.latest_end_lsn, s.latest_end_time
+            FROM pg_catalog.pg_stat_subscription AS s;
+        ELSE -- return an empty dataset for pg9.6- servers
+            RETURN QUERY SELECT now(),
+            0::oid AS subid, '' AS subname,
+            ''::text AS worker_type,
+            0::oid AS pid, NULL::integer AS leader_pid,
+            0::oid AS relid, NULL::pg_lsn AS received_lsn,
+            NULL::timestamp with time zone AS last_msg_send_time,
+            NULL::timestamp with time zone AS last_msg_receipt_time,
+            NULL::pg_lsn AS latest_end_lsn,
+            NULL::timestamp with time zone AS latest_end_time
+            WHERE false;
+        END IF;
+    ELSE
+        RETURN QUERY SELECT s.ts,
+            s.subid, s.subname,
+            s.worker_type,
+            s.pid, s.leader_pid,
+            s.relid, s.received_lsn,
+            s.last_msg_send_time, s.last_msg_receipt_time,
+            s.latest_end_lsn, s.latest_end_time
+        FROM @extschema@.powa_stat_subscription_src_tmp AS s
+        WHERE s.srvid = _srvid;
+    END IF;
+END;
+$PROC$ LANGUAGE plpgsql; /* end of powa_stat_subscription_src */
 
 CREATE OR REPLACE FUNCTION @extschema@.powa_stat_wal_src(IN _srvid integer,
     OUT ts timestamp with time zone,
