@@ -1786,6 +1786,19 @@ _key_cols => $${
 {subid, oid}, {subname, name}
 }$$);
 
+-- we don't save subname, it can be found in pg_stat_subscription
+SELECT @extschema@.powa_generic_module_setup('pg_stat_subscription_stats',
+$${
+{apply_error_count, bigint}, {sync_error_count, bigint},
+{stats_reset, timestamp with time zone}
+}$$,
+$${
+stats_reset
+}$$,
+_key_cols => $${
+{subid, oid}
+}$$);
+
 SELECT @extschema@.powa_generic_module_setup('pg_stat_wal',
 $${
 {wal_records, bigint}, {wal_fpi, bigint}, {wal_bytes, numeric},
@@ -4839,6 +4852,44 @@ BEGIN
     END IF;
 END;
 $PROC$ LANGUAGE plpgsql; /* end of powa_stat_subscription_src */
+
+CREATE OR REPLACE FUNCTION @extschema@.powa_stat_subscription_stats_src(IN _srvid integer,
+    OUT ts timestamp with time zone,
+    OUT subid oid,
+    OUT apply_error_count bigint,
+    OUT sync_error_count bigint,
+    OUT stats_reset timestamp with time zone
+) RETURNS SETOF record STABLE AS $PROC$
+DECLARE
+    v_pg_version_num int;
+BEGIN
+    IF (_srvid = 0) THEN
+        v_pg_version_num := current_setting('server_version_num')::int;
+
+        -- pg15+, the view is introduced
+        IF v_pg_version_num >= 150000 THEN
+            RETURN QUERY SELECT now(),
+            s.subid,
+            s.apply_error_count, s.sync_error_count,
+            s.stats_reset
+            FROM pg_catalog.pg_stat_subscription_stats AS s;
+        ELSE -- return an empty dataset for pg9.6- servers
+            RETURN QUERY SELECT now(),
+            0::oid AS subid,
+            0::bigint AS apply_error_count, 0::bigint AS sync_error_count,
+            NULL::timestamp with time zone AS stats_reset
+            WHERE false;
+        END IF;
+    ELSE
+        RETURN QUERY SELECT s.ts,
+            s.subid,
+            s.apply_error_count, s.sync_error_count,
+            s.stats_reset
+        FROM @extschema@.powa_stat_subscription_stats_src_tmp AS s
+        WHERE s.srvid = _srvid;
+    END IF;
+END;
+$PROC$ LANGUAGE plpgsql; /* end of powa_stat_subscription_stats_src */
 
 CREATE OR REPLACE FUNCTION @extschema@.powa_stat_wal_src(IN _srvid integer,
     OUT ts timestamp with time zone,
