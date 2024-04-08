@@ -2031,8 +2031,8 @@ CREATE TABLE @extschema@.powa_statements_history (
     userid oid NOT NULL,
     coalesce_range tstzrange NOT NULL,
     records @extschema@.powa_statements_history_record[] NOT NULL,
-    mins_in_range @extschema@.powa_statements_history_record NOT NULL,
-    maxs_in_range @extschema@.powa_statements_history_record NOT NULL,
+    mins_in_range @extschema@.powa_statements_history_record storage main NOT NULL,
+    maxs_in_range @extschema@.powa_statements_history_record storage main NOT NULL,
     FOREIGN KEY (srvid) REFERENCES @extschema@.powa_servers(id)
       MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
 );
@@ -2044,8 +2044,8 @@ CREATE TABLE @extschema@.powa_statements_history_db (
     dbid oid NOT NULL,
     coalesce_range tstzrange NOT NULL,
     records @extschema@.powa_statements_history_record[] NOT NULL,
-    mins_in_range @extschema@.powa_statements_history_record NOT NULL,
-    maxs_in_range @extschema@.powa_statements_history_record NOT NULL,
+    mins_in_range @extschema@.powa_statements_history_record storage main NOT NULL,
+    maxs_in_range @extschema@.powa_statements_history_record storage main NOT NULL,
     FOREIGN KEY (srvid) REFERENCES @extschema@.powa_servers(id)
       MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
 );
@@ -2079,8 +2079,8 @@ CREATE TABLE @extschema@.powa_user_functions_history (
     funcid oid NOT NULL,
     coalesce_range tstzrange NOT NULL,
     records @extschema@.powa_user_functions_history_record[] NOT NULL,
-    mins_in_range @extschema@.powa_user_functions_history_record NOT NULL,
-    maxs_in_range @extschema@.powa_user_functions_history_record NOT NULL,
+    mins_in_range @extschema@.powa_user_functions_history_record storage main NOT NULL,
+    maxs_in_range @extschema@.powa_user_functions_history_record storage main NOT NULL,
     FOREIGN KEY (srvid) REFERENCES @extschema@.powa_servers(id)
       MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
 );
@@ -2092,8 +2092,8 @@ CREATE TABLE @extschema@.powa_user_functions_history_db (
     dbid oid NOT NULL,
     coalesce_range tstzrange NOT NULL,
     records @extschema@.powa_user_functions_history_record[] NOT NULL,
-    mins_in_range @extschema@.powa_user_functions_history_record NOT NULL,
-    maxs_in_range @extschema@.powa_user_functions_history_record NOT NULL,
+    mins_in_range @extschema@.powa_user_functions_history_record storage main NOT NULL,
+    maxs_in_range @extschema@.powa_user_functions_history_record storage main NOT NULL,
     FOREIGN KEY (srvid) REFERENCES @extschema@.powa_servers(id)
       MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
 );
@@ -2126,8 +2126,8 @@ CREATE TABLE @extschema@.powa_all_indexes_history (
     indexrelid oid NOT NULL,
     coalesce_range tstzrange NOT NULL,
     records @extschema@.powa_all_indexes_history_record[] NOT NULL,
-    mins_in_range @extschema@.powa_all_indexes_history_record NOT NULL,
-    maxs_in_range @extschema@.powa_all_indexes_history_record NOT NULL,
+    mins_in_range @extschema@.powa_all_indexes_history_record storage main NOT NULL,
+    maxs_in_range @extschema@.powa_all_indexes_history_record storage main NOT NULL,
     FOREIGN KEY (srvid) REFERENCES @extschema@.powa_servers(id)
       MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
 );
@@ -2139,8 +2139,8 @@ CREATE TABLE @extschema@.powa_all_indexes_history_db (
     dbid oid NOT NULL,
     coalesce_range tstzrange NOT NULL,
     records @extschema@.powa_all_indexes_history_db_record[] NOT NULL,
-    mins_in_range @extschema@.powa_all_indexes_history_db_record NOT NULL,
-    maxs_in_range @extschema@.powa_all_indexes_history_db_record NOT NULL,
+    mins_in_range @extschema@.powa_all_indexes_history_db_record storage main NOT NULL,
+    maxs_in_range @extschema@.powa_all_indexes_history_db_record storage main NOT NULL,
     FOREIGN KEY (srvid) REFERENCES @extschema@.powa_servers(id)
       MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
 );
@@ -2173,8 +2173,8 @@ CREATE TABLE @extschema@.powa_all_tables_history (
     relid oid NOT NULL,
     coalesce_range tstzrange NOT NULL,
     records @extschema@.powa_all_tables_history_record[] NOT NULL,
-    mins_in_range @extschema@.powa_all_tables_history_record NOT NULL,
-    maxs_in_range @extschema@.powa_all_tables_history_record NOT NULL,
+    mins_in_range @extschema@.powa_all_tables_history_record storage main NOT NULL,
+    maxs_in_range @extschema@.powa_all_tables_history_record storage main NOT NULL,
     FOREIGN KEY (srvid) REFERENCES @extschema@.powa_servers(id)
       MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
 );
@@ -2186,8 +2186,8 @@ CREATE TABLE @extschema@.powa_all_tables_history_db (
     dbid oid NOT NULL,
     coalesce_range tstzrange NOT NULL,
     records @extschema@.powa_all_tables_history_db_record[] NOT NULL,
-    mins_in_range @extschema@.powa_all_tables_history_db_record NOT NULL,
-    maxs_in_range @extschema@.powa_all_tables_history_db_record NOT NULL,
+    mins_in_range @extschema@.powa_all_tables_history_db_record storage main NOT NULL,
+    maxs_in_range @extschema@.powa_all_tables_history_db_record storage main NOT NULL,
     FOREIGN KEY (srvid) REFERENCES @extschema@.powa_servers(id)
       MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
 );
@@ -2844,8 +2844,8 @@ CREATE TABLE @extschema@.powa_kcache_metrics (
     dbid oid NOT NULL,
     userid oid NOT NULL,
     metrics @extschema@.powa_kcache_history_record[] NOT NULL,
-    mins_in_range @extschema@.powa_kcache_history_record NOT NULL,
-    maxs_in_range @extschema@.powa_kcache_history_record NOT NULL,
+    mins_in_range @extschema@.powa_kcache_history_record storage main NOT NULL,
+    maxs_in_range @extschema@.powa_kcache_history_record storage main NOT NULL,
     top boolean NOT NULL,
     PRIMARY KEY (srvid, coalesce_range, queryid, dbid, userid, top),
     FOREIGN KEY (srvid) REFERENCES @extschema@.powa_servers(id)
@@ -2859,8 +2859,8 @@ CREATE TABLE @extschema@.powa_kcache_metrics_db (
     coalesce_range tstzrange NOT NULL,
     dbid oid NOT NULL,
     metrics @extschema@.powa_kcache_history_record[] NOT NULL,
-    mins_in_range @extschema@.powa_kcache_history_record NOT NULL,
-    maxs_in_range @extschema@.powa_kcache_history_record NOT NULL,
+    mins_in_range @extschema@.powa_kcache_history_record storage main NOT NULL,
+    maxs_in_range @extschema@.powa_kcache_history_record storage main NOT NULL,
     top boolean NOT NULL,
     PRIMARY KEY (srvid, coalesce_range, dbid, top),
     FOREIGN KEY (srvid) REFERENCES @extschema@.powa_servers(id)
@@ -2946,8 +2946,8 @@ CREATE TABLE @extschema@.powa_qualstats_quals_history (
     userid oid,
     coalesce_range tstzrange,
     records @extschema@.powa_qualstats_history_record[],
-    mins_in_range @extschema@.powa_qualstats_history_record,
-    maxs_in_range @extschema@.powa_qualstats_history_record,
+    mins_in_range @extschema@.powa_qualstats_history_record storage main,
+    maxs_in_range @extschema@.powa_qualstats_history_record storage main,
     FOREIGN KEY (srvid, qualid, queryid, dbid, userid) REFERENCES @extschema@.powa_qualstats_quals (srvid, qualid, queryid, dbid, userid) MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
 );
 
@@ -3029,8 +3029,8 @@ CREATE TABLE @extschema@.powa_wait_sampling_history (
     event_type text NOT NULL,
     event text NOT NULL,
     records @extschema@.powa_wait_sampling_history_record[] NOT NULL,
-    mins_in_range @extschema@.powa_wait_sampling_history_record NOT NULL,
-    maxs_in_range @extschema@.powa_wait_sampling_history_record NOT NULL,
+    mins_in_range @extschema@.powa_wait_sampling_history_record storage main NOT NULL,
+    maxs_in_range @extschema@.powa_wait_sampling_history_record storage main NOT NULL,
     PRIMARY KEY (srvid, coalesce_range, queryid, dbid, event_type, event)
 );
 
@@ -3044,8 +3044,8 @@ CREATE TABLE @extschema@.powa_wait_sampling_history_db (
     event_type text NOT NULL,
     event text NOT NULL,
     records @extschema@.powa_wait_sampling_history_record[] NOT NULL,
-    mins_in_range @extschema@.powa_wait_sampling_history_record NOT NULL,
-    maxs_in_range @extschema@.powa_wait_sampling_history_record NOT NULL,
+    mins_in_range @extschema@.powa_wait_sampling_history_record storage main NOT NULL,
+    maxs_in_range @extschema@.powa_wait_sampling_history_record storage main NOT NULL,
     PRIMARY KEY (srvid, coalesce_range, dbid, event_type, event)
 );
 
