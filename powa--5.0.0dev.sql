@@ -1353,8 +1353,8 @@ BEGIN
     v_sql := v_sql || format('
     coalesce_range tstzrange NOT NULL,
     records @extschema@.%2$I[] NOT NULL,
-    mins_in_range @extschema@.%3$I NOT NULL,
-    maxs_in_range @extschema@.%3$I NOT NULL,
+    mins_in_range @extschema@.%3$I storage main NOT NULL,
+    maxs_in_range @extschema@.%3$I storage main NOT NULL,
     FOREIGN KEY (srvid) REFERENCES @extschema@.powa_servers(id)
       MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
 );
