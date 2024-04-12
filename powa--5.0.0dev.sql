@@ -1353,11 +1353,13 @@ BEGIN
     v_sql := v_sql || format('
     coalesce_range tstzrange NOT NULL,
     records @extschema@.%2$I[] NOT NULL,
-    mins_in_range @extschema@.%3$I STORAGE MAIN NOT NULL,
-    maxs_in_range @extschema@.%3$I STORAGE MAIN NOT NULL,
+    mins_in_range @extschema@.%3$I NOT NULL,
+    maxs_in_range @extschema@.%3$I NOT NULL,
     FOREIGN KEY (srvid) REFERENCES @extschema@.powa_servers(id)
       MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
 );
+ALTER TABLE @extschema@.%1$I ALTER COLUMN mins_in_range SET STORAGE MAIN;
+ALTER TABLE @extschema@.%1$I ALTER COLUMN maxs_in_range SET STORAGE MAIN;
 CREATE INDEX %4$I ON @extschema@.%1$I USING gist(srvid, coalesce_range);',
                     v_module || '_history', v_module || '_history_record',
                     v_suffix, v_module || '_history_ts');
@@ -2031,11 +2033,13 @@ CREATE TABLE @extschema@.powa_statements_history (
     userid oid NOT NULL,
     coalesce_range tstzrange NOT NULL,
     records @extschema@.powa_statements_history_record[] NOT NULL,
-    mins_in_range @extschema@.powa_statements_history_record STORAGE MAIN NOT NULL,
-    maxs_in_range @extschema@.powa_statements_history_record STORAGE MAIN NOT NULL,
+    mins_in_range @extschema@.powa_statements_history_record NOT NULL,
+    maxs_in_range @extschema@.powa_statements_history_record NOT NULL,
     FOREIGN KEY (srvid) REFERENCES @extschema@.powa_servers(id)
       MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
 );
+ALTER TABLE @extschema@.powa_statements_history ALTER COLUMN mins_in_range SET STORAGE MAIN;
+ALTER TABLE @extschema@.powa_statements_history ALTER COLUMN maxs_in_range SET STORAGE MAIN;
 
 CREATE INDEX powa_statements_history_query_ts ON @extschema@.powa_statements_history USING gist (srvid, queryid, coalesce_range);
 
@@ -2044,11 +2048,13 @@ CREATE TABLE @extschema@.powa_statements_history_db (
     dbid oid NOT NULL,
     coalesce_range tstzrange NOT NULL,
     records @extschema@.powa_statements_history_record[] NOT NULL,
-    mins_in_range @extschema@.powa_statements_history_record STORAGE MAIN NOT NULL,
-    maxs_in_range @extschema@.powa_statements_history_record STORAGE MAIN NOT NULL,
+    mins_in_range @extschema@.powa_statements_history_record NOT NULL,
+    maxs_in_range @extschema@.powa_statements_history_record NOT NULL,
     FOREIGN KEY (srvid) REFERENCES @extschema@.powa_servers(id)
       MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
 );
+ALTER TABLE @extschema@.powa_statements_history_db ALTER COLUMN mins_in_range SET STORAGE MAIN;
+ALTER TABLE @extschema@.powa_statements_history_db ALTER COLUMN maxs_in_range SET STORAGE MAIN;
 
 CREATE INDEX powa_statements_history_db_ts ON @extschema@.powa_statements_history_db USING gist (srvid, dbid, coalesce_range);
 
@@ -2079,11 +2085,13 @@ CREATE TABLE @extschema@.powa_user_functions_history (
     funcid oid NOT NULL,
     coalesce_range tstzrange NOT NULL,
     records @extschema@.powa_user_functions_history_record[] NOT NULL,
-    mins_in_range @extschema@.powa_user_functions_history_record STORAGE MAIN NOT NULL,
-    maxs_in_range @extschema@.powa_user_functions_history_record STORAGE MAIN NOT NULL,
+    mins_in_range @extschema@.powa_user_functions_history_record NOT NULL,
+    maxs_in_range @extschema@.powa_user_functions_history_record NOT NULL,
     FOREIGN KEY (srvid) REFERENCES @extschema@.powa_servers(id)
       MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
 );
+ALTER TABLE @extschema@.powa_user_functions_history ALTER COLUMN mins_in_range SET STORAGE MAIN;
+ALTER TABLE @extschema@.powa_user_functions_history ALTER COLUMN maxs_in_range SET STORAGE MAIN;
 
 CREATE INDEX powa_user_functions_history_funcid_ts ON @extschema@.powa_user_functions_history USING gist (srvid, funcid, coalesce_range);
 
@@ -2092,11 +2100,13 @@ CREATE TABLE @extschema@.powa_user_functions_history_db (
     dbid oid NOT NULL,
     coalesce_range tstzrange NOT NULL,
     records @extschema@.powa_user_functions_history_record[] NOT NULL,
-    mins_in_range @extschema@.powa_user_functions_history_record STORAGE MAIN NOT NULL,
-    maxs_in_range @extschema@.powa_user_functions_history_record STORAGE MAIN NOT NULL,
+    mins_in_range @extschema@.powa_user_functions_history_record NOT NULL,
+    maxs_in_range @extschema@.powa_user_functions_history_record NOT NULL,
     FOREIGN KEY (srvid) REFERENCES @extschema@.powa_servers(id)
       MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
 );
+ALTER TABLE @extschema@.powa_user_functions_history_db ALTER COLUMN mins_in_range SET STORAGE MAIN;
+ALTER TABLE @extschema@.powa_user_functions_history_db ALTER COLUMN maxs_in_range SET STORAGE MAIN;
 
 CREATE INDEX powa_user_functions_history_db_dbid_ts ON @extschema@.powa_user_functions_history USING gist (srvid, dbid, coalesce_range);
 
@@ -2126,11 +2136,13 @@ CREATE TABLE @extschema@.powa_all_indexes_history (
     indexrelid oid NOT NULL,
     coalesce_range tstzrange NOT NULL,
     records @extschema@.powa_all_indexes_history_record[] NOT NULL,
-    mins_in_range @extschema@.powa_all_indexes_history_record STORAGE MAIN NOT NULL,
-    maxs_in_range @extschema@.powa_all_indexes_history_record STORAGE MAIN NOT NULL,
+    mins_in_range @extschema@.powa_all_indexes_history_record NOT NULL,
+    maxs_in_range @extschema@.powa_all_indexes_history_record NOT NULL,
     FOREIGN KEY (srvid) REFERENCES @extschema@.powa_servers(id)
       MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
 );
+ALTER TABLE @extschema@.powa_all_indexes_history ALTER COLUMN mins_in_range SET STORAGE MAIN;
+ALTER TABLE @extschema@.powa_all_indexes_history ALTER COLUMN maxs_in_range SET STORAGE MAIN;
 
 CREATE INDEX powa_all_indexes_history_relid_ts ON @extschema@.powa_all_indexes_history USING gist (srvid, relid, coalesce_range);
 
@@ -2139,11 +2151,13 @@ CREATE TABLE @extschema@.powa_all_indexes_history_db (
     dbid oid NOT NULL,
     coalesce_range tstzrange NOT NULL,
     records @extschema@.powa_all_indexes_history_db_record[] NOT NULL,
-    mins_in_range @extschema@.powa_all_indexes_history_db_record STORAGE MAIN NOT NULL,
-    maxs_in_range @extschema@.powa_all_indexes_history_db_record STORAGE MAIN NOT NULL,
+    mins_in_range @extschema@.powa_all_indexes_history_db_record NOT NULL,
+    maxs_in_range @extschema@.powa_all_indexes_history_db_record NOT NULL,
     FOREIGN KEY (srvid) REFERENCES @extschema@.powa_servers(id)
       MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
 );
+ALTER TABLE @extschema@.powa_all_indexes_history_db ALTER COLUMN mins_in_range SET STORAGE MAIN;
+ALTER TABLE @extschema@.powa_all_indexes_history_db ALTER COLUMN maxs_in_range SET STORAGE MAIN;
 
 CREATE INDEX powa_all_indexes_history_db_dbid_ts ON @extschema@.powa_all_indexes_history_db USING gist (srvid, dbid, coalesce_range);
 
@@ -2173,11 +2187,13 @@ CREATE TABLE @extschema@.powa_all_tables_history (
     relid oid NOT NULL,
     coalesce_range tstzrange NOT NULL,
     records @extschema@.powa_all_tables_history_record[] NOT NULL,
-    mins_in_range @extschema@.powa_all_tables_history_record STORAGE MAIN NOT NULL,
-    maxs_in_range @extschema@.powa_all_tables_history_record STORAGE MAIN NOT NULL,
+    mins_in_range @extschema@.powa_all_tables_history_record NOT NULL,
+    maxs_in_range @extschema@.powa_all_tables_history_record NOT NULL,
     FOREIGN KEY (srvid) REFERENCES @extschema@.powa_servers(id)
       MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
 );
+ALTER TABLE @extschema@.powa_all_tables_history ALTER COLUMN mins_in_range SET STORAGE MAIN;
+ALTER TABLE @extschema@.powa_all_tables_history ALTER COLUMN maxs_in_range SET STORAGE MAIN;
 
 CREATE INDEX powa_all_tables_history_relid_ts ON @extschema@.powa_all_tables_history USING gist (srvid, relid, coalesce_range);
 
@@ -2186,11 +2202,13 @@ CREATE TABLE @extschema@.powa_all_tables_history_db (
     dbid oid NOT NULL,
     coalesce_range tstzrange NOT NULL,
     records @extschema@.powa_all_tables_history_db_record[] NOT NULL,
-    mins_in_range @extschema@.powa_all_tables_history_db_record STORAGE MAIN NOT NULL,
-    maxs_in_range @extschema@.powa_all_tables_history_db_record STORAGE MAIN NOT NULL,
+    mins_in_range @extschema@.powa_all_tables_history_db_record NOT NULL,
+    maxs_in_range @extschema@.powa_all_tables_history_db_record NOT NULL,
     FOREIGN KEY (srvid) REFERENCES @extschema@.powa_servers(id)
       MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
 );
+ALTER TABLE @extschema@.powa_all_tables_history_db ALTER COLUMN mins_in_range SET STORAGE MAIN;
+ALTER TABLE @extschema@.powa_all_tables_history_db ALTER COLUMN maxs_in_range SET STORAGE MAIN;
 
 CREATE INDEX powa_all_tables_history_db_dbid_ts ON @extschema@.powa_all_tables_history_db USING gist (srvid, dbid, coalesce_range);
 
@@ -2844,13 +2862,15 @@ CREATE TABLE @extschema@.powa_kcache_metrics (
     dbid oid NOT NULL,
     userid oid NOT NULL,
     metrics @extschema@.powa_kcache_history_record[] NOT NULL,
-    mins_in_range @extschema@.powa_kcache_history_record STORAGE MAIN NOT NULL,
-    maxs_in_range @extschema@.powa_kcache_history_record STORAGE MAIN NOT NULL,
+    mins_in_range @extschema@.powa_kcache_history_record NOT NULL,
+    maxs_in_range @extschema@.powa_kcache_history_record NOT NULL,
     top boolean NOT NULL,
     PRIMARY KEY (srvid, coalesce_range, queryid, dbid, userid, top),
     FOREIGN KEY (srvid) REFERENCES @extschema@.powa_servers(id)
       MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
 );
+ALTER TABLE @extschema@.powa_kcache_metrics ALTER COLUMN mins_in_range SET STORAGE MAIN;
+ALTER TABLE @extschema@.powa_kcache_metrics ALTER COLUMN maxs_in_range SET STORAGE MAIN;
 
 CREATE INDEX ON @extschema@.powa_kcache_metrics (srvid, queryid);
 
@@ -2859,13 +2879,15 @@ CREATE TABLE @extschema@.powa_kcache_metrics_db (
     coalesce_range tstzrange NOT NULL,
     dbid oid NOT NULL,
     metrics @extschema@.powa_kcache_history_record[] NOT NULL,
-    mins_in_range @extschema@.powa_kcache_history_record STORAGE MAIN NOT NULL,
-    maxs_in_range @extschema@.powa_kcache_history_record STORAGE MAIN NOT NULL,
+    mins_in_range @extschema@.powa_kcache_history_record NOT NULL,
+    maxs_in_range @extschema@.powa_kcache_history_record NOT NULL,
     top boolean NOT NULL,
     PRIMARY KEY (srvid, coalesce_range, dbid, top),
     FOREIGN KEY (srvid) REFERENCES @extschema@.powa_servers(id)
       MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
 );
+ALTER TABLE @extschema@.powa_kcache_metrics_db ALTER COLUMN mins_in_range SET STORAGE MAIN;
+ALTER TABLE @extschema@.powa_kcache_metrics_db ALTER COLUMN maxs_in_range SET STORAGE MAIN;
 
 CREATE TABLE @extschema@.powa_kcache_metrics_current ( srvid integer NOT NULL,
     queryid bigint NOT NULL,
@@ -2946,10 +2968,12 @@ CREATE TABLE @extschema@.powa_qualstats_quals_history (
     userid oid,
     coalesce_range tstzrange,
     records @extschema@.powa_qualstats_history_record[],
-    mins_in_range @extschema@.powa_qualstats_history_record STORAGE MAIN,
-    maxs_in_range @extschema@.powa_qualstats_history_record STORAGE MAIN,
+    mins_in_range @extschema@.powa_qualstats_history_record,
+    maxs_in_range @extschema@.powa_qualstats_history_record,
     FOREIGN KEY (srvid, qualid, queryid, dbid, userid) REFERENCES @extschema@.powa_qualstats_quals (srvid, qualid, queryid, dbid, userid) MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
 );
+ALTER TABLE @extschema@.powa_qualstats_quals_history ALTER COLUMN mins_in_range SET STORAGE MAIN;
+ALTER TABLE @extschema@.powa_qualstats_quals_history ALTER COLUMN maxs_in_range SET STORAGE MAIN;
 
 CREATE INDEX powa_qualstats_quals_history_query_ts ON @extschema@.powa_qualstats_quals_history USING gist (srvid, queryid, coalesce_range);
 
@@ -3029,10 +3053,12 @@ CREATE TABLE @extschema@.powa_wait_sampling_history (
     event_type text NOT NULL,
     event text NOT NULL,
     records @extschema@.powa_wait_sampling_history_record[] NOT NULL,
-    mins_in_range @extschema@.powa_wait_sampling_history_record STORAGE MAIN NOT NULL,
-    maxs_in_range @extschema@.powa_wait_sampling_history_record STORAGE MAIN NOT NULL,
+    mins_in_range @extschema@.powa_wait_sampling_history_record NOT NULL,
+    maxs_in_range @extschema@.powa_wait_sampling_history_record NOT NULL,
     PRIMARY KEY (srvid, coalesce_range, queryid, dbid, event_type, event)
 );
+ALTER TABLE @extschema@.powa_wait_sampling_history ALTER COLUMN mins_in_range SET STORAGE MAIN;
+ALTER TABLE @extschema@.powa_wait_sampling_history ALTER COLUMN maxs_in_range SET STORAGE MAIN;
 
 CREATE INDEX powa_wait_sampling_history_query_ts ON @extschema@.powa_wait_sampling_history USING gist (srvid, queryid, coalesce_range);
 
@@ -3044,10 +3070,12 @@ CREATE TABLE @extschema@.powa_wait_sampling_history_db (
     event_type text NOT NULL,
     event text NOT NULL,
     records @extschema@.powa_wait_sampling_history_record[] NOT NULL,
-    mins_in_range @extschema@.powa_wait_sampling_history_record STORAGE MAIN NOT NULL,
-    maxs_in_range @extschema@.powa_wait_sampling_history_record STORAGE MAIN NOT NULL,
+    mins_in_range @extschema@.powa_wait_sampling_history_record NOT NULL,
+    maxs_in_range @extschema@.powa_wait_sampling_history_record NOT NULL,
     PRIMARY KEY (srvid, coalesce_range, dbid, event_type, event)
 );
+ALTER TABLE @extschema@.powa_wait_sampling_history_db ALTER COLUMN mins_in_range SET STORAGE MAIN;
+ALTER TABLE @extschema@.powa_wait_sampling_history_db ALTER COLUMN maxs_in_range SET STORAGE MAIN;
 
 CREATE INDEX powa_wait_sampling_history_db_ts ON @extschema@.powa_wait_sampling_history_db USING gist (srvid, dbid, coalesce_range);
 
