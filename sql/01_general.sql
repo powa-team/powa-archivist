@@ -61,6 +61,24 @@ FROM ext
 WHERE descr NOT LIKE '%"PoWA"%'
 ORDER BY descr COLLATE "C";
 
+-- check (mins|maxs)_in_range columns not marked as STORAGE MAIN
+WITH ext AS (
+    SELECT c.oid, c.relname
+    FROM pg_depend d
+    JOIN pg_extension e ON d.refclassid = 'pg_extension'::regclass
+        AND e.oid = d.refobjid
+        AND e.extname = 'powa'
+    JOIN pg_class c ON d.classid = 'pg_class'::regclass
+        AND c.oid = d.objid
+    WHERE c.relkind != 'v'
+)
+SELECT ext.relname, a.attname
+FROM ext
+JOIN pg_attribute a ON a.attrelid = ext.oid
+WHERE a.attname ~ '(mins|maxs)'
+AND a.attstorage != 'm'
+ORDER BY ext.relname::text COLLATE "C", a.attname::text COLLATe "C";
+
 -- Aggregate data every 5 snapshots
 SET powa.coalesce = 5;
 
