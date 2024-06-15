@@ -222,6 +222,7 @@ powa_get_snapshot_query(StringInfo query)
 	elog(LOG,"Found PoWA in schema %s", nsp);
 
 	initStringInfo(query);
+	appendStringInfoString(query, "SET search_path TO pg_catalog;");
 	appendStringInfo(query, "SELECT %s.powa_take_snapshot()", nsp);
 	pfree(nsp);
 }
