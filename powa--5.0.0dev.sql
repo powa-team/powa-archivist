@@ -114,7 +114,8 @@ BEGIN
     -- Final add all the required ACL based on the up-to-date powa_roles table
     PERFORM @extschema@.powa_grant();
 END;
-$$ LANGUAGE plpgsql STRICT; /* end if setup_powa_roles */
+$$ LANGUAGE plpgsql STRICT
+SET search_path = pg_catalog; /* end if setup_powa_roles */
 
 CREATE TABLE @extschema@.powa_servers (
     id serial PRIMARY KEY,
@@ -412,7 +413,8 @@ AS $_$
         LIMIT 1
     ) q ON f.operation = 'snapshot'
     WHERE srvid = _srvid;
-$_$ LANGUAGE sql;
+$_$ LANGUAGE sql
+SET search_path = pg_catalog;
 
 CREATE VIEW @extschema@.powa_all_functions AS
     SELECT *
@@ -673,7 +675,8 @@ AS $_$
     AND min_version <= _server_version_num
     ORDER BY min_version DESC
     LIMIT 1;
-$_$ LANGUAGE sql;
+$_$ LANGUAGE sql
+SET search_path = pg_catalog;
 
 CREATE TABLE @extschema@.powa_catalog_databases (
     srvid integer NOT NULL,
@@ -720,7 +723,8 @@ AS $_$
         SELECT @extschema@.powa_catalog_src_query(catname, _server_version_num)
     ) f(src_query) ON (true)
     GROUP BY catname, src_query;
-$_$ LANGUAGE sql;
+$_$ LANGUAGE sql
+SET search_path = pg_catalog;
 
 CREATE TABLE @extschema@.powa_catalog_class (
     srvid integer NOT NULL,
@@ -1201,7 +1205,8 @@ LANGUAGE plpgsql IMMUTABLE STRICT';
     EXECUTE v_sql;
     END LOOP;
 END;
-$$ LANGUAGE plpgsql; /* end of powa_generic_datatype_setup */
+$$ LANGUAGE plpgsql
+SET search_path = pg_catalog; /* end of powa_generic_datatype_setup */
 
 CREATE FUNCTION @extschema@.powa_generic_module_setup(_pg_module text,
                                                       _counter_cols text[],
@@ -1564,7 +1569,8 @@ $function$ LANGUAGE plpgsql',
                     v_module || '_history_current', v_module || '_src_tmp');
     EXECUTE v_sql;
 END;
-$$ LANGUAGE plpgsql; /* end of powa_generic_module_setup */
+$$ LANGUAGE plpgsql
+SET search_path = pg_catalog; /* end of powa_generic_module_setup */
 
 SELECT @extschema@.powa_generic_datatype_setup('powa_statements',
 $${
@@ -2276,7 +2282,8 @@ BEGIN
 
     RETURN true;
 END;
-$_$ LANGUAGE plpgsql; /* end of powa_activate_module */
+$_$ LANGUAGE plpgsql
+SET search_path = pg_catalog; /* end of powa_activate_module */
 
 -- Deactivate a module: leave the record in powa_module_config but
 -- remove the enabled flag.
@@ -2310,7 +2317,8 @@ BEGIN
 
     RETURN true;
 END;
-$_$ LANGUAGE plpgsql; /* end of powa_deactivate_module */
+$_$ LANGUAGE plpgsql
+SET search_path = pg_catalog; /* end of powa_deactivate_module */
 
 -- Register the given db module if needed.
 CREATE FUNCTION @extschema@.powa_activate_db_module(_srvid int, _db_module text,
@@ -2370,7 +2378,8 @@ BEGIN
 
     RETURN true;
 END;
-$_$ LANGUAGE plpgsql; /* end of powa_activate_db_module */
+$_$ LANGUAGE plpgsql
+SET search_path = pg_catalog; /* end of powa_activate_db_module */
 
 -- Deactivate a db module: leave the record in powa_db_module_config but
 -- remove the enabled flag.
@@ -2481,7 +2490,8 @@ BEGIN
 
     RETURN true;
 END;
-$_$ LANGUAGE plpgsql; /* end of powa_deactivate_db_module */
+$_$ LANGUAGE plpgsql
+SET search_path = pg_catalog; /* end of powa_deactivate_db_module */
 
 -- Register the given extension if needed, and set the enabled flag to on.
 CREATE FUNCTION @extschema@.powa_activate_extension(_srvid integer, _extname text) RETURNS boolean
@@ -2563,7 +2573,8 @@ BEGIN
 
     RETURN true;
 END;
-$_$ LANGUAGE plpgsql; /* end of powa_activate_extension */
+$_$ LANGUAGE plpgsql
+SET search_path = pg_catalog; /* end of powa_activate_extension */
 
 -- Deactivate an extension: leave the record in powa_extension_config but
 -- remove the enabled flag.
@@ -2662,7 +2673,8 @@ BEGIN
     END LOOP;
     RETURN true;
 END;
-$_$ LANGUAGE plpgsql; /* end of powa_register_server */
+$_$ LANGUAGE plpgsql
+SET search_path = pg_catalog; /* end of powa_register_server */
 
 CREATE FUNCTION @extschema@.powa_configure_server(_srvid integer, data json) RETURNS boolean
 AS $_$
@@ -2707,7 +2719,8 @@ BEGIN
 
     RETURN v_rowcount = 1;
 END;
-$_$ LANGUAGE plpgsql; /* powa_config_server */
+$_$ LANGUAGE plpgsql
+SET search_path = pg_catalog; /* powa_config_server */
 
 CREATE FUNCTION @extschema@.powa_deactivate_server(_srvid integer) RETURNS boolean
 AS $_$
@@ -2724,7 +2737,8 @@ BEGIN
 
     RETURN v_rowcount = 1;
 END;
-$_$ LANGUAGE plpgsql; /* powa_deactivate_server */
+$_$ LANGUAGE plpgsql
+SET search_path = pg_catalog; /* powa_deactivate_server */
 
 CREATE FUNCTION @extschema@.powa_delete_and_purge_server(_srvid integer) RETURNS boolean
 AS $_$
@@ -2755,7 +2769,8 @@ BEGIN
 
     RETURN v_rowcount = 1;
 END;
-$_$ LANGUAGE plpgsql; /* powa_deactivate_server */
+$_$ LANGUAGE plpgsql
+SET search_path = pg_catalog; /* powa_deactivate_server */
 
 DO $anon$
 BEGIN
@@ -2774,7 +2789,8 @@ BEGIN
 
             RETURN v_val;
         END;
-        $_$;
+        $_$
+        SET search_path = pg_catalog;
     ELSE
         CREATE FUNCTION @extschema@.powa_get_guc (guc text, def text DEFAULT NULL) RETURNS text
         LANGUAGE plpgsql
@@ -2782,7 +2798,8 @@ BEGIN
         BEGIN
             RETURN COALESCE(current_setting(guc, true), def);
         END;
-        $_$;
+        $_$
+        SET search_path = pg_catalog;
     END IF;
 END;
 $anon$;
@@ -2797,7 +2814,8 @@ BEGIN
         RAISE DEBUG '%', msg;
     END IF;
 END;
-$_$;
+$_$
+SET search_path = pg_catalog;
 
 CREATE FUNCTION @extschema@.powa_get_server_retention(_srvid integer)
 RETURNS interval AS $_$
@@ -2818,7 +2836,8 @@ BEGIN
 
     RETURN v_ret;
 END;
-$_$ LANGUAGE plpgsql; /* end of powa_get_server_retention */
+$_$ LANGUAGE plpgsql
+SET search_path = pg_catalog; /* end of powa_get_server_retention */
 
 /* pg_stat_kcache integration - part 1 */
 
@@ -3183,7 +3202,8 @@ BEGIN
         RAISE WARNING 'Could not automatically activate extension "%"', v_extname;
     END IF;
 END;
-$_$; /* end of powa_check_created_extensions */
+$_$
+SET search_path = pg_catalog; /* end of powa_check_created_extensions */
 
 CREATE EVENT TRIGGER powa_check_created_extensions
     ON ddl_command_end
@@ -3244,7 +3264,8 @@ BEGIN
         END;
     END IF;
 END;
-$_$; /* end of powa_check_dropped_extensions */
+$_$
+SET search_path = pg_catalog; /* end of powa_check_dropped_extensions */
 
 CREATE EVENT TRIGGER powa_check_dropped_extensions
     ON sql_drop
@@ -3285,7 +3306,8 @@ BEGIN
             context: %', v_state, v_msg, v_detail, v_hint, v_context;
     END;
 END;
-$PROC$ language plpgsql; /* end of powa_prevent_concurrent_snapshot() */
+$PROC$ language plpgsql
+SET search_path = pg_catalog; /* end of powa_prevent_concurrent_snapshot() */
 
 CREATE OR REPLACE FUNCTION @extschema@.powa_take_snapshot(_srvid integer = 0) RETURNS integer
 AS $PROC$
@@ -3545,7 +3567,8 @@ BEGIN
 
     return v_nb_err;
 END;
-$PROC$ LANGUAGE plpgsql; /* end of powa_take_snapshot(int) */
+$PROC$ LANGUAGE plpgsql
+SET search_path = pg_catalog; /* end of powa_take_snapshot(int) */
 
 CREATE OR REPLACE FUNCTION @extschema@.powa_databases_src(IN _srvid integer,
     OUT oid oid,
@@ -3563,7 +3586,8 @@ BEGIN
         WHERE srvid = _srvid;
     END IF;
 END;
-$PROC$ LANGUAGE plpgsql; /* end of powa_databases_src */
+$PROC$ LANGUAGE plpgsql
+SET search_path = pg_catalog; /* end of powa_databases_src */
 
 CREATE OR REPLACE FUNCTION @extschema@.powa_databases_snapshot(_srvid integer)
 RETURNS void AS $PROC$
@@ -3629,7 +3653,8 @@ BEGIN
         DELETE FROM @extschema@.powa_databases_src_tmp WHERE srvid = _srvid;
     END IF;
 END;
-$PROC$ language plpgsql; /* end of powa_databases_snapshot */
+$PROC$ language plpgsql
+SET search_path = pg_catalog; /* end of powa_databases_snapshot */
 
 CREATE OR REPLACE FUNCTION @extschema@.powa_statements_src(IN _srvid integer,
     OUT ts timestamp with time zone,
@@ -3836,7 +3861,8 @@ BEGIN
         FROM @extschema@.powa_statements_src_tmp pgss WHERE srvid = _srvid;
     END IF;
 END;
-$PROC$ LANGUAGE plpgsql; /* end of powa_statements_src */
+$PROC$ LANGUAGE plpgsql
+SET search_path = pg_catalog; /* end of powa_statements_src */
 
 CREATE OR REPLACE FUNCTION @extschema@.powa_statements_snapshot(_srvid integer) RETURNS void AS $PROC$
 DECLARE
@@ -3964,7 +3990,8 @@ BEGIN
         WHERE r.srvid = _srvid;
     END IF;
 END;
-$PROC$ LANGUAGE plpgsql; /* end of powa_user_functions_src */
+$PROC$ LANGUAGE plpgsql
+SET search_path = pg_catalog; /* end of powa_user_functions_src */
 
 CREATE OR REPLACE FUNCTION @extschema@.powa_user_functions_snapshot(_srvid integer) RETURNS void AS $PROC$
 DECLARE
@@ -4014,7 +4041,8 @@ BEGIN
 
     result := true;
 END;
-$PROC$ language plpgsql; /* end of powa_user_functions_snapshot */
+$PROC$ language plpgsql
+SET search_path = pg_catalog; /* end of powa_user_functions_snapshot */
 
 CREATE OR REPLACE FUNCTION @extschema@.powa_all_indexes_snapshot(_srvid integer) RETURNS void AS $PROC$
 DECLARE
@@ -4070,7 +4098,8 @@ BEGIN
 
     result := true;
 END;
-$PROC$ language plpgsql; /* end of powa_all_indexes_snapshot */
+$PROC$ language plpgsql
+SET search_path = pg_catalog; /* end of powa_all_indexes_snapshot */
 
 CREATE OR REPLACE FUNCTION @extschema@.powa_all_tables_snapshot(_srvid integer) RETURNS void AS $PROC$
 DECLARE
@@ -4141,7 +4170,8 @@ BEGIN
 
     result := true;
 END;
-$PROC$ language plpgsql; /* end of powa_all_tables_snapshot */
+$PROC$ language plpgsql
+SET search_path = pg_catalog; /* end of powa_all_tables_snapshot */
 
 CREATE OR REPLACE FUNCTION @extschema@.powa_replication_slots_src(IN _srvid integer,
     OUT ts timestamp with time zone,
@@ -4288,7 +4318,8 @@ BEGIN
         WHERE s.srvid = _srvid;
     END IF;
 END;
-$PROC$ LANGUAGE plpgsql; /* end of powa_replication_slots_src */
+$PROC$ LANGUAGE plpgsql
+SET search_path = pg_catalog; /* end of powa_replication_slots_src */
 
 CREATE OR REPLACE FUNCTION @extschema@.powa_stat_activity_src(IN _srvid integer,
     OUT ts timestamp with time zone,
@@ -4371,7 +4402,8 @@ BEGIN
         WHERE s.srvid = _srvid;
     END IF;
 END;
-$PROC$ LANGUAGE plpgsql; /* end of powa_stat_activity_src */
+$PROC$ LANGUAGE plpgsql
+SET search_path = pg_catalog; /* end of powa_stat_activity_src */
 
 CREATE OR REPLACE FUNCTION @extschema@.powa_stat_archiver_src(IN _srvid integer,
     OUT ts timestamp with time zone,
@@ -4458,7 +4490,8 @@ BEGIN
         WHERE s.srvid = _srvid;
     END IF;
 END;
-$PROC$ LANGUAGE plpgsql; /* end of powa_stat_bgwriter_src */
+$PROC$ LANGUAGE plpgsql
+SET search_path = pg_catalog; /* end of powa_stat_bgwriter_src */
 
 CREATE OR REPLACE FUNCTION @extschema@.powa_stat_checkpointer_src(IN _srvid integer,
     OUT ts timestamp with time zone,
@@ -4587,7 +4620,8 @@ BEGIN
         WHERE s.srvid = _srvid;
     END IF;
 END;
-$PROC$ LANGUAGE plpgsql; /* end of powa_stat_database_src */
+$PROC$ LANGUAGE plpgsql
+SET search_path = pg_catalog; /* end of powa_stat_database_src */
 
 CREATE OR REPLACE FUNCTION @extschema@.powa_stat_database_conflicts_src(IN _srvid integer,
     OUT ts timestamp with time zone,
@@ -4694,7 +4728,8 @@ BEGIN
         WHERE s.srvid = _srvid;
     END IF;
 END;
-$PROC$ LANGUAGE plpgsql; /* end of powa_stat_io_src */
+$PROC$ LANGUAGE plpgsql
+SET search_path = pg_catalog; /* end of powa_stat_io_src */
 
 CREATE OR REPLACE FUNCTION @extschema@.powa_stat_replication_src(IN _srvid integer,
     OUT ts timestamp with time zone,
@@ -4803,7 +4838,8 @@ BEGIN
         WHERE s.srvid = _srvid;
     END IF;
 END;
-$PROC$ LANGUAGE plpgsql; /* end of powa_stat_slru_src */
+$PROC$ LANGUAGE plpgsql
+SET search_path = pg_catalog; /* end of powa_stat_slru_src */
 
 CREATE OR REPLACE FUNCTION @extschema@.powa_stat_subscription_src(IN _srvid integer,
     OUT ts timestamp with time zone,
@@ -4879,7 +4915,8 @@ BEGIN
         WHERE s.srvid = _srvid;
     END IF;
 END;
-$PROC$ LANGUAGE plpgsql; /* end of powa_stat_subscription_src */
+$PROC$ LANGUAGE plpgsql
+SET search_path = pg_catalog; /* end of powa_stat_subscription_src */
 
 CREATE OR REPLACE FUNCTION @extschema@.powa_stat_subscription_stats_src(IN _srvid integer,
     OUT ts timestamp with time zone,
@@ -4964,7 +5001,8 @@ BEGIN
         WHERE s.srvid = _srvid;
     END IF;
 END;
-$PROC$ LANGUAGE plpgsql; /* end of powa_stat_wal_src */
+$PROC$ LANGUAGE plpgsql
+SET search_path = pg_catalog; /* end of powa_stat_wal_src */
 
 CREATE OR REPLACE FUNCTION @extschema@.powa_stat_wal_receiver_src(IN _srvid integer,
     OUT ts timestamp with time zone,
@@ -5106,7 +5144,8 @@ BEGIN
         WHERE d.srvid = _srvid;
     END IF;
 END;
-$PROC$ LANGUAGE plpgsql; /* end of powa_catalog_database_src */
+$PROC$ LANGUAGE plpgsql
+SET search_path = pg_catalog; /* end of powa_catalog_database_src */
 
 CREATE OR REPLACE FUNCTION @extschema@.powa_catalog_role_src(IN _srvid integer,
     OUT oid oid,
@@ -5188,7 +5227,8 @@ BEGIN
 
     result := true;
 END;
-$PROC$ language plpgsql; /* end of powa_catalog_database_snapshot */
+$PROC$ language plpgsql
+SET search_path = pg_catalog; /* end of powa_catalog_database_snapshot */
 
 CREATE OR REPLACE FUNCTION @extschema@.powa_catalog_role_snapshot(_srvid integer) RETURNS void AS $PROC$
 DECLARE
@@ -5250,7 +5290,8 @@ BEGIN
         DELETE FROM @extschema@.powa_catalog_role_src_tmp WHERE srvid = _srvid;
     END IF;
 END;
-$PROC$ LANGUAGE plpgsql; /* end of powa_catalog_role_snapshot() */
+$PROC$ LANGUAGE plpgsql
+SET search_path = pg_catalog; /* end of powa_catalog_role_snapshot() */
 
 CREATE OR REPLACE FUNCTION @extschema@.powa_catalog_generic_snapshot(_srvid integer,
     _catname text)
@@ -5324,7 +5365,8 @@ BEGIN
     PERFORM @extschema@.powa_log(format('%s - rowcount: %s',
             v_funcname, v_rowcount));
 END;
-$PROC$ language plpgsql; /* end of powa_catalog_generic_snapshot */
+$PROC$ language plpgsql
+SET search_path = pg_catalog; /* end of powa_catalog_generic_snapshot */
 
 CREATE OR REPLACE FUNCTION @extschema@.powa_catalog_reset(_srvid integer)
 RETURNS void AS $PROC$
@@ -5381,7 +5423,8 @@ BEGIN
     PERFORM @extschema@.powa_log(format('%s (powa_databases) - rowcount: %s)',
            v_funcname,array_length(v_dropped_dbid,1)));
 END;
-$PROC$ LANGUAGE plpgsql; /* end of powa_databases_purge */
+$PROC$ LANGUAGE plpgsql
+SET search_path = pg_catalog; /* end of powa_databases_purge */
 
 
 CREATE OR REPLACE FUNCTION @extschema@.powa_statements_purge(_srvid integer)
@@ -5456,7 +5499,8 @@ BEGIN
     PERFORM @extschema@.powa_log(format('%s - (powa_user_functions_history_db) rowcount: %s',
             v_funcname, v_rowcount));
 END;
-$PROC$ LANGUAGE plpgsql; /* end of powa_user_functions_purge */
+$PROC$ LANGUAGE plpgsql
+SET search_path = pg_catalog; /* end of powa_user_functions_purge */
 
 CREATE OR REPLACE FUNCTION @extschema@.powa_all_indexes_purge(_srvid integer)
 RETURNS void AS $PROC$
@@ -5522,7 +5566,8 @@ BEGIN
     PERFORM @extschema@.powa_log(format('%s - (powa_all_tables_history_db) rowcount: %s',
             v_funcname, v_rowcount));
 END;
-$PROC$ LANGUAGE plpgsql; /* end of powa_all_tables_purge */
+$PROC$ LANGUAGE plpgsql
+SET search_path = pg_catalog; /* end of powa_all_tables_purge */
 
 CREATE OR REPLACE FUNCTION @extschema@.powa_statements_aggregate(_srvid integer)
 RETURNS void AS $PROC$
@@ -5647,7 +5692,8 @@ BEGIN
 
     DELETE FROM @extschema@.powa_statements_history_current_db WHERE srvid = _srvid;
 END;
-$PROC$ LANGUAGE plpgsql; /* end of powa_statements_aggregate */
+$PROC$ LANGUAGE plpgsql
+SET search_path = pg_catalog; /* end of powa_statements_aggregate */
 
 CREATE OR REPLACE FUNCTION @extschema@.powa_user_functions_aggregate(_srvid integer)
 RETURNS void AS $PROC$
@@ -5701,7 +5747,8 @@ BEGIN
 
     DELETE FROM @extschema@.powa_user_functions_history_current_db WHERE srvid = _srvid;
  END;
-$PROC$ LANGUAGE plpgsql; /* end of powa_user_functions_aggregate */
+$PROC$ LANGUAGE plpgsql
+SET search_path = pg_catalog; /* end of powa_user_functions_aggregate */
 
 CREATE OR REPLACE FUNCTION @extschema@.powa_all_indexes_aggregate(_srvid integer)
 RETURNS void AS $PROC$
@@ -5771,7 +5818,8 @@ BEGIN
 
     DELETE FROM @extschema@.powa_all_indexes_history_current_db WHERE srvid = _srvid;
  END;
-$PROC$ LANGUAGE plpgsql; /* end of powa_all_indexes_aggregate */
+$PROC$ LANGUAGE plpgsql
+SET search_path = pg_catalog; /* end of powa_all_indexes_aggregate */
 
 CREATE OR REPLACE FUNCTION @extschema@.powa_all_tables_aggregate(_srvid integer)
 RETURNS void AS $PROC$
@@ -5887,7 +5935,8 @@ BEGIN
 
     DELETE FROM @extschema@.powa_all_tables_history_current_db WHERE srvid = _srvid;
  END;
-$PROC$ LANGUAGE plpgsql; /* end of powa_all_tables_aggregate */
+$PROC$ LANGUAGE plpgsql
+SET search_path = pg_catalog; /* end of powa_all_tables_aggregate */
 
 CREATE OR REPLACE FUNCTION @extschema@.powa_reset(_srvid integer)
  RETURNS boolean
@@ -5958,7 +6007,8 @@ BEGIN
 
     RETURN true;
 END;
-$function$; /* end of powa_reset */
+$function$
+SET search_path = pg_catalog; /* end of powa_reset */
 
 CREATE OR REPLACE FUNCTION @extschema@.powa_statements_reset(_srvid integer)
  RETURNS boolean
@@ -5986,7 +6036,8 @@ BEGIN
 
     RETURN true;
 END;
-$function$; /* end of powa_statements_reset */
+$function$
+SET search_path = pg_catalog; /* end of powa_statements_reset */
 
 CREATE OR REPLACE FUNCTION @extschema@.powa_user_functions_reset(_srvid integer)
  RETURNS boolean
@@ -6034,7 +6085,8 @@ BEGIN
 
     RETURN true;
 END;
-$function$; /* end of powa_all_indexes_reset */
+$function$
+SET search_path = pg_catalog; /* end of powa_all_indexes_reset */
 
 CREATE OR REPLACE FUNCTION @extschema@.powa_all_tables_reset(_srvid integer)
  RETURNS boolean
@@ -6058,7 +6110,8 @@ BEGIN
 
     RETURN true;
 END;
-$function$; /* end of powa_all_tables_reset */
+$function$
+SET search_path = pg_catalog; /* end of powa_all_tables_reset */
 
 CREATE OR REPLACE FUNCTION @extschema@.powa_catalog_database_reset(_srvid integer)
  RETURNS boolean
@@ -6073,7 +6126,8 @@ BEGIN
 
     RETURN true;
 END;
-$function$; /* end of powa_catalog_database_reset */
+$function$
+SET search_path = pg_catalog; /* end of powa_catalog_database_reset */
 
 CREATE OR REPLACE FUNCTION @extschema@.powa_catalog_role_reset(_srvid integer)
  RETURNS boolean
@@ -6190,7 +6244,8 @@ BEGIN
         WHERE k.srvid = _srvid;
     END IF;
 END;
-$PROC$ LANGUAGE plpgsql; /* end of powa_kcache_src */
+$PROC$ LANGUAGE plpgsql
+SET search_path = pg_catalog; /* end of powa_kcache_src */
 
 /*
  * powa_kcache snapshot collection.
@@ -6258,7 +6313,8 @@ BEGIN
 
     result := true;
 END
-$PROC$ language plpgsql; /* end of powa_kcache_snapshot */
+$PROC$ language plpgsql
+SET search_path = pg_catalog; /* end of powa_kcache_snapshot */
 
 /*
  * powa_kcache aggregation
@@ -6371,7 +6427,8 @@ BEGIN
 
     DELETE FROM @extschema@.powa_kcache_metrics_current_db WHERE srvid = _srvid;
 END
-$PROC$ language plpgsql; /* end of powa_kcache_aggregate */
+$PROC$ language plpgsql
+SET search_path = pg_catalog; /* end of powa_kcache_aggregate */
 
 /*
  * powa_kcache purge
@@ -6436,7 +6493,8 @@ BEGIN
     PERFORM @extschema@.powa_log('resetting @extschema@.powa_kcache_src_tmp(' || _srvid || ')');
     DELETE FROM @extschema@.powa_kcache_src_tmp WHERE srvid = _srvid;
 END;
-$PROC$ language plpgsql; /* end of powa_kcache_reset */
+$PROC$ language plpgsql
+SET search_path = pg_catalog; /* end of powa_kcache_reset */
 
 /* end of pg_stat_kcache integration - part 2 */
 
@@ -6502,7 +6560,8 @@ FROM (
     ) ranked_constvalues
 GROUP BY srvid, qualid, queryid, dbid, userid
 ;
-$_$ LANGUAGE sql; /* end of powa_qualstats_aggregate_constvalues_current */
+$_$ LANGUAGE sql
+SET search_path = pg_catalog; /* end of powa_qualstats_aggregate_constvalues_current */
 
 CREATE OR REPLACE FUNCTION @extschema@.powa_qualstats_src(IN _srvid integer,
     OUT ts timestamp with time zone,
@@ -6621,7 +6680,8 @@ BEGIN
         WHERE pgqs.srvid = _srvid;
     END IF;
 END;
-$PROC$ LANGUAGE plpgsql; /* end of powa_qualstats_src */
+$PROC$ LANGUAGE plpgsql
+SET search_path = pg_catalog; /* end of powa_qualstats_src */
 
 CREATE OR REPLACE FUNCTION @extschema@.powa_qualstats_snapshot(_srvid integer) RETURNS void as $PROC$
 DECLARE
@@ -6706,7 +6766,8 @@ BEGIN
     PERFORM format('%I.pg_qualstats_reset()', v_schema);
   END IF;
 END
-$PROC$ language plpgsql; /* end of powa_qualstats_snapshot */
+$PROC$ language plpgsql
+SET search_path = pg_catalog; /* end of powa_qualstats_snapshot */
 
 /*
  * powa_qualstats aggregate
@@ -6747,7 +6808,9 @@ BEGIN
   DELETE FROM @extschema@.powa_qualstats_constvalues_history_current WHERE srvid = _srvid;
   DELETE FROM @extschema@.powa_qualstats_quals_history_current WHERE srvid = _srvid;
 END
-$PROC$ language plpgsql; /* end of powa_qualstats_aggregate */
+$PROC$ language plpgsql
+SET search_path = pg_catalog
+SET search_path = pg_catalog; /* end of powa_qualstats_aggregate */
 
 /*
  * powa_qualstats_purge
@@ -6772,7 +6835,8 @@ BEGIN
     WHERE upper(coalesce_range) < (now() - v_retention)
     AND srvid = _srvid;
 END;
-$PROC$ language plpgsql; /* end of powa_qualstats_purge */
+$PROC$ language plpgsql
+SET search_path = pg_catalog; /* end of powa_qualstats_purge */
 
 /*
  * powa_qualstats_reset
@@ -6793,7 +6857,8 @@ BEGIN
   PERFORM @extschema@.powa_log('resetting powa_qualstats_src_tmp(' || _srvid || ')');
   DELETE FROM @extschema@.powa_qualstats_src_tmp WHERE srvid = _srvid;
 END;
-$PROC$ language plpgsql; /* end of powa_qualstats_reset */
+$PROC$ language plpgsql
+SET search_path = pg_catalog; /* end of powa_qualstats_reset */
 
 /* end of pg_qualstats integration - part 2 */
 
@@ -6856,7 +6921,8 @@ BEGIN
         WHERE s.srvid = _srvid;
     END IF;
 END;
-$PROC$ LANGUAGE plpgsql; /* end of powa_wait_sampling_src */
+$PROC$ LANGUAGE plpgsql
+SET search_path = pg_catalog; /* end of powa_wait_sampling_src */
 
 /*
  * powa_wait_sampling snapshot collection.
@@ -6906,7 +6972,8 @@ BEGIN
 
     result := true;
 END
-$PROC$ language plpgsql; /* end of powa_wait_sampling_snapshot */
+$PROC$ language plpgsql
+SET search_path = pg_catalog; /* end of powa_wait_sampling_snapshot */
 
 /*
  * powa_wait_sampling aggregation
@@ -6961,7 +7028,8 @@ BEGIN
 
     DELETE FROM @extschema@.powa_wait_sampling_history_current_db WHERE srvid = _srvid;
 END
-$PROC$ language plpgsql; /* end of powa_wait_sampling_aggregate */
+$PROC$ language plpgsql
+SET search_path = pg_catalog; /* end of powa_wait_sampling_aggregate */
 
 /*
  * powa_wait_sampling purge
@@ -6997,7 +7065,8 @@ BEGIN
     PERFORM @extschema@.powa_log(format('%s (powa_wait_sampling_history_db) - rowcount: %s',
             v_funcname, v_rowcount));
 END;
-$PROC$ language plpgsql; /* end of powa_wait_sampling_purge */
+$PROC$ language plpgsql
+SET search_path = pg_catalog; /* end of powa_wait_sampling_purge */
 
 /*
  * powa_wait_sampling reset
@@ -7026,7 +7095,8 @@ BEGIN
     PERFORM @extschema@.powa_log('resetting powa_wait_sampling_src_tmp(' || _srvid || ')');
     DELETE FROM @extschema@.powa_wait_sampling_src_tmp WHERE srvid = _srvid;
 END;
-$PROC$ language plpgsql; /* end of powa_wait_sampling_reset */
+$PROC$ language plpgsql
+SET search_path = pg_catalog; /* end of powa_wait_sampling_reset */
 
 /* end of pg_wait_sampling integration - part 2 */
 
@@ -7163,7 +7233,8 @@ BEGIN
         END IF;
     END LOOP;
 END;
-$$ LANGUAGE plpgsql; /* end of powa_grant() */
+$$ LANGUAGE plpgsql
+SET search_path = pg_catalog; /* end of powa_grant() */
 
 /*
  * powa_revoke() will revoke any ACL from the various powa_* pseudo
@@ -7236,7 +7307,8 @@ BEGIN
                        relname, signal_backend_role);
     END LOOP;
 END;
-$$ LANGUAGE plpgsql; /* end of powa_revoke() */
+$$ LANGUAGE plpgsql
+SET search_path = pg_catalog; /* end of powa_revoke() */
 
 -- mass set proper ACL IIF none of the default pseudo predefined roles exist
 DO
