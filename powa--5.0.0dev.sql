@@ -766,7 +766,7 @@ CREATE TABLE @extschema@.powa_catalog_attribute (
     atthasmissing boolean NOT NULL,
     attidentity "char" NOT NULL,
     attgenerated "char" NOT NULL,
-    attstattarget smallint NOT NULL,
+    attstattarget smallint,
     attcollation oid NOT NULL,
     attoptions text[],
     attfdwoptions text[],
