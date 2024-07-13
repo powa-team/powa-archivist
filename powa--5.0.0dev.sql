@@ -4585,10 +4585,11 @@ BEGIN
             s.tup_inserted, s.tup_updated, s.tup_deleted, s.conflicts,
             s.temp_files, s.temp_bytes, s.deadlocks, s.checksum_failures,
             s.checksum_last_failure, s.blk_read_time, s.blk_write_time,
-            NULL AS session_time, NULL AS active_time,
-            NULL AS idle_in_transaction_time,
-            NULL AS sessions, NULL AS sessions_abandoned,
-            NULL AS sessions_fatal, NULL AS sessions_killed,
+            NULL::double precision AS session_time,
+            NULL::double precision AS active_time,
+            NULL::double precision AS idle_in_transaction_time,
+            NULL::bigint AS sessions, NULL::bigint AS sessions_abandoned,
+            NULL::bigint AS sessions_fatal, NULL::bigint AS sessions_killed,
             s.stats_reset
             FROM pg_catalog.pg_stat_database AS s;
         ELSE
@@ -4597,11 +4598,13 @@ BEGIN
             s.blks_read, s.blks_hit, s.tup_returned, s.tup_fetched,
             s.tup_inserted, s.tup_updated, s.tup_deleted, s.conflicts,
             s.temp_files, s.temp_bytes, s.deadlocks, 0 AS checksum_failures,
-            NULL AS checksum_last_failure, s.blk_read_time, s.blk_write_time,
-            NULL AS session_time, NULL AS active_time,
-            NULL AS idle_in_transaction_time,
-            NULL AS sessions, NULL AS sessions_abandoned,
-            NULL AS sessions_fatal, NULL AS sessions_killed,
+            NULL::double precision AS checksum_last_failure,
+            s.blk_read_time, s.blk_write_time,
+            NULL::double precision AS session_time,
+            NULL::double precision AS active_time,
+            NULL::double precision AS idle_in_transaction_time,
+            NULL::bigint AS sessions, NULL::bigint AS sessions_abandoned,
+            NULL::bigint AS sessions_fatal, NULL::bigint AS sessions_killed,
             s.stats_reset
             FROM pg_catalog.pg_stat_database AS s;
         END IF;
