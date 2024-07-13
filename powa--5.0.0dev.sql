@@ -4265,8 +4265,10 @@ BEGIN
                 v_txid, v_current_lsn,
                 s.active,
                 s.active_pid, s.xmin AS slot_xmin, s.catalog_xmin,
-                s.restart_lsn, s.confirmed_flush_lsn, NULL as wal_status,
-                NULL as safe_wal_size, false AS two_phase, false AS conflicting
+                s.restart_lsn, s.confirmed_flush_lsn,
+                NULL::text as wal_status,
+                NULL::bigint as safe_wal_size,
+                false AS two_phase, false AS conflicting
             FROM (SELECT now() AS now) n
             LEFT JOIN pg_catalog.pg_replication_slots AS s ON true;
         -- confirmed_flush_lsn added in pg9.6
@@ -4277,8 +4279,10 @@ BEGIN
                 v_txid, v_current_lsn,
                 s.active,
                 s.active_pid, s.xmin AS slot_xmin, s.catalog_xmin,
-                s.restart_lsn, s.confirmed_flush_lsn, NULL as wal_status,
-                NULL as safe_wal_size, false AS two_phase, false AS conflicting
+                s.restart_lsn, s.confirmed_flush_lsn,
+                NULL::text as wal_status,
+                NULL::bigint as safe_wal_size,
+                false AS two_phase, false AS conflicting
             FROM (SELECT now() AS now) n
             LEFT JOIN pg_catalog.pg_replication_slots AS s ON true;
         -- active_pid added in pg9.5
@@ -4289,8 +4293,10 @@ BEGIN
                 v_txid, v_current_lsn,
                 s.active,
                 s.active_pid, s.xmin AS slot_xmin, s.catalog_xmin,
-                s.restart_lsn, NULL AS confirmed_flush_lsn, NULL as wal_status,
-                NULL as safe_wal_size, false AS two_phase, false AS conflicting
+                s.restart_lsn, NULL::pg_lsn AS confirmed_flush_lsn,
+                NULL::text as wal_status,
+                NULL::bigint as safe_wal_size,
+                false AS two_phase, false AS conflicting
             FROM (SELECT now() AS now) n
             LEFT JOIN pg_catalog.pg_replication_slots AS s ON true;
         ELSE
@@ -4299,9 +4305,11 @@ BEGIN
                 s.slot_type, s.datoid, false AS temporary,
                 v_txid, v_current_lsn,
                 s.active,
-                NULL AS active_pid, s.xmin AS slot_xmin, s.catalog_xmin,
-                s.restart_lsn, NULL AS confirmed_flush_lsn, NULL as wal_status,
-                NULL as safe_wal_size, false AS two_phase, false AS conflicting
+                NULL::int AS active_pid, s.xmin AS slot_xmin, s.catalog_xmin,
+                s.restart_lsn, NULL::pg_lsn AS confirmed_flush_lsn,
+                NULL::text as wal_status,
+                NULL::bigint as safe_wal_size,
+                false AS two_phase, false AS conflicting
             FROM (SELECT now() AS now) n
             LEFT JOIN pg_catalog.pg_replication_slots AS s ON true;
         END IF;
