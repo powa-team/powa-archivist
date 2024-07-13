@@ -4368,26 +4368,27 @@ BEGIN
                 s.application_name, s.client_addr, s.backend_start,
                 s.xact_start,
                 s.query_start, s.state_change, s.state, s.backend_xid,
-                s.backend_xmin, NULL AS query_id, s.backend_type
+                s.backend_xmin, NULL::bigint AS query_id, s.backend_type
             FROM pg_catalog.pg_stat_activity AS s;
         -- backend_type added in pg10+
         ELSIF current_setting('server_version_num')::int >= 100000 THEN
             RETURN QUERY SELECT now(),
                 txid,
-                s.datid, s.pid, NULL AS leader_pid, s.usesysid,
+                s.datid, s.pid, NULL::integer AS leader_pid, s.usesysid,
                 s.application_name, s.client_addr, s.backend_start,
                 s.xact_start,
                 s.query_start, s.state_change, s.state, s.backend_xid,
-                s.backend_xmin, NULL AS query_id, s.backend_type
+                s.backend_xmin, NULL::bigint AS query_id, s.backend_type
             FROM pg_catalog.pg_stat_activity AS s;
         ELSE
             RETURN QUERY SELECT now(),
                 txid,
-                s.datid, s.pid, NULL AS leader_pid, s.usesysid,
+                s.datid, s.pid, NULL::integer AS leader_pid, s.usesysid,
                 s.application_name, s.client_addr, s.backend_start,
                 s.xact_start,
                 s.query_start, s.state_change, s.state, s.backend_xid,
-                s.backend_xmin, NULL AS query_id, NULL AS backend_type
+                s.backend_xmin, NULL::bigint AS query_id,
+                NULL::text AS backend_type
             FROM pg_catalog.pg_stat_activity AS s;
         END IF;
     ELSE
