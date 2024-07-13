@@ -4835,7 +4835,7 @@ BEGIN
             0::bigint AS blks_zeroed, 0::bigint AS blks_hit,
             0::bigint AS blks_read, 0::bigint AS blks_written,
             0::bigint AS blks_exists,
-            0::bigint AS flushes, 0::bigint as truncates
+            0::bigint AS flushes, 0::bigint as truncates,
             NULL::timestamp with time zone AS stats_reset
             WHERE false;
         END IF;
