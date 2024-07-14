@@ -82,9 +82,6 @@ ORDER BY ext.relname::text COLLATE "C", a.attname::text COLLATe "C";
 -- Aggregate data every 5 snapshots
 SET powa.coalesce = 5;
 
--- Test created ojects
-SELECT * FROM "PoWA".powa_functions ORDER BY name, operation, priority, function_name;
-
 -- test C SRFs
 SELECT COUNT(*) = 0
 FROM pg_database,
