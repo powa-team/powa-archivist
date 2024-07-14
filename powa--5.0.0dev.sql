@@ -2476,7 +2476,7 @@ BEGIN
         -- There are stored dbnames and users provided some.  Keep the module
         -- activated and simply remove the specified dbnames
         ASSERT v_enabled IS TRUE, 'Module should be enabled';
-        SELECT array_agg(dbname)
+        SELECT array_agg(dbname ORDER BY dbname)
         FROM (
             SELECT unnest(v_dbnames)
             EXCEPT
