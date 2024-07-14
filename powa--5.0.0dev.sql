@@ -210,7 +210,8 @@ INSERT INTO @extschema@.powa_extension_config (srvid, extname, added_manually) V
 -- This is for cluster-wide core views, we don't support custom datasources
 -- here.
 CREATE TABLE @extschema@.powa_modules (
-    module text NOT NULL PRIMARY KEY
+    module text NOT NULL PRIMARY KEY,
+    min_version integer NOT NULL DEFAULT 0
 );
 
 -- we only manually insert data in this table (and the other related tables)
@@ -262,8 +263,10 @@ CREATE VIEW @extschema@.powa_functions AS
     UNION ALL
     SELECT srvid, 'module' AS kind, module AS name, operation, false,
         function_name, query_source, NULL, enabled, 100
-    FROM @extschema@.powa_module_functions f
-    JOIN @extschema@.powa_module_config c USING (module);
+    FROM @extschema@.powa_modules m
+    JOIN @extschema@.powa_module_functions f USING (module)
+    JOIN @extschema@.powa_module_config c USING (module)
+    WHERE current_setting('server_version_num')::int >= m.min_version;
 
 CREATE TABLE @extschema@.powa_db_modules (
     db_module text NOT NULL PRIMARY KEY,
@@ -1213,7 +1216,8 @@ CREATE FUNCTION @extschema@.powa_generic_module_setup(_pg_module text,
                                                       _nullable text[] DEFAULT '{}',
                                                       _need_operators boolean default true,
                                                       _key_cols text[] DEFAULT '{}',
-                                                      _key_nullable boolean DEFAULT false)
+                                                      _key_nullable boolean DEFAULT false,
+                                                      _min_version integer DEFAULT 0)
 RETURNS void AS
 $$
 DECLARE
@@ -1241,7 +1245,7 @@ BEGIN
     v_module := regexp_replace(_pg_module, '^pg', 'powa');
 
     -- declare the module and its configuration
-    INSERT INTO @extschema@.powa_modules VALUES (_pg_module);
+    INSERT INTO @extschema@.powa_modules VALUES (_pg_module, _min_version);
     INSERT INTO @extschema@.powa_module_config VALUES (0, _pg_module, false);
     INSERT INTO @extschema@.powa_module_functions VALUES
         (_pg_module, 'snapshot',  v_module || '_snapshot',  v_module || '_src'),
@@ -1651,7 +1655,9 @@ _key_cols => $${
 {slot_name, text}, {plugin, text}, {slot_type, text}, {datoid, oid},
 {temporary, boolean}
 }$$,
-_key_nullable => true);
+_key_nullable => true,
+_min_version => 130000
+);
 
 SELECT @extschema@.powa_generic_module_setup('pg_stat_activity',
 $${
@@ -1766,7 +1772,9 @@ $${
 pid, usename, application_name, client_addr, backend_start, backend_xmin,
 state, sent_lsn, write_lsn, flush_lsn, replay_lsn, write_lag, flush_lag,
 replay_lag, sync_priority, sync_state, reply_time
-}$$);
+}$$,
+_min_version => 130000
+);
 
 SELECT @extschema@.powa_generic_module_setup('pg_stat_slru',
 $${
@@ -1792,7 +1800,9 @@ last_msg_receipt_time, latest_end_lsn, latest_end_time
 }$$,
 _key_cols => $${
 {subid, oid}, {subname, name}
-}$$);
+}$$,
+_min_version => 130000
+);
 
 -- we don't save subname, it can be found in pg_stat_subscription
 SELECT @extschema@.powa_generic_module_setup('pg_stat_subscription_stats',
@@ -1830,7 +1840,9 @@ $${
 _key_cols => $${
 {slot_name, text}, {sender_host, text}, {sender_port, integer}
 }$$,
-_key_nullable => true);
+_key_nullable => true,
+_min_version => 130000
+);
 
 SELECT @extschema@.powa_generic_datatype_setup('powa_kcache',
 $${
@@ -1865,7 +1877,7 @@ $${
 }$$);
 
 DROP FUNCTION @extschema@.powa_generic_datatype_setup(text, text[], jsonb, boolean);
-DROP FUNCTION @extschema@.powa_generic_module_setup(text, text[], text[], boolean, text[], boolean);
+DROP FUNCTION @extschema@.powa_generic_module_setup(text, text[], text[], boolean, text[], boolean, integer);
 
 /* pg_catalog import support */
 CREATE UNLOGGED TABLE @extschema@.powa_catalog_class_src_tmp (

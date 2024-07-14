@@ -10,10 +10,6 @@ SELECT * FROM "PoWA".powa_functions ORDER BY name, operation, priority, function
 -------+-----------+----------------------------+-----------+----------+----------------------------------------+----------------------------------+---------------+---------+----------
      0 | module    | pg_database                | reset     | f        | powa_catalog_database_reset            |                                  |               | t       |      100
      0 | module    | pg_database                | snapshot  | f        | powa_catalog_database_snapshot         | powa_catalog_database_src        |               | t       |      100
-     0 | module    | pg_replication_slots       | aggregate | f        | powa_replication_slots_aggregate       |                                  |               | t       |      100
-     0 | module    | pg_replication_slots       | purge     | f        | powa_replication_slots_purge           |                                  |               | t       |      100
-     0 | module    | pg_replication_slots       | reset     | f        | powa_replication_slots_reset           |                                  |               | t       |      100
-     0 | module    | pg_replication_slots       | snapshot  | f        | powa_replication_slots_snapshot        | powa_replication_slots_src       |               | t       |      100
      0 | module    | pg_role                    | reset     | f        | powa_catalog_role_reset                |                                  |               | t       |      100
      0 | module    | pg_role                    | snapshot  | f        | powa_catalog_role_snapshot             | powa_catalog_role_src            |               | t       |      100
      0 | module    | pg_stat_activity           | aggregate | f        | powa_stat_activity_aggregate           |                                  |               | t       |      100
@@ -44,10 +40,6 @@ SELECT * FROM "PoWA".powa_functions ORDER BY name, operation, priority, function
      0 | module    | pg_stat_io                 | purge     | f        | powa_stat_io_purge                     |                                  |               | t       |      100
      0 | module    | pg_stat_io                 | reset     | f        | powa_stat_io_reset                     |                                  |               | t       |      100
      0 | module    | pg_stat_io                 | snapshot  | f        | powa_stat_io_snapshot                  | powa_stat_io_src                 |               | t       |      100
-     0 | module    | pg_stat_replication        | aggregate | f        | powa_stat_replication_aggregate        |                                  |               | t       |      100
-     0 | module    | pg_stat_replication        | purge     | f        | powa_stat_replication_purge            |                                  |               | t       |      100
-     0 | module    | pg_stat_replication        | reset     | f        | powa_stat_replication_reset            |                                  |               | t       |      100
-     0 | module    | pg_stat_replication        | snapshot  | f        | powa_stat_replication_snapshot         | powa_stat_replication_src        |               | t       |      100
      0 | module    | pg_stat_slru               | aggregate | f        | powa_stat_slru_aggregate               |                                  |               | t       |      100
      0 | module    | pg_stat_slru               | purge     | f        | powa_stat_slru_purge                   |                                  |               | t       |      100
      0 | module    | pg_stat_slru               | reset     | f        | powa_stat_slru_reset                   |                                  |               | t       |      100
@@ -58,10 +50,6 @@ SELECT * FROM "PoWA".powa_functions ORDER BY name, operation, priority, function
      0 | extension | pg_stat_statements         | reset     | f        | powa_statements_reset                  |                                  |               | t       |       10
      0 | extension | pg_stat_statements         | snapshot  | f        | powa_databases_snapshot                | powa_databases_src               |               | t       |       -3
      0 | extension | pg_stat_statements         | snapshot  | f        | powa_statements_snapshot               | powa_statements_src              |               | t       |       -2
-     0 | module    | pg_stat_subscription       | aggregate | f        | powa_stat_subscription_aggregate       |                                  |               | t       |      100
-     0 | module    | pg_stat_subscription       | purge     | f        | powa_stat_subscription_purge           |                                  |               | t       |      100
-     0 | module    | pg_stat_subscription       | reset     | f        | powa_stat_subscription_reset           |                                  |               | t       |      100
-     0 | module    | pg_stat_subscription       | snapshot  | f        | powa_stat_subscription_snapshot        | powa_stat_subscription_src       |               | t       |      100
      0 | module    | pg_stat_subscription_stats | aggregate | f        | powa_stat_subscription_stats_aggregate |                                  |               | t       |      100
      0 | module    | pg_stat_subscription_stats | purge     | f        | powa_stat_subscription_stats_purge     |                                  |               | t       |      100
      0 | module    | pg_stat_subscription_stats | reset     | f        | powa_stat_subscription_stats_reset     |                                  |               | t       |      100
@@ -70,9 +58,5 @@ SELECT * FROM "PoWA".powa_functions ORDER BY name, operation, priority, function
      0 | module    | pg_stat_wal                | purge     | f        | powa_stat_wal_purge                    |                                  |               | t       |      100
      0 | module    | pg_stat_wal                | reset     | f        | powa_stat_wal_reset                    |                                  |               | t       |      100
      0 | module    | pg_stat_wal                | snapshot  | f        | powa_stat_wal_snapshot                 | powa_stat_wal_src                |               | t       |      100
-     0 | module    | pg_stat_wal_receiver       | aggregate | f        | powa_stat_wal_receiver_aggregate       |                                  |               | t       |      100
-     0 | module    | pg_stat_wal_receiver       | purge     | f        | powa_stat_wal_receiver_purge           |                                  |               | t       |      100
-     0 | module    | pg_stat_wal_receiver       | reset     | f        | powa_stat_wal_receiver_reset           |                                  |               | t       |      100
-     0 | module    | pg_stat_wal_receiver       | snapshot  | f        | powa_stat_wal_receiver_snapshot        | powa_stat_wal_receiver_src       |               | t       |      100
-(66 rows)
+(50 rows)
 
