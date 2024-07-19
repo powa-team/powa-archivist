@@ -4448,7 +4448,7 @@ BEGIN
             v_current_wal := NULL;
         ELSE
             IF current_setting('server_version_num')::int < 100000 THEN
-                v_current_wal :=  pg_walfile_name(pg_last_wal_receive_lsn());
+                v_current_wal :=  pg_xlogfile_name(pg_current_xlog_location());
             ELSE
                 v_current_wal :=  pg_walfile_name(pg_current_wal_lsn());
             END IF;
