@@ -20,6 +20,7 @@ jobs:
     strategy:
       matrix:
         postgres_major_version: [
+          "9.6",
           "10",
           "11",
           "12",
@@ -79,6 +80,8 @@ jobs:
         pg_ctl -D $DATADIR initdb
         echo "shared_preload_libraries = 'pg_stat_statements'" >> $DATADIR/postgresql.conf
         pg_ctl -D $DATADIR -l $LOGFILE start || cat $LOGFILE
+        # a sleep is required for pg9.6 (at least)
+        sleep 1
         psql -c 'select 1 as ok' postgres
 
     - name: Build and install powa-archivist for postgres ${{ matrix.postgres_major_version }}
