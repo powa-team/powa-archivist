@@ -25,6 +25,7 @@ INSERT INTO "PoWA".powa_catalog_database_src_tmp
     FROM "PoWA".powa_catalog_database_src(0) src
     WHERE src.datname != current_database()
     AND src.datname != 'test'
+    AND src.oid != 1
     LIMIT 1;
 SELECT "PoWA".powa_catalog_database_snapshot(1);
  powa_catalog_database_snapshot 
