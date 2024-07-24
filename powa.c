@@ -12,8 +12,8 @@
 
 #include "postgres.h"
 
-#if PG_VERSION_NUM < 90400
-#error "PoWA requires PostgreSQL 9.4 or later"
+#if PG_VERSION_NUM < 90500
+#error "PoWA requires PostgreSQL 9.5 or later"
 #endif
 
 /* For a bgworker */
