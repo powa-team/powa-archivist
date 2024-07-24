@@ -5,8 +5,8 @@ Read [README.md](https://github.com/powa-team/powa/blob/master/README.md) and
 [the official documentation](http://powa.readthedocs.io/) for further details
 about PoWA.
 
-PoWA requires PostgreSQL 9.4 or more. This documentation assumes you're using
-the 9.4 version of PostgreSQL.
+PoWA requires PostgreSQL 9.5 or more. This documentation assumes you're using
+the version 15 of PostgreSQL.
 
 The following documentation describes the detailed installation steps to install
 PoWA.
@@ -18,7 +18,7 @@ Download powa-archivist from the website
 The latest stable version should be used. It can be downloaded from
 [github](https://github.com/powa-team/powa-archivist/releases/latest).
 
-This documentation assumes that the latest version is 3.0.0, and you downloaded
+This documentation assumes that the version is 4.2.2, and you downloaded
 the .zip file.
 
 Unpack the downloaded file
@@ -26,7 +26,7 @@ Unpack the downloaded file
 
 ```
 cd /usr/src
-unzip powa-REL_3_0_0.zip
+unzip powa-REL_4_2_2.zip
 ```
 
 Compile and install the software
@@ -34,7 +34,7 @@ Compile and install the software
 
 Before proceeding, be sure to have a compiler installed and the appropriate PostgreSQL development packages. Something like
 ```
-apt-get install postgresql-server-dev-9.4
+apt-get install postgresql-server-dev-15
 ```
 or
 ```
@@ -43,14 +43,14 @@ yum install postgresql94-devel
 
 Then:
 ```
-cd /usr/src/powa-REL_3_0_0
+cd /usr/src/powa-REL_4_2_2
 make
 ```
 
 If everything goes fine, you will have this kind of output :
 ```
-gcc -Wall -Wmissing-prototypes -Wpointer-arith -Wdeclaration-after-statement -Wendif-labels -Wmissing-format-attribute -Wformat-security -fno-strict-aliasing -fwrapv -fexcess-precision=standard -g -fpic -I. -I. -I/home/thomas/postgresql/postgresql-9.3.4/include/server -I/home/thomas/postgresql/postgresql-9.4.4/include/internal -D_GNU_SOURCE -I/usr/include/libxml2   -c -o powa.o powa.c
-gcc -Wall -Wmissing-prototypes -Wpointer-arith -Wdeclaration-after-statement -Wendif-labels -Wmissing-format-attribute -Wformat-security -fno-strict-aliasing -fwrapv -fexcess-precision=standard -g -fpic -L/home/thomas/postgresql/postgresql-9.3.4/lib -Wl,--as-needed -Wl,-rpath,'/home/thomas/postgresql/postgresql-9.4.4/lib',--enable-new-dtags  -shared -o powa.so powa.o
+gcc -Wall -Wmissing-prototypes -Wpointer-arith -Wdeclaration-after-statement -Wendif-labels -Wmissing-format-attribute -Wformat-security -fno-strict-aliasing -fwrapv -fexcess-precision=standard -g -fpic -I. [...]   -c -o powa.o powa.c
+gcc -Wall -Wmissing-prototypes -Wpointer-arith -Wdeclaration-after-statement -Wendif-labels -Wmissing-format-attribute -Wformat-security -fno-strict-aliasing -fwrapv -fexcess-precision=standard -g -fpic [...] -shared -o powa.so powa.o
 ```
 
 Install the software :
@@ -67,14 +67,14 @@ make install
 
 It should output something like the following :
 ```
-/bin/mkdir -p '/usr/pgsql-9.4/share/extension'
-/bin/mkdir -p '/usr/pgsql-9.4/share/extension'
-/bin/mkdir -p '/usr/pgsql-9.4/lib'
-/bin/mkdir -p '/usr/pgsql-9.4/share/doc/extension'
-/usr/bin/install -c -m 644 ./powa.control '/usr/pgsql-9.4/share/extension/'
-/usr/bin/install -c -m 644 ./powa--2.0.1.sql ./powa--2.0-2.0.1.sql ./powa--3.0.0.sql '/usr/pgsql-9.4/share/extension/'
-/usr/bin/install -c -m 755  powa.so '/usr/pgsql-9.4/postgresql-9.4.4/lib/'
-/usr/bin/install -c -m 644 ./README.md '/usr/pgsql-9.4/share/doc/extension/'
+/bin/mkdir -p '/usr/pgsql-15/share/extension'
+/bin/mkdir -p '/usr/pgsql-15/share/extension'
+/bin/mkdir -p '/usr/pgsql-15/lib'
+/bin/mkdir -p '/usr/pgsql-15/share/doc/extension'
+/usr/bin/install -c -m 644 ./powa.control '/usr/pgsql-15/share/extension/'
+/usr/bin/install -c -m 644 ./powa--2.0.1.sql ./powa--2.0-2.0.1.sql ./powa--3.0.0.sql '/usr/pgsql-15/share/extension/'
+/usr/bin/install -c -m 755  powa.so '/usr/pgsql-15/postgresql-15.7/lib/'
+/usr/bin/install -c -m 644 ./README.md '/usr/pgsql-15/share/doc/extension/'
 ```
 
 
@@ -124,7 +124,7 @@ Change the `shared_preload_libraries` appropriately :
 shared_preload_libraries = 'powa,pg_stat_statements'# (change requires restart)
 ```
 
-If possible (check with pg_test_timing), activate track_io_timing on your instance, in postgresql.conf :
+If possible (check with pg_test_timing), activate track_io_timing on your instance, in postgresql.conf:
 
 ```
 track_io_timing = on
@@ -174,5 +174,5 @@ update to PoWA 3.0.0. In this case, you need to drop and create the extension.
 Next, you will need to restart PostgreSQL in order to take account of the
 updated background worker. As root, run the following command :
 ```
-service postgresql-9.4 restart
+service postgresql-15 restart
 ```
