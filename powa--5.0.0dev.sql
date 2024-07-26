@@ -569,7 +569,7 @@ INSERT INTO @extschema@.powa_catalog_src_queries
         true AS collisdeterministic,
         pg_encoding_to_char(collencoding) AS collencoding, collcollate,
         collctype,
-        NULL::text AS colliculocale, NULL::text AS collicurules,
+        NULL::text AS colllocale, NULL::text AS collicurules,
         NULL::text AS collversion
       FROM pg_catalog.pg_collation$$),
     -- pg_collation pg10+, collprovider and collversion added
@@ -578,7 +578,7 @@ INSERT INTO @extschema@.powa_catalog_src_queries
         true AS collisdeterministic,
         pg_encoding_to_char(collencoding) AS collencoding, collcollate,
         collctype,
-        NULL::text AS colliculocale, NULL::text AS collicurules,
+        NULL::text AS colllocale, NULL::text AS collicurules,
         collversion
       FROM pg_catalog.pg_collation$$),
     -- pg_collation pg12+, collisdeterministic added
@@ -587,7 +587,7 @@ INSERT INTO @extschema@.powa_catalog_src_queries
         collisdeterministic,
         pg_encoding_to_char(collencoding) AS collencoding, collcollate,
         collctype,
-        NULL::text AS colliculocale, NULL::text AS collicurules,
+        NULL::text AS colllocale, NULL::text AS collicurules,
         collversion
       FROM pg_catalog.pg_collation$$),
     -- pg_collation pg15+, colliculocale added
@@ -596,7 +596,7 @@ INSERT INTO @extschema@.powa_catalog_src_queries
         collisdeterministic,
         pg_encoding_to_char(collencoding) AS collencoding, collcollate,
         collctype,
-        colliculocale, NULL::text AS collicurules,
+        colliculocale AS colllocale, NULL::text AS collicurules,
         collversion
       FROM pg_catalog.pg_collation$$),
     -- pg_collation pg16+, collicurules added
@@ -605,7 +605,16 @@ INSERT INTO @extschema@.powa_catalog_src_queries
         collisdeterministic,
         pg_encoding_to_char(collencoding) AS collencoding, collcollate,
         collctype,
-        colliculocale, collicurules,
+        colliculocale AS colllocale, collicurules,
+        collversion
+      FROM pg_catalog.pg_collation$$),
+    -- pg_collation pg16+, colliculocale renamed to colllocale
+    ('pg_collation', 170000,
+     $$SELECT oid, collname::text AS collname, collnamespace, collprovider,
+        collisdeterministic,
+        pg_encoding_to_char(collencoding) AS collencoding, collcollate,
+        collctype,
+        colllocale, collicurules,
         collversion
       FROM pg_catalog.pg_collation$$),
     -- pg_proc
@@ -834,7 +843,7 @@ CREATE TABLE @extschema@.powa_catalog_collation (
     collencoding text NOT NULL,
     collcollate text,
     collctype text,
-    colliculocale text,
+    colllocale text,
     collicurules text,
     collversion text,
     PRIMARY KEY (srvid, dbid, oid),
