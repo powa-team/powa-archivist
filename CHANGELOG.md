@@ -1,3 +1,40 @@
+## 5.0.0 (WIP)
+
+This is a major rework of PoWA.  Please not that there is not upgrade to switch
+to this version. You need to remove the old one and install the new 4.0.0
+version.
+
+  - Breaking changes
+    - Remove support for postgres 9.4 (Julien Rouhaud)
+  - New feature
+    - Allow installation of any extensions in any schema (Julien Rouhaud)
+    - Introduce snapshot of per-database object (remote mode only) (Julien
+      Rouhaud)
+    - Introduce snapshot of per-database catalogs (remote mode only) (Julien
+      Rouhaud)
+    - Add powa_* pseudo predefined roles to ease permissions (Julien Rouhaud)
+    - Add pg_stat_activity metrics (Julien Rouhaud)
+    - Add pg_stat_archiver metrics (Julien Rouhaud)
+    - Add pg_stat_replication metrics (Julien Rouhaud)
+    - Add pg_stat_replication_slots metrics (Julien Rouhaud)
+    - Add pg_stat_database metrics (Julien Rouhaud)
+    - Add pg_stat_io metrics (Julien Rouhaud)
+    - Add JIT metrics in pg_stat_statements 1.10 and 1.11
+    - Add pg_stat_database_conflicts metrics (Julien Rouhaud)
+    - Add pg_stat_slru metrics (Julien Rouhaud)
+    - Add pg_stat_wal metrics (Julien Rouhaud)
+    - Add pg_stat_wal_receiver metrics (Julien Rouhaud)
+    - Add pg_stat_subscription metrics (Julien Rouhaud)
+    - Add pg_stat_subscription_stats metrics (Julien Rouhaud)
+  - Bugfixes
+    - Fix long standing bug in pg_stat_kcache metrics calculation (Julien
+      Rouhaud)
+  - Misc
+    - Add compatibility with postgres 17 (Julien Rouhaud)
+    - Remove powa_stat_* handling from powa_functions (Julien Rouhaud)
+    - Add compatibility with pg_stat_statements 1.11 (Julien Rouhaud)
+    - Improve aggregated record lookup performance (Marc Cousin, Julien Rouhaud)
+
 ## 4.2.2
 
   - Bugfixes
