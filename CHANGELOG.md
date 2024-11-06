@@ -1,8 +1,8 @@
 ## 5.0.0 (WIP)
 
-This is a major rework of PoWA.  Please not that there is not upgrade to switch
-to this version. You need to remove the old one and install the new 4.0.0
-version.
+This is a major rework of PoWA. Please note that there is no upgrade procedure
+to switch to this version. You need to remove the old one and install the new
+5.0.0 version.
 
   - Breaking changes
     - Remove support for postgres 9.4 (Julien Rouhaud)
