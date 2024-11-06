@@ -1,6 +1,6 @@
 ## 5.0.0 (WIP)
 
-This is a major rework of PoWA. Please note that there is no upgrade procedure
+This is a major rework of PoWA.  Please note that there is no upgrade procedure
 to switch to this version. You need to remove the old one and install the new
 5.0.0 version.
 
@@ -135,9 +135,9 @@ to switch to this version. You need to remove the old one and install the new
 
 ## 4.0.0
 
-This is a major rework of PoWA.  Please not that there is not upgrade to switch
-to this version. You need to remove the old one and install the new 4.0.0
-version.
+This is a major rework of PoWA.  Please note that there is no upgrade procedure
+to switch to this version. You need to remove the old one and install the new
+4.0.0 version.
 
   - New features:
     - Add a remote capture mode, allowing to gather data from a remote server
@@ -222,8 +222,9 @@ version.
 
 ## 3.0.0 (2015-11-06)
 
-Please not that there is not upgrade to switch to this version. You need to
-remove the old one and install the new 3.0.0 version.
+This is a major rework of PoWA.  Please note that there is no upgrade procedure
+to switch to this version. You need to remove the old one and install the new
+3.0.0 version.
 
   - Handle pg_qualtats 0.0.7
   - Sample cluster wide statistics, for relations and functions
