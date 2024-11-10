@@ -1,4 +1,4 @@
-## 5.0.0 (WIP)
+## 5.0.0
 
 This is a major rework of PoWA.  Please note that there is no upgrade procedure
 to switch to this version. You need to remove the old one and install the new
