@@ -1,6 +1,6 @@
 EXTENSION    = powa
 EXTVERSION   = $(shell grep default_version $(EXTENSION).control | sed -e "s/default_version[[:space:]]*=[[:space:]]*'\([^']*\)'/\1/")
-TESTS        = $(wildcard sql/*.sql)
+TESTS        = $(sort $(wildcard sql/*.sql))
 REGRESS      = $(patsubst sql/%.sql,%,$(TESTS))
 REGRESS_OPTS = --inputdir=test
 
