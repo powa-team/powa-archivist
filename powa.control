@@ -1,6 +1,6 @@
 # powa extension
 comment = 'PostgreSQL Workload Analyser-core'
-default_version = '5.0.0'
+default_version = '5.0.1dev'
 module_pathname = '$libdir/powa'
 requires = 'plpgsql, pg_stat_statements, btree_gist'
 superuser = true
