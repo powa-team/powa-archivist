@@ -225,7 +225,6 @@ CREATE TABLE @extschema@.powa_module_config (
     srvid integer NOT NULL,
     module text NOT NULL,
     enabled bool NOT NULL default true,
-    added_manually boolean NOT NULL default true,
     PRIMARY KEY (srvid, module),
     FOREIGN KEY (srvid) REFERENCES @extschema@.powa_servers(id)
       MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE,
@@ -233,9 +232,9 @@ CREATE TABLE @extschema@.powa_module_config (
       MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
 );
 
-INSERT INTO @extschema@.powa_module_config (srvid, module, added_manually) VALUES
-    (0, 'pg_database', false),
-    (0, 'pg_role', false);
+INSERT INTO @extschema@.powa_module_config (srvid, module) VALUES
+    (0, 'pg_database'),
+    (0, 'pg_role');
 
 CREATE TABLE @extschema@.powa_module_functions (
     module text NOT NULL,
@@ -1255,7 +1254,7 @@ BEGIN
 
     -- declare the module and its configuration
     INSERT INTO @extschema@.powa_modules VALUES (_pg_module, _min_version);
-    INSERT INTO @extschema@.powa_module_config VALUES (0, _pg_module, false);
+    INSERT INTO @extschema@.powa_module_config VALUES (0, _pg_module);
     INSERT INTO @extschema@.powa_module_functions VALUES
         (_pg_module, 'snapshot',  v_module || '_snapshot',  v_module || '_src'),
         (_pg_module, 'aggregate', v_module || '_aggregate', NULL),
@@ -2296,9 +2295,9 @@ BEGIN
         AND module = _module;
     ELSE
         INSERT INTO @extschema@.powa_module_config
-            (srvid, module, added_manually)
+            (srvid, module)
         VALUES
-            (_srvid, _module, (_srvid != 0));
+            (_srvid, _module);
     END IF;
 
     RETURN true;
@@ -3166,8 +3165,8 @@ SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_all_tables_history_
 SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_extensions','WHERE added_manually');
 SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_extension_functions','WHERE added_manually');
 SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_extension_config','WHERE added_manually');
-SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_module_functions','WHERE added_manually');
-SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_module_config','WHERE added_manually');
+SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_module_functions','');
+SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_module_config','');
 SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_catalog_databases','');
 SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_catalog_roles','');
 SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_catalog_class','');
