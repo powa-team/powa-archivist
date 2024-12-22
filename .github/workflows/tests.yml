@@ -93,5 +93,8 @@ jobs:
     - name: Run powa-archivist tests for postgres ${{ matrix.postgres_major_version }}
       run: make installcheck || ( errcode=$?; cat regression.diffs && exit $errcode )
 
+    - name: Check pg_dump for postgres ${{ matrix.postgres_major_version }}
+      run: pg_dump -d contrib_regression
+
     - name: Stop the running postgres ${{ matrix.postgres_major_version }} server
       run: pg_ctl -D $DATADIR stop
