@@ -6,7 +6,7 @@ ALTER TABLE @extschema@.powa_module_config DROP COLUMN added_manually;
 SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_module_config','');
 SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_module_functions','');
 
-CREATE FUNCTION @extschema@.powa_activate_module(_srvid int, _module text) RETURNS boolean
+CREATE OR REPLACE FUNCTION @extschema@.powa_activate_module(_srvid int, _module text) RETURNS boolean
 AS $_$
 DECLARE
     v_res bool;
