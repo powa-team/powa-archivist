@@ -1,3 +1,11 @@
+## 5.0.1
+
+  - Bugfixes
+    - Fix pg_dump error on powa_module_config (Julien Rouhaud, thanks to github
+      user guruguruguru for the report)
+    - Fix powa_delete_and_purge_server function when pg_track_settings is
+      installed (Julien Rouhaud, thanks to Thomas Reiss for report)
+
 ## 5.0.0
 
 This is a major rework of PoWA.  Please note that there is no upgrade procedure
