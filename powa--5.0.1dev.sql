@@ -2764,6 +2764,7 @@ CREATE FUNCTION @extschema@.powa_delete_and_purge_server(_srvid integer) RETURNS
 AS $_$
 DECLARE
     v_rowcount bigint;
+    v_extnsp text;
 BEGIN
     IF (_srvid = 0) THEN
         RAISE EXCEPTION 'Local server cannot be deleted';
@@ -2775,22 +2776,34 @@ BEGIN
 
     -- pg_track_settings is an autonomous extension, so it doesn't have a FK to
     -- powa_servers.  It therefore needs to be processed manually
-    SELECT COUNT(*)
-        FROM pg_extension
+    SELECT COUNT(*), nspname
+        FROM pg_extension e
+        LEFT JOIN pg_namespace n ON n.oid = e.extnamespace
         WHERE extname = 'pg_track_settings'
-        INTO v_rowcount;
+        GROUP BY nspname
+        INTO v_rowcount, v_extnsp;
     IF (v_rowcount = 1) THEN
-        DELETE FROM pg_track_settings_list WHERE srvid = _srvid;
-        DELETE FROM pg_track_settings_history WHERE srvid = _srvid;
-        DELETE FROM pg_track_db_role_settings_list WHERE srvid = _srvid;
-        DELETE FROM pg_track_db_role_settings_history WHERE srvid = _srvid;
-        DELETE FROM pg_reboot WHERE srvid = _srvid;
+        EXECUTE format('DELETE FROM %I.pg_track_settings_list WHERE srvid = %s',
+            v_extnsp,
+            _srvid);
+        EXECUTE format('DELETE FROM %I.pg_track_settings_history WHERE srvid = %s',
+            v_extnsp,
+            _srvid);
+        EXECUTE format('DELETE FROM %I.pg_track_db_role_settings_list WHERE srvid = %s',
+            v_extnsp,
+            _srvid);
+        EXECUTE format('DELETE FROM %I.pg_track_db_role_settings_history WHERE srvid = %s',
+            v_extnsp,
+            _srvid);
+        EXECUTE format('DELETE FROM %I.pg_reboot WHERE srvid = %s',
+            v_extnsp,
+            _srvid);
     END IF;
 
     RETURN v_rowcount = 1;
 END;
 $_$ LANGUAGE plpgsql
-SET search_path = pg_catalog; /* powa_deactivate_server */
+SET search_path = pg_catalog; /* powa_delete_and_purge_server */
 
 DO $anon$
 BEGIN
