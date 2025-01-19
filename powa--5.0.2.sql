@@ -3441,8 +3441,8 @@ BEGIN
       END;
     END LOOP;
 
-    -- Coalesce datas if needed
-    IF ( (purge_seq % v_coalesce ) = 0 )
+    -- Coalesce datas if needed. The _srvid % 20 is there to avoid having all coalesces run at once
+    IF ( ((purge_seq + (_srvid % 20) ) % v_coalesce ) = 0 )
     THEN
       PERFORM @extschema@.powa_log(
         format('coalesce needed, srvid: %s - seq: %s - coalesce seq: %s',
@@ -3499,7 +3499,8 @@ BEGIN
     END IF;
 
     -- We also purge, at the pass after the coalesce
-    IF ( (purge_seq % v_coalesce) = 1 )
+    -- The _srvid % 20 is there to avoid having all purges run at once
+    IF ( ((purge_seq + (_srvid % 20)) % v_coalesce) = 1 )
     THEN
       PERFORM @extschema@.powa_log(
         format('purge needed, srvid: %s - seq: %s coalesce seq: %s',
