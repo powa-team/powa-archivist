@@ -262,3 +262,75 @@ BEGIN
 END;
 $PROC$ LANGUAGE plpgsql
 SET search_path = pg_catalog; /* end of powa_take_snapshot(int) */
+
+CREATE OR REPLACE FUNCTION @extschema@.powa_check_created_extensions()
+RETURNS event_trigger
+LANGUAGE plpgsql
+AS $_$
+DECLARE
+    v_extname text;
+    v_res bool;
+BEGIN
+    SELECT extname INTO v_extname
+    FROM pg_event_trigger_ddl_commands() d
+    JOIN pg_extension e ON d.classid = 'pg_extension'::regclass
+        AND d.objid = e.oid
+    JOIN @extschema@.powa_extensions p USING (extname)
+    WHERE d.object_type = 'extension';
+
+    -- Bail out if this isn't a known extension
+    IF (v_extname IS NULL) THEN
+        RETURN;
+    END IF;
+
+    RAISE LOG 'powa: automatically activing extension %', v_extname;
+    SELECT @extschema@.powa_activate_extension(0, v_extname) INTO v_res;
+
+    IF (NOT v_res) THEN
+        RAISE WARNING 'Could not automatically activate extension "%"', v_extname;
+    END IF;
+END;
+$_$
+SET search_path = pg_catalog; /* end of powa_check_created_extensions */
+
+CREATE OR REPLACE FUNCTION @extschema@.powa_check_dropped_extensions()
+RETURNS event_trigger
+LANGUAGE plpgsql
+AS $_$
+DECLARE
+    v_extname text;
+    v_state   text;
+    v_msg     text;
+    v_detail  text;
+    v_hint    text;
+    v_context text;
+BEGIN
+    -- We unregister extensions regardless the "enabled" field
+    FOR v_extname IN SELECT pe.extname
+        FROM pg_event_trigger_dropped_objects() d
+        LEFT JOIN @extschema@.powa_extensions pe ON pe.extname = d.object_name
+        WHERE d.object_type = 'extension'
+    LOOP
+        BEGIN
+            RAISE LOG 'powa: automatically deactiving extension %', v_extname;
+            PERFORM @extschema@.powa_deactivate_extension(0, v_extname);
+        EXCEPTION
+          WHEN OTHERS THEN
+            GET STACKED DIAGNOSTICS
+                v_state   = RETURNED_SQLSTATE,
+                v_msg     = MESSAGE_TEXT,
+                v_detail  = PG_EXCEPTION_DETAIL,
+                v_hint    = PG_EXCEPTION_HINT,
+                v_context = PG_EXCEPTION_CONTEXT;
+            RAISE WARNING 'Could not deactivate extension %:"
+                state  : %
+                message: %
+                detail : %
+                hint   : %
+                context: %', v_extname, v_state, v_msg, v_detail, v_hint,
+                             v_context;
+        END;
+    END LOOP;
+END;
+$_$
+SET search_path = pg_catalog; /* end of powa_check_dropped_extensions */
