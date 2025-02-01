@@ -3229,6 +3229,7 @@ BEGIN
         RETURN;
     END IF;
 
+    RAISE LOG 'powa: automatically activing extension %', v_extname;
     SELECT @extschema@.powa_activate_extension(0, v_extname) INTO v_res;
 
     IF (NOT v_res) THEN
@@ -3250,7 +3251,7 @@ RETURNS event_trigger
 LANGUAGE plpgsql
 AS $_$
 DECLARE
-    r         record;
+    v_extname text;
     v_state   text;
     v_msg     text;
     v_detail  text;
@@ -3258,27 +3259,14 @@ DECLARE
     v_context text;
 BEGIN
     -- We unregister extensions regardless the "enabled" field
-    WITH src AS (
-        SELECT object_name
+    FOR v_extname IN SELECT pe.extname
         FROM pg_event_trigger_dropped_objects() d
+        LEFT JOIN @extschema@.powa_extensions pe ON pe.extname = d.object_name
         WHERE d.object_type = 'extension'
-    )
-    SELECT CASE external
-        WHEN true THEN quote_ident(nsp.nspname)
-        ELSE '@extschema@'
-        END AS schema, function_name AS funcname INTO r
-    FROM @extschema@.powa_extensions AS pe
-    JOIN src ON pe.module = src.object_name
-    LEFT JOIN pg_extension AS ext ON ext.extname = pe.extname
-    LEFT JOIN pg_namespace AS nsp ON nsp.oid = ext.extnamespace
-    WHERE operation = 'unregister'
-    ORDER BY module;
-
-    IF ( r.funcname IS NOT NULL ) THEN
+    LOOP
         BEGIN
-            PERFORM @extschema@.powa_log(format('running %s.%I',
-                    r.schema, r.funcname));
-            EXECUTE format('SELECT %s.%I(0)', r.schema, r.funcname);
+            RAISE LOG 'powa: automatically deactiving extension %', v_extname;
+            PERFORM @extschema@.powa_deactivate_extension(0, v_extname);
         EXCEPTION
           WHEN OTHERS THEN
             GET STACKED DIAGNOSTICS
@@ -3287,15 +3275,15 @@ BEGIN
                 v_detail  = PG_EXCEPTION_DETAIL,
                 v_hint    = PG_EXCEPTION_HINT,
                 v_context = PG_EXCEPTION_CONTEXT;
-            RAISE WARNING '@extschema@.powa_check_dropped_extensions(): function %.% failed:
+            RAISE WARNING 'Could not deactivate extension %:"
                 state  : %
                 message: %
                 detail : %
                 hint   : %
-                context: %', r.schema, quote_ident(r.funcname), v_state, v_msg,
-                             v_detail, v_hint, v_context;
+                context: %', v_extname, v_state, v_msg, v_detail, v_hint,
+                             v_context;
         END;
-    END IF;
+    END LOOP;
 END;
 $_$
 SET search_path = pg_catalog; /* end of powa_check_dropped_extensions */
