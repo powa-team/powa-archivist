@@ -5772,7 +5772,7 @@ BEGIN
                 min((record).self_time))::@extschema@.powa_user_functions_history_record,
             ROW(max((record).ts), max((record).calls),max((record).total_time),
                 max((record).self_time))::@extschema@.powa_user_functions_history_record
-        FROM @extschema@.powa_user_functions_history_current
+        FROM @extschema@.powa_user_functions_history_current_db
         WHERE srvid = _srvid
         GROUP BY srvid, dbid;
 
