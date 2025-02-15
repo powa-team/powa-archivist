@@ -1,0 +1,9 @@
+extname = 'powa'
+from = '%%FROM_VER%%'
+to = '%%TO_VER%%'
+extra_queries = [
+]
+pre_upgrade_queries = [
+    'SELECT powa_take_snapshot()',
+    'RESET application_name',
+]

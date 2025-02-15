@@ -11,6 +11,7 @@ on:
 env:
   DATADIR: /dev/shm/data
   LOGFILE: /dev/shm/data/logfile
+  RUST: 1.75.0
 
 jobs:
   powa-archivist_tests:
@@ -95,6 +96,64 @@ jobs:
 
     - name: Check pg_dump for postgres ${{ matrix.postgres_major_version }}
       run: pg_dump -d contrib_regression
+
+    - name: Check extension install vs upgrade for postgres ${{ matrix.postgres_major_version }}
+      run: |
+        # install dependencies
+        sudo apt-get install -y silversearcher-ag
+
+        # install rust
+        rustup toolchain install ${{ env.RUST }}
+
+        # install pg_validate_extupgrade
+        git clone https://github.com/rjuju/pg_validate_extupgrade.git
+        cd pg_validate_extupgrade
+        cargo build
+        cd ..
+
+        # roles created by an extensions are not removed in case of rollback,
+        # so we create one of the default pseudo predefined roles to make sure
+        # that no pseudo predefined roles will automatically be created
+        createuser powa_admin
+
+        # CREATAE EXTENSION ... CASCADE is only supported on pg9.6+
+        if [[ "${{ matrix.postgres_major_version }}" == "9.5" ]]; then
+          psql -Xc "CREATE EXTENSION btree_gist" postgres
+          psql -Xc "CREATE EXTENSION pg_stat_statements" postgres
+        fi
+
+        # get the default extension version
+        to_ver=$(ag default_version powa.control | ag -o "(\d+\.?)+")
+        echo "to_ver: ${to_ver}"
+
+        # Check the number of extension scripts containing the default versions
+        nb=$(ls *--${to_ver}.sql | wc -l)
+
+        # If only one sql script found with the default version, it should be a
+        # new major version that is allowed to no provide an upgrade script.
+        if [[ ${nb} -eq 1 ]]; then
+          # Check that it's a new major version
+          echo "${to_ver}" | ag '\.0\.0$'
+
+          echo "New major version without ugprade script"
+          exit 0
+        fi
+
+        # Get the previous version
+        from_ver=$(ls *--*--${to_ver}.sql \
+          | ag -o 'powa--\d+\.\d+\.\d+' \
+          | ag -o "\d+\.\d+\.\d+")
+
+        # Generate the config file
+        cat .github/powa-archivist.toml.template \
+          | sed "s/%%FROM_VER%%/${from_ver}/" \
+          | sed "s/%%TO_VER%%/${to_ver}/" \
+          > powa-archivist.toml
+
+        # Run pg_validate_extupgrade
+        ./pg_validate_extupgrade/target/debug/pg_validate_extupgrade \
+          -d postgres \
+          -c ./powa-archivist.toml
 
     - name: Stop the running postgres ${{ matrix.postgres_major_version }} server
       run: pg_ctl -D $DATADIR stop
