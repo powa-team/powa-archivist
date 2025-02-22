@@ -1781,6 +1781,7 @@ pid, usename, application_name, client_addr, backend_start, backend_xmin,
 state, sent_lsn, write_lsn, flush_lsn, replay_lsn, write_lag, flush_lag,
 replay_lag, sync_priority, sync_state, reply_time
 }$$,
+-- pg_lsn aggregates only exists on pg13+
 _min_version => 130000
 );
 
@@ -4789,9 +4790,12 @@ CREATE OR REPLACE FUNCTION @extschema@.powa_stat_replication_src(IN _srvid integ
 ) RETURNS SETOF record STABLE AS $PROC$
 DECLARE
     v_current_lsn pg_lsn;
+    v_pg_version_num int;
 BEGIN
     IF (_srvid = 0) THEN
-        IF current_setting('server_version_num')::int < 100000 THEN
+        v_pg_version_num := current_setting('server_version_num')::int;
+
+        IF v_pg_version_num < 100000 THEN
             IF pg_is_in_recovery() THEN
                 v_current_lsn := pg_last_xlog_receive_location();
             ELSE
@@ -4808,14 +4812,47 @@ BEGIN
         -- We use a LEFT JOIN on the pg_stat_replication view to make sure that
         -- we always return at least one (all-NULL) row, so client apps can
         -- detect when all the replication connections are down.
-        RETURN QUERY SELECT now,
-        v_current_lsn,
-        s.pid, s.usename::text AS usename, s.application_name, s.client_addr,
-        s.backend_start, s.backend_xmin, s.state, s.sent_lsn, s.write_lsn,
-        s.flush_lsn, s.replay_lsn, s.write_lag, s.flush_lag, s.replay_lag,
-        s.sync_priority, s.sync_state, s.reply_time
-        FROM (SELECT now() AS now) n
-        LEFT JOIN pg_catalog.pg_stat_replication AS s ON true;
+        --
+        -- We handle older versions compatibility even if we don't actually
+        -- enable them for pg 12 and below, are there are no aggregate
+        -- functions for pg_lsn datatype before pg13.  This way if the
+        -- repository server is on pg13+ and a remote is on pg12-, we can still
+        -- support that datasource.
+
+        -- pg12+, reply_time is added
+        IF v_pg_version_num >= 120000 THEN
+            RETURN QUERY SELECT now,
+            v_current_lsn,
+            s.pid, s.usename::text AS usename, s.application_name, s.client_addr,
+            s.backend_start, s.backend_xmin, s.state, s.sent_lsn, s.write_lsn,
+            s.flush_lsn, s.replay_lsn, s.write_lag, s.flush_lag, s.replay_lag,
+            s.sync_priority, s.sync_state, s.reply_time
+            FROM (SELECT now() AS now) n
+            LEFT JOIN pg_catalog.pg_stat_replication AS s ON true;
+        -- pg10+, *_location fields renamed to *_lsn, and *_lag fields added
+        ELSIF v_pg_version_num >= 100000 THEN
+            RETURN QUERY SELECT now,
+            v_current_lsn,
+            s.pid, s.usename::text AS usename, s.application_name, s.client_addr,
+            s.backend_start, s.backend_xmin, s.state, s.sent_lsn, s.write_lsn,
+            s.flush_lsn, s.replay_lsn, s.write_lag, s.flush_lag, s.replay_lag,
+            s.sync_priority, s.sync_state, NULL::timestamptz AS reply_time
+            FROM (SELECT now() AS now) n
+            LEFT JOIN pg_catalog.pg_stat_replication AS s ON true;
+        -- pg9.4+ definition
+        ELSE
+            RETURN QUERY SELECT now,
+            v_current_lsn,
+            s.pid, s.usename::text AS usename, s.application_name, s.client_addr,
+            s.backend_start, s.backend_xmin, s.state,
+            s.sent_location AS sent_lsn, s.write_location AS write_lsn,
+            s.flush_location AS flush_lsn, s.replay_location AS replay_lsn,
+            NULL::interval AS write_lag, NULL::interval AS flush_lag,
+            NULL::interval AS replay_lag,
+            s.sync_priority, s.sync_state, NULL::timestamptz AS reply_time
+            FROM (SELECT now() AS now) n
+            LEFT JOIN pg_catalog.pg_stat_replication AS s ON true;
+        END IF;
     ELSE
         RETURN QUERY SELECT s.ts,
         s.current_lsn,
