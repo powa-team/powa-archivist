@@ -234,3 +234,14 @@ SELECT * from "PoWA".powa_reset(1);
  t
 (1 row)
 
+-- Test remove server removal
+BEGIN;
+SELECT * from "PoWA".powa_delete_and_purge_server(1);
+ powa_delete_and_purge_server 
+------------------------------
+ 
+(1 row)
+
+-- and rollback it as we later test the content of tables with a registered
+-- remote server
+ROLLBACK;

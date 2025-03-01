@@ -63,3 +63,11 @@ SELECT alias FROM "PoWA".powa_servers WHERE id = 1;
 
 -- Test reset function
 SELECT * from "PoWA".powa_reset(1);
+
+-- Test remove server removal
+BEGIN;
+SELECT * from "PoWA".powa_delete_and_purge_server(1);
+
+-- and rollback it as we later test the content of tables with a registered
+-- remote server
+ROLLBACK;
