@@ -1,9 +1,8 @@
 name: Trigger build and push of powa-archivist image
 
 on:
-  push:
-    tags:
-      - REL_*
+  release:
+    types: [published]
 
 env:
   TARGET_REPO: "powa-podman"
