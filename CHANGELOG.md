@@ -1,3 +1,17 @@
+## 5.0.2
+
+  - Performance
+    - Smooth out the coalesces and purges (Marc Cousin and Julien Rouhaud)
+  - Bugfixes
+    - Fix DROP EXTENSION issues when powa is installed (Julien Rouhaud, thanks
+      to Michael Vitale for the report)
+    - Fix aggregation of pg_stat_user_functions datasource (Marc Cousin)
+    - Fix pg_stat_replication compatibility on pg12 and below (Julien Rouhaud)
+    - Fix powa_delete_and_purge_server to also purge `*_src_tmp tables` (Julien
+      Rouhaud, thanks to github user jw1u1 for the report)
+  - Misc
+    - Fix compatibility with pg18 (Georgy Shelkovy)
+
 ## 5.0.1
 
   - Bugfixes
