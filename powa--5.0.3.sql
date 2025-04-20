@@ -4253,15 +4253,23 @@ CREATE OR REPLACE FUNCTION @extschema@.powa_replication_slots_src(IN _srvid inte
 DECLARE
     v_txid xid;
     v_current_lsn pg_lsn;
+    v_server_version int;
 BEGIN
     IF (_srvid = 0) THEN
+        v_server_version := current_setting('server_version_num')::int;
+
         IF pg_catalog.pg_is_in_recovery() THEN
             v_txid = NULL;
         ELSE
-            v_txid = pg_catalog.txid_current();
+            -- xid() was introduced in pg13
+            IF v_server_version >= 130000 THEN
+                v_txid = pg_catalog.xid(pg_catalog.pg_current_xact_id());
+            ELSE
+                v_txid = (txid_current()::bigint - (txid_current()::bigint >> 32 << 32))::text::xid;
+            END IF;
         END IF;
 
-        IF current_setting('server_version_num')::int < 100000 THEN
+        IF v_server_version < 100000 THEN
             IF pg_is_in_recovery() THEN
                 v_current_lsn := pg_last_xlog_receive_location();
             ELSE
@@ -4279,7 +4287,7 @@ BEGIN
         -- found, so the UI can properly graph that no slot exists.
 
         -- conflicting added in pg16
-        IF current_setting('server_version_num')::int >= 160000 THEN
+        IF v_server_version >= 160000 THEN
             RETURN QUERY SELECT n.now,
                 s.slot_name::text AS slot_name, s.plugin::text AS plugin,
                 s.slot_type, s.datoid, s.temporary,
@@ -4291,7 +4299,7 @@ BEGIN
             FROM (SELECT now() AS now) n
             LEFT JOIN pg_catalog.pg_replication_slots AS s ON true;
         -- two_phase added in pg14
-        ELSIF current_setting('server_version_num')::int >= 140000 THEN
+        ELSIF v_server_version >= 140000 THEN
             RETURN QUERY SELECT n.now,
                 s.slot_name::text AS slot_name, s.plugin::text AS plugin,
                 s.slot_type, s.datoid, s.temporary,
@@ -4303,7 +4311,7 @@ BEGIN
             FROM (SELECT now() AS now) n
             LEFT JOIN pg_catalog.pg_replication_slots AS s ON true;
         -- wal_status and safe_wal_size added in pg13
-        ELSIF current_setting('server_version_num')::int >= 130000 THEN
+        ELSIF v_server_version >= 130000 THEN
             RETURN QUERY SELECT n.now,
                 s.slot_name::text AS slot_name, s.plugin::text AS plugin,
                 s.slot_type, s.datoid, s.temporary,
@@ -4315,7 +4323,7 @@ BEGIN
             FROM (SELECT now() AS now) n
             LEFT JOIN pg_catalog.pg_replication_slots AS s ON true;
         -- temporary added in pg10
-        ELSIF current_setting('server_version_num')::int >= 100000 THEN
+        ELSIF v_server_version >= 100000 THEN
             RETURN QUERY SELECT n.now,
                 s.slot_name::text AS slot_name, s.plugin::text AS plugin,
                 s.slot_type, s.datoid, s.temporary,
@@ -4329,7 +4337,7 @@ BEGIN
             FROM (SELECT now() AS now) n
             LEFT JOIN pg_catalog.pg_replication_slots AS s ON true;
         -- confirmed_flush_lsn added in pg9.6
-        ELSIF current_setting('server_version_num')::int >= 90600 THEN
+        ELSIF v_server_version >= 90600 THEN
             RETURN QUERY SELECT n.now,
                 s.slot_name::text AS slot_name, s.plugin::text AS plugin,
                 s.slot_type, s.datoid, false AS temporary,
@@ -4343,7 +4351,7 @@ BEGIN
             FROM (SELECT now() AS now) n
             LEFT JOIN pg_catalog.pg_replication_slots AS s ON true;
         -- active_pid added in pg9.5
-        ELSIF current_setting('server_version_num')::int >= 90500 THEN
+        ELSIF v_server_version >= 90500 THEN
             RETURN QUERY SELECT n.now,
                 s.slot_name::text AS slot_name, s.plugin::text AS plugin,
                 s.slot_type, s.datoid, false AS temporary,
@@ -4407,16 +4415,24 @@ CREATE OR REPLACE FUNCTION @extschema@.powa_stat_activity_src(IN _srvid integer,
 ) RETURNS SETOF record STABLE AS $PROC$
 DECLARE
     txid xid;
+    v_server_version int;
 BEGIN
     IF (_srvid = 0) THEN
+        v_server_version := current_setting('server_version_num')::int;
+
         IF pg_catalog.pg_is_in_recovery() THEN
             txid = NULL;
         ELSE
-            txid = pg_catalog.txid_current();
+            -- xid() was introduced in pg13
+            IF v_server_version >= 130000 THEN
+                txid = pg_catalog.xid(pg_catalog.pg_current_xact_id());
+            ELSE
+                txid = (txid_current()::bigint - (txid_current()::bigint >> 32 << 32))::text::xid;
+            END IF;
         END IF;
 
         -- query_id added in pg14
-        IF current_setting('server_version_num')::int >= 140000 THEN
+        IF v_server_version >= 140000 THEN
             RETURN QUERY SELECT now(),
                 txid,
                 s.datid, s.pid, s.leader_pid, s.usesysid,
@@ -4426,7 +4442,7 @@ BEGIN
                 s.backend_xmin, s.query_id, s.backend_type
             FROM pg_catalog.pg_stat_activity AS s;
         -- leader_pid added in pg13+
-        ELSIF current_setting('server_version_num')::int >= 130000 THEN
+        ELSIF v_server_version >= 130000 THEN
             RETURN QUERY SELECT now(),
                 txid,
                 s.datid, s.pid, s.leader_pid, s.usesysid,
@@ -4436,7 +4452,7 @@ BEGIN
                 s.backend_xmin, NULL::bigint AS query_id, s.backend_type
             FROM pg_catalog.pg_stat_activity AS s;
         -- backend_type added in pg10+
-        ELSIF current_setting('server_version_num')::int >= 100000 THEN
+        ELSIF v_server_version >= 100000 THEN
             RETURN QUERY SELECT now(),
                 txid,
                 s.datid, s.pid, NULL::integer AS leader_pid, s.usesysid,

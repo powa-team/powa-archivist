@@ -42,3 +42,4 @@ Contributors to PoWA :
   * github user anikin-aa
   * Yuriy Vountesmery
   * Georgy Shelkovy
+  * github user Nickuru
