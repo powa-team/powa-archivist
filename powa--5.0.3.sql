@@ -7455,3 +7455,19 @@ $$ LANGUAGE plpgsql;
 SELECT @extschema@.powa_activate_extension(0, extname)
 FROM @extschema@.powa_extensions p
 JOIN pg_catalog.pg_extension e USING (extname);
+
+DO
+LANGUAGE plpgsql
+$$
+DECLARE curr_table regclass;
+BEGIN
+  IF current_setting('server_version_num')::int >= 110000 THEN
+    FOR curr_table IN SELECT oid FROM pg_class WHERE EXISTS (SELECT 1 FROM pg_attribute WHERE attname = 'mins_in_range' AND pg_attribute.attrelid = pg_class.oid) AND 'toast_tuple_target=128' <> ALL(coalesce(reloptions,'{}'))
+    LOOP
+      EXECUTE 'ALTER TABLE ' || curr_table::text || ' SET (TOAST_TUPLE_TARGET=128)';
+    END LOOP;
+  END IF;
+END
+$$
+;
+

@@ -351,3 +351,16 @@ SELECT 4, COUNT(*) = 0 FROM "PoWA".powa_statements_history;
         4 | t
 (1 row)
 
+-- Test toast_tuple_target and extended columns
+SELECT 5, current_setting('server_version_num')::int < 110000 OR COUNT(*) = 0 FROM pg_class WHERE EXISTS (SELECT 1 FROM pg_attribute WHERE attname = 'mins_in_range' AND pg_attribute.attrelid = pg_class.oid) AND 'toast_tuple_target=128' <> ALL(coalesce(reloptions,'{}'));
+ ?column? | ?column? 
+----------+----------
+        5 | t
+(1 row)
+
+SELECT 5, COUNT(*) = 0 FROM pg_attribute WHERE attname IN ('mins_in_range','maxs_in_range') AND attstorage<>'m';
+ ?column? | ?column? 
+----------+----------
+        5 | t
+(1 row)
+
