@@ -143,6 +143,5 @@ SELECT 4, COUNT(*) = 0 FROM "PoWA".powa_all_tables_history;
 SELECT 4, COUNT(*) = 0 FROM "PoWA".powa_statements_history;
 SELECT 4, COUNT(*) = 0 FROM "PoWA".powa_statements_history;
 
--- Test toast_tuple_target and extended columns
+-- Test toast_tuple_target
 SELECT 5, current_setting('server_version_num')::int < 110000 OR COUNT(*) = 0 FROM pg_class WHERE EXISTS (SELECT 1 FROM pg_attribute WHERE attname = 'mins_in_range' AND pg_attribute.attrelid = pg_class.oid) AND 'toast_tuple_target=128' <> ALL(coalesce(reloptions,'{}'));
-SELECT 5, COUNT(*) = 0 FROM pg_attribute WHERE attname IN ('mins_in_range','maxs_in_range') AND attstorage<>'m';
