@@ -161,7 +161,7 @@ FROM ext
 WHERE EXISTS
   (SELECT 1 FROM pg_attribute a
    WHERE a.attrelid = ext.oid
-      AND a.attname ~ '(mins|maxs)'
+      AND a.attname = 'mins_in_range'
   )
 AND 'toast_tuple_target=128' <> ALL(coalesce(ext.reloptions,'{}'))
 AND current_setting('server_version_num')::int >= 110000
