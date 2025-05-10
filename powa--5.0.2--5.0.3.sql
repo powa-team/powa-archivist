@@ -257,3 +257,40 @@ BEGIN
 END;
 $PROC$ LANGUAGE plpgsql
 SET search_path = pg_catalog; /* end of powa_stat_activity_src */
+
+
+CREATE FUNCTION @extschema@.powa_fix_toast_tuple_target() RETURNS void
+LANGUAGE plpgsql AS
+$$
+DECLARE curr_table regclass;
+BEGIN
+  IF current_setting('server_version_num')::int >= 110000 THEN
+
+    FOR curr_table IN
+        WITH ext AS (
+            SELECT c.oid, c.relname, c.reloptions
+            FROM pg_depend d
+            JOIN pg_extension e ON d.refclassid = 'pg_extension'::regclass
+                AND e.oid = d.refobjid
+                AND e.extname = 'powa'
+            JOIN pg_class c ON d.classid = 'pg_class'::regclass
+                AND c.oid = d.objid
+            WHERE c.relkind != 'v'
+        )
+        SELECT ext.oid::regclass::text
+        FROM ext
+        WHERE EXISTS
+          (SELECT 1 FROM pg_attribute a
+           WHERE a.attrelid = ext.oid
+              AND a.attname = 'mins_in_range'
+          )
+        AND 'toast_tuple_target=128' <> ALL(coalesce(ext.reloptions,'{}'))
+    LOOP
+      EXECUTE 'ALTER TABLE ' || curr_table::text || ' SET (TOAST_TUPLE_TARGET=128)';
+    END LOOP;
+  END IF;
+END
+$$
+;
+
+SELECT @extschema@.powa_fix_toast_tuple_target();

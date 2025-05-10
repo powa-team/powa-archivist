@@ -142,3 +142,27 @@ SELECT 4, COUNT(*) = 0 FROM "PoWA".powa_user_functions_history;
 SELECT 4, COUNT(*) = 0 FROM "PoWA".powa_all_tables_history;
 SELECT 4, COUNT(*) = 0 FROM "PoWA".powa_statements_history;
 SELECT 4, COUNT(*) = 0 FROM "PoWA".powa_statements_history;
+
+-- Test toast_tuple_target: we shouldn't have any table belonging to powa archivist
+-- that has a column mins_in_range (it means it's a coalesced table) and isn't set
+-- for aggressive toasting
+WITH ext AS (
+    SELECT c.oid, c.relname, c.reloptions
+    FROM pg_depend d
+    JOIN pg_extension e ON d.refclassid = 'pg_extension'::regclass
+        AND e.oid = d.refobjid
+        AND e.extname = 'powa'
+    JOIN pg_class c ON d.classid = 'pg_class'::regclass
+        AND c.oid = d.objid
+    WHERE c.relkind != 'v'
+)
+SELECT ext.relname
+FROM ext
+WHERE EXISTS
+  (SELECT 1 FROM pg_attribute a
+   WHERE a.attrelid = ext.oid
+      AND a.attname = 'mins_in_range'
+  )
+AND 'toast_tuple_target=128' <> ALL(coalesce(ext.reloptions,'{}'))
+AND current_setting('server_version_num')::int >= 110000
+ORDER BY ext.relname::text COLLATE "C";
