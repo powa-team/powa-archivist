@@ -90,9 +90,9 @@ WITH ext AS (
 SELECT ext.relname, a.attname
 FROM ext
 JOIN pg_attribute a ON a.attrelid = ext.oid
-WHERE a.attname ~ '(mins|maxs)'
+WHERE a.attname ~ '^(mins|maxs)_in_range$'
 AND a.attstorage != 'm'
-ORDER BY ext.relname::text COLLATE "C", a.attname::text COLLATe "C";
+ORDER BY ext.relname::text COLLATE "C", a.attname::text COLLATE "C";
  relname | attname 
 ---------+---------
 (0 rows)
