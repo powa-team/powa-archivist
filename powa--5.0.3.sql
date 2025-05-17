@@ -7432,9 +7432,7 @@ END;
 $$ LANGUAGE plpgsql
 SET search_path = pg_catalog; /* end of powa_revoke() */
 
-/* 
-   Function to set or fix the toast_tuple_target of all aggregate tables
-*/
+-- Function to set or fix the toast_tuple_target of all aggregate tables
 CREATE FUNCTION @extschema@.powa_fix_toast_tuple_target() RETURNS void
 LANGUAGE plpgsql AS
 $$
@@ -7466,13 +7464,7 @@ BEGIN
     END LOOP;
   END IF;
 END
-$$
-;
-
-
-
-
-
+$$; /* end of powa_fix_toast_tuple_target */
 
 -- mass set proper ACL IIF none of the default pseudo predefined roles exist
 DO

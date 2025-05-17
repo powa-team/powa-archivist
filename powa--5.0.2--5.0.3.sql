@@ -290,7 +290,6 @@ BEGIN
     END LOOP;
   END IF;
 END
-$$
-;
+$$; /* end of powa_fix_toast_tuple_target */
 
 SELECT @extschema@.powa_fix_toast_tuple_target();
