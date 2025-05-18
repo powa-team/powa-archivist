@@ -292,4 +292,33 @@ BEGIN
 END
 $$; /* end of powa_fix_toast_tuple_target */
 
+CREATE FUNCTION @extschema@.powa_stat_get_activity(
+    _srvid integer,
+    _from timestamp with time zone,
+    _to timestamp with time zone
+)
+RETURNS SETOF @extschema@.powa_stat_activity_history_record
+AS
+$$
+BEGIN
+    RETURN QUERY
+        SELECT (record).*
+        FROM @extschema@.powa_stat_activity_history_current
+        WHERE srvid = _srvid
+        AND (record).ts >= _from
+        AND (record).ts <= _to
+        UNION ALL
+        SELECT (record).*
+        FROM (
+            SELECT unnest(records) AS record
+            FROM @extschema@.powa_stat_activity_history
+            WHERE srvid = _srvid
+            AND coalesce_range && tstzrange(_from, _to, '[]')
+        ) unnested
+        WHERE (unnested.record).ts >= _from
+        AND (unnested.record).ts <= _to;
+END;
+$$
+LANGUAGE plpgsql; /* end of powa_stat_get_activity */
+
 SELECT @extschema@.powa_fix_toast_tuple_target();
