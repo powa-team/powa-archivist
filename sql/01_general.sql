@@ -104,6 +104,7 @@ SELECT 1, COUNT(*) = 0 FROM "PoWA".powa_user_functions_history;
 SELECT 1, COUNT(*) = 0 FROM "PoWA".powa_all_tables_history;
 SELECT 1, COUNT(*) = 0 FROM "PoWA".powa_statements_history;
 SELECT 1, COUNT(*) = 0 FROM "PoWA".powa_statements_history;
+SELECT 1, count(*) = 0 FROM "PoWA".powa_stat_get_activity(0, '-infinity', 'infinity');
 
 SELECT "PoWA".powa_take_snapshot();
 
@@ -115,6 +116,8 @@ SELECT 2, COUNT(*) >= 0 FROM "PoWA".powa_user_functions_history;
 SELECT 2, COUNT(*) = 0 FROM "PoWA".powa_all_tables_history;
 SELECT 2, COUNT(*) = 0 FROM "PoWA".powa_statements_history;
 SELECT 2, COUNT(*) = 0 FROM "PoWA".powa_statements_history;
+SELECT 2, count(*) > 0 FROM "PoWA".powa_stat_get_activity(0, '-infinity', 'infinity');
+SELECT 2, count(*) = 0 FROM "PoWA".powa_stat_get_activity(42, '-infinity', 'infinity');
 
 SELECT "PoWA".powa_take_snapshot();
 SELECT "PoWA".powa_take_snapshot();
@@ -130,6 +133,8 @@ SELECT 3, COUNT(*) >= 0 FROM "PoWA".powa_user_functions_history;
 SELECT 3, COUNT(*) >= 0 FROM "PoWA".powa_all_tables_history;
 SELECT 3, COUNT(*) > 0 FROM "PoWA".powa_statements_history;
 SELECT 3, COUNT(*) > 0 FROM "PoWA".powa_statements_history;
+SELECT 3, count(*) > 4 FROM "PoWA".powa_stat_get_activity(0, '-infinity', 'infinity');
+SELECT 3, count(*) = 0 FROM "PoWA".powa_stat_get_activity(42, '-infinity', 'infinity');
 
 -- Test reset function
 SELECT * from "PoWA".powa_reset(0);
@@ -142,6 +147,7 @@ SELECT 4, COUNT(*) = 0 FROM "PoWA".powa_user_functions_history;
 SELECT 4, COUNT(*) = 0 FROM "PoWA".powa_all_tables_history;
 SELECT 4, COUNT(*) = 0 FROM "PoWA".powa_statements_history;
 SELECT 4, COUNT(*) = 0 FROM "PoWA".powa_statements_history;
+SELECT 4, count(*) = 0 FROM "PoWA".powa_stat_get_activity(0, '-infinity', 'infinity');
 
 -- Test toast_tuple_target: we shouldn't have any table belonging to powa archivist
 -- that has a column mins_in_range (it means it's a coalesced table) and isn't set
