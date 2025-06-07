@@ -1,3 +1,13 @@
+## 5.0.3
+
+  - Performance
+    - Make all history tables have TOAST_TUPLE_TARGET=128 set (Marc Cousin)
+  - Bugfixes
+    - Fix txid_current() usage when FullXactId > max xid (Julien Rouhaud,
+      thanks to github user Nickuru for the repor)
+  - Misc
+    - Add a new powa_stat_get_activity(srvid, from, to) function (Julien
+      Rouhaud, Thanks to Marc Cousin for the request)
 ## 5.0.2
 
   - Performance
