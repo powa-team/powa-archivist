@@ -6,7 +6,7 @@
  * For license terms, see the LICENSE file.
  *
  * Copyright (c) 2014-2017, DALIBO
- * Copyright (c) 2018-2024, The PoWA-team
+ * Copyright (c) 2018-2025, The PoWA-team
  *-------------------------------------------------------------------------
  */
 
