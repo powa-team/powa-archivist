@@ -1677,7 +1677,8 @@ $${
 {query_start, timestamp with time zone},
 {state_change, timestamp with time zone},
 {state, text}, {backend_xid, xid}, {backend_xmin, xid},
-{query_id, bigint}, {backend_type, text}
+{query_id, bigint}, {backend_type, text},
+{clock_ts, timestamp with time zone}
 }$$,
 $${
 cur_txid, datid, leader_pid, usesysid, client_addr, xact_start, query_start,
@@ -4411,7 +4412,8 @@ CREATE OR REPLACE FUNCTION @extschema@.powa_stat_activity_src(IN _srvid integer,
     OUT backend_xid xid,
     OUT backend_xmin xid,
     OUT query_id bigint,
-    OUT backend_type text
+    OUT backend_type text,
+    OUT clock_ts timestamp with time zone
 ) RETURNS SETOF record STABLE AS $PROC$
 DECLARE
     txid xid;
@@ -4439,7 +4441,8 @@ BEGIN
                 s.application_name, s.client_addr, s.backend_start,
                 s.xact_start,
                 s.query_start, s.state_change, s.state, s.backend_xid,
-                s.backend_xmin, s.query_id, s.backend_type
+                s.backend_xmin, s.query_id, s.backend_type,
+                clock_timestamp() AS clock_ts
             FROM pg_catalog.pg_stat_activity AS s;
         -- leader_pid added in pg13+
         ELSIF v_server_version >= 130000 THEN
@@ -4449,7 +4452,8 @@ BEGIN
                 s.application_name, s.client_addr, s.backend_start,
                 s.xact_start,
                 s.query_start, s.state_change, s.state, s.backend_xid,
-                s.backend_xmin, NULL::bigint AS query_id, s.backend_type
+                s.backend_xmin, NULL::bigint AS query_id, s.backend_type,
+                clock_timestamp() AS clock_ts
             FROM pg_catalog.pg_stat_activity AS s;
         -- backend_type added in pg10+
         ELSIF v_server_version >= 100000 THEN
@@ -4459,7 +4463,8 @@ BEGIN
                 s.application_name, s.client_addr, s.backend_start,
                 s.xact_start,
                 s.query_start, s.state_change, s.state, s.backend_xid,
-                s.backend_xmin, NULL::bigint AS query_id, s.backend_type
+                s.backend_xmin, NULL::bigint AS query_id, s.backend_type,
+                clock_timestamp() AS clock_ts
             FROM pg_catalog.pg_stat_activity AS s;
         ELSE
             RETURN QUERY SELECT now(),
@@ -4469,7 +4474,8 @@ BEGIN
                 s.xact_start,
                 s.query_start, s.state_change, s.state, s.backend_xid,
                 s.backend_xmin, NULL::bigint AS query_id,
-                NULL::text AS backend_type
+                NULL::text AS backend_type,
+                clock_timestamp() AS clock_ts
             FROM pg_catalog.pg_stat_activity AS s;
         END IF;
     ELSE
@@ -4479,7 +4485,8 @@ BEGIN
             s.application_name, s.client_addr, s.backend_start,
             s.xact_start,
             s.query_start, s.state_change, s.state, s.backend_xid,
-            s.backend_xmin, s.query_id, s.backend_type
+            s.backend_xmin, s.query_id, s.backend_type,
+            s.clock_ts
         FROM @extschema@.powa_stat_activity_src_tmp AS s
         WHERE s.srvid = _srvid;
     END IF;
