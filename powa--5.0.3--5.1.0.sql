@@ -1,6 +1,20 @@
 -- complain if script is sourced in psql, rather than via CREATE EXTENSION
 \echo Use "ALTER EXTENSION powa" to load this file. \quit
 
+-- Replace a bunch of indexes on the *_current(srvid) to include the columns
+-- used in the aggregate functions
+CREATE INDEX ON @extschema@.powa_statements_history_current(srvid, queryid, dbid);
+DROP INDEX @extschema@.powa_statements_history_current_srvid_idx;
+
+CREATE INDEX ON @extschema@.powa_kcache_metrics_current(srvid, queryid, top, dbid);
+DROP INDEX @extschema@.powa_kcache_metrics_current_srvid_idx;
+
+CREATE INDEX ON @extschema@.powa_all_indexes_history_current(srvid, dbid, relid);
+DROP INDEX @extschema@.powa_all_indexes_history_current_srvid_idx;
+
+CREATE INDEX ON @extschema@.powa_wait_sampling_history_current(srvid, queryid, dbid);
+DROP INDEX @extschema@.powa_wait_sampling_history_current_srvid_idx;
+
 ALTER TABLE @extschema@.powa_stat_activity_src_tmp
     ADD COLUMN clock_ts timestamp with time zone NOT NULL;
 
