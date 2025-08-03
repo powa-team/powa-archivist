@@ -2096,7 +2096,7 @@ CREATE TABLE @extschema@.powa_statements_history_current (
     FOREIGN KEY (srvid) REFERENCES @extschema@.powa_servers(id)
       MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
 );
-CREATE INDEX ON @extschema@.powa_statements_history_current(srvid);
+CREATE INDEX ON @extschema@.powa_statements_history_current(srvid, queryid, dbid);
 
 CREATE TABLE @extschema@.powa_statements_history_current_db (
     srvid integer NOT NULL,
@@ -2198,7 +2198,7 @@ CREATE TABLE @extschema@.powa_all_indexes_history_current (
     FOREIGN KEY (srvid) REFERENCES @extschema@.powa_servers(id)
       MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
 );
-CREATE INDEX ON @extschema@.powa_all_indexes_history_current(srvid);
+CREATE INDEX ON @extschema@.powa_all_indexes_history_current(srvid, dbid, relid);
 
 CREATE TABLE @extschema@.powa_all_indexes_history_current_db (
     srvid integer NOT NULL,
@@ -2986,7 +2986,7 @@ CREATE TABLE @extschema@.powa_kcache_metrics_current ( srvid integer NOT NULL,
     FOREIGN KEY (srvid) REFERENCES @extschema@.powa_servers(id)
       MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
 );
-CREATE INDEX ON @extschema@.powa_kcache_metrics_current(srvid);
+CREATE INDEX ON @extschema@.powa_kcache_metrics_current(srvid, queryid, top, dbid);
 
 CREATE TABLE @extschema@.powa_kcache_metrics_current_db (
     srvid integer NOT NULL,
@@ -3176,7 +3176,7 @@ CREATE TABLE @extschema@.powa_wait_sampling_history_current (
     event text NOT NULL,
     record @extschema@.powa_wait_sampling_history_record NOT NULL
 );
-CREATE INDEX ON @extschema@.powa_wait_sampling_history_current(srvid);
+CREATE INDEX ON @extschema@.powa_wait_sampling_history_current(srvid, queryid, dbid);
 
 CREATE TABLE @extschema@.powa_wait_sampling_history_current_db (
     srvid integer NOT NULL REFERENCES @extschema@.powa_servers(id)
