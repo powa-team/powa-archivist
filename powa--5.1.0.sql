@@ -241,17 +241,18 @@ CREATE TABLE @extschema@.powa_module_functions (
     operation text NOT NULL,
     function_name text NOT NULL,
     query_source text default NULL,
+    added_manually boolean NOT NULL default true,
     PRIMARY KEY (module, operation),
     CHECK (operation IN ('snapshot','aggregate','purge','reset')),
     FOREIGN KEY (module) REFERENCES @extschema@.powa_modules (module)
       MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
 );
 
-INSERT INTO @extschema@.powa_module_functions (module, operation, function_name, query_source) VALUES
-    ('pg_database',      'snapshot',  'powa_catalog_database_snapshot', 'powa_catalog_database_src'),
-    ('pg_database',      'reset',     'powa_catalog_database_reset',    NULL),
-    ('pg_role',          'snapshot',  'powa_catalog_role_snapshot',     'powa_catalog_role_src'),
-    ('pg_role',          'reset',     'powa_catalog_role_reset',        NULL);
+INSERT INTO @extschema@.powa_module_functions (module, operation, function_name, query_source, added_manually) VALUES
+    ('pg_database',      'snapshot',  'powa_catalog_database_snapshot', 'powa_catalog_database_src', false),
+    ('pg_database',      'reset',     'powa_catalog_database_reset',    NULL,                        false),
+    ('pg_role',          'snapshot',  'powa_catalog_role_snapshot',     'powa_catalog_role_src',     false),
+    ('pg_role',          'reset',     'powa_catalog_role_reset',        NULL,                        false);
 
 CREATE VIEW @extschema@.powa_functions AS
     SELECT srvid, 'extension' AS kind, extname AS name, operation, external,
@@ -1256,10 +1257,10 @@ BEGIN
     INSERT INTO @extschema@.powa_modules VALUES (_pg_module, _min_version);
     INSERT INTO @extschema@.powa_module_config VALUES (0, _pg_module);
     INSERT INTO @extschema@.powa_module_functions VALUES
-        (_pg_module, 'snapshot',  v_module || '_snapshot',  v_module || '_src'),
-        (_pg_module, 'aggregate', v_module || '_aggregate', NULL),
-        (_pg_module, 'purge',     v_module || '_purge',     NULL),
-        (_pg_module, 'reset',     v_module || '_reset',     NULL);
+        (_pg_module, 'snapshot',  v_module || '_snapshot',  v_module || '_src', false),
+        (_pg_module, 'aggregate', v_module || '_aggregate', NULL,               false),
+        (_pg_module, 'purge',     v_module || '_purge',     NULL,               false),
+        (_pg_module, 'reset',     v_module || '_reset',     NULL,               false);
 
     -- create the underlying record datatype(s) and operators if needed
     EXECUTE @extschema@.powa_generic_datatype_setup(v_module, _counter_cols,
@@ -3214,8 +3215,8 @@ SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_all_tables_history_
 SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_extensions','WHERE added_manually');
 SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_extension_functions','WHERE added_manually');
 SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_extension_config','WHERE added_manually');
-SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_module_functions','');
-SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_module_config','');
+SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_module_functions','WHERE added_manually');
+SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_module_config','WHERE srvid != 0');
 SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_catalog_databases','');
 SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_catalog_roles','');
 SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_catalog_class','');

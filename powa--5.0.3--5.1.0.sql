@@ -222,3 +222,29 @@ BEGIN
     DELETE FROM public.powa_stat_activity_history_current WHERE srvid = _srvid;
  END;
 $PROC$ LANGUAGE plpgsql; /* end of powa_stat_activity_aggregate */
+
+ALTER TABLE @extschema@.powa_module_functions
+    ADD COLUMN added_manually boolean NOT NULL default true;
+
+UPDATE @extschema@.powa_module_functions
+    SET added_manually = false
+    WHERE module in (
+        'pg_database',
+        'pg_role',
+        'pg_replication_slots',
+        'pg_stat_activity',
+        'pg_stat_archiver',
+        'pg_stat_bgwriter',
+        'pg_stat_checkpointer',
+        'pg_stat_database',
+        'pg_stat_database_conflicts',
+        'pg_stat_io',
+        'pg_stat_replication',
+        'pg_stat_slru',
+        'pg_stat_subscription',
+        'pg_stat_subscription_stats',
+        'pg_stat_wal',
+        'pg_stat_wal_receiver'
+    );
+SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_module_functions','WHERE added_manually');
+SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_module_config','WHERE srvid != 0');
