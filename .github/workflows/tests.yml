@@ -94,8 +94,29 @@ jobs:
     - name: Run powa-archivist tests for postgres ${{ matrix.postgres_major_version }}
       run: make installcheck || ( errcode=$?; cat regression.diffs && exit $errcode )
 
-    - name: Check pg_dump for postgres ${{ matrix.postgres_major_version }}
-      run: pg_dump -d contrib_regression
+    - name: Check pg_dump/pg_restore for postgres ${{ matrix.postgres_major_version }}
+      run: |
+        # regression tests don't leave any remote server, so add one
+        psql contrib_regression -c "SELECT \"PoWA\".powa_register_server(hostname => 'not_a_server')"
+
+        # dump the regression test database
+        pg_dump -Fc -d contrib_regression -f powa.dump
+
+        # remove the regression database and the existing roles
+        dropdb contrib_regression
+        echo "\\set ON_ERROR_STOP" > remove_role.sql
+        psql -d postgres -AXtc "SELECT 'DROP ROLE ' || rolname || ';' FROM pg_roles WHERE rolname LIKE 'powa%'" >> remove_role.sql
+        psql -d postgres -f remove_role.sql
+
+        # restore the dump on another database
+        createdb powa2
+        pg_restore -d powa2 powa.dump
+
+        # and cleanup everything again
+        dropdb powa2
+        echo "\\set ON_ERROR_STOP" > remove_role.sql
+        psql -d postgres -AXtc "SELECT 'DROP ROLE ' || rolname || ';' FROM pg_roles WHERE rolname LIKE 'powa%'" >> remove_role.sql
+        psql -d postgres -f remove_role.sql
 
     - name: Check extension install vs upgrade for postgres ${{ matrix.postgres_major_version }}
       run: |
