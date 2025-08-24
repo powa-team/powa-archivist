@@ -129,35 +129,35 @@ CREATE OR REPLACE FUNCTION @extschema@.powa_stat_activity_snapshot(_srvid intege
 AS $PROC$
 DECLARE
     result boolean;
-    v_funcname    text := format('public.%I(%s)',
+    v_funcname    text := format('@extschema@.%I(%s)',
                                  'powa_stat_activity_snapshot', _srvid);
     v_rowcount    bigint;
 BEGIN
-    PERFORM public.powa_log(format('running %s', v_funcname));
+    PERFORM @extschema@.powa_log(format('running %s', v_funcname));
 
-    PERFORM public.powa_prevent_concurrent_snapshot(_srvid);
+    PERFORM @extschema@.powa_prevent_concurrent_snapshot(_srvid);
 
     -- Insert background writer statistics
     WITH rel AS (
         SELECT *
-        FROM public.powa_stat_activity_src(_srvid)
+        FROM @extschema@.powa_stat_activity_src(_srvid)
     )
-    INSERT INTO public.powa_stat_activity_history_current
+    INSERT INTO @extschema@.powa_stat_activity_history_current
         SELECT _srvid,
         ROW(ts, cur_txid, datid, pid,
             leader_pid, usesysid, application_name,
             client_addr, backend_start, xact_start,
             query_start, state_change, state,
             backend_xid, backend_xmin, query_id,
-            backend_type, clock_ts)::public.powa_stat_activity_history_record AS record
+            backend_type, clock_ts)::@extschema@.powa_stat_activity_history_record AS record
         FROM rel;
 
     GET DIAGNOSTICS v_rowcount = ROW_COUNT;
-    PERFORM public.powa_log(format('%s - rowcount: %s',
+    PERFORM @extschema@.powa_log(format('%s - rowcount: %s',
             v_funcname, v_rowcount));
 
     IF (_srvid != 0) THEN
-        DELETE FROM public.powa_stat_activity_src_tmp WHERE srvid = _srvid;
+        DELETE FROM @extschema@.powa_stat_activity_src_tmp WHERE srvid = _srvid;
     END IF;
 
     result := true;
@@ -168,16 +168,16 @@ CREATE OR REPLACE FUNCTION @extschema@.powa_stat_activity_aggregate(_srvid integ
  RETURNS void
 AS $PROC$
 DECLARE
-    v_funcname    text := format('public.%I(%s)',
+    v_funcname    text := format('@extschema@.%I(%s)',
                                  'powa_stat_activity_aggregate', _srvid);
     v_rowcount    bigint;
 BEGIN
-    PERFORM public.powa_log(format('running %s', v_funcname));
+    PERFORM @extschema@.powa_log(format('running %s', v_funcname));
 
-    PERFORM public.powa_prevent_concurrent_snapshot(_srvid);
+    PERFORM @extschema@.powa_prevent_concurrent_snapshot(_srvid);
 
     -- aggregate powa_stat_activity history table
-    INSERT INTO public.powa_stat_activity_history
+    INSERT INTO @extschema@.powa_stat_activity_history
         SELECT srvid,
             tstzrange(min((record).ts), max((record).ts),'[]'),
             array_agg(record),
@@ -195,7 +195,7 @@ BEGIN
                     min((record).state),
                     min((record).query_id),
                     min((record).backend_type),
-                    min((record).clock_ts))::public.powa_stat_activity_history_record_minmax,
+                    min((record).clock_ts))::@extschema@.powa_stat_activity_history_record_minmax,
             ROW(max((record).ts),
                     max((record).datid),
                     max((record).pid),
@@ -210,16 +210,16 @@ BEGIN
                     max((record).state),
                     max((record).query_id),
                     max((record).backend_type),
-                    max((record).clock_ts))::public.powa_stat_activity_history_record_minmax
-        FROM public.powa_stat_activity_history_current
+                    max((record).clock_ts))::@extschema@.powa_stat_activity_history_record_minmax
+        FROM @extschema@.powa_stat_activity_history_current
         WHERE srvid = _srvid
         GROUP BY srvid;
 
     GET DIAGNOSTICS v_rowcount = ROW_COUNT;
-    PERFORM public.powa_log(format('%s - rowcount: %s',
+    PERFORM @extschema@.powa_log(format('%s - rowcount: %s',
             v_funcname, v_rowcount));
 
-    DELETE FROM public.powa_stat_activity_history_current WHERE srvid = _srvid;
+    DELETE FROM @extschema@.powa_stat_activity_history_current WHERE srvid = _srvid;
  END;
 $PROC$ LANGUAGE plpgsql; /* end of powa_stat_activity_aggregate */
 
