@@ -241,18 +241,17 @@ CREATE TABLE @extschema@.powa_module_functions (
     operation text NOT NULL,
     function_name text NOT NULL,
     query_source text default NULL,
-    added_manually boolean NOT NULL default true,
     PRIMARY KEY (module, operation),
     CHECK (operation IN ('snapshot','aggregate','purge','reset')),
     FOREIGN KEY (module) REFERENCES @extschema@.powa_modules (module)
       MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
 );
 
-INSERT INTO @extschema@.powa_module_functions (module, operation, function_name, query_source, added_manually) VALUES
-    ('pg_database',      'snapshot',  'powa_catalog_database_snapshot', 'powa_catalog_database_src', false),
-    ('pg_database',      'reset',     'powa_catalog_database_reset',    NULL,                        false),
-    ('pg_role',          'snapshot',  'powa_catalog_role_snapshot',     'powa_catalog_role_src',     false),
-    ('pg_role',          'reset',     'powa_catalog_role_reset',        NULL,                        false);
+INSERT INTO @extschema@.powa_module_functions (module, operation, function_name, query_source) VALUES
+    ('pg_database',      'snapshot',  'powa_catalog_database_snapshot', 'powa_catalog_database_src'),
+    ('pg_database',      'reset',     'powa_catalog_database_reset',    NULL),
+    ('pg_role',          'snapshot',  'powa_catalog_role_snapshot',     'powa_catalog_role_src'),
+    ('pg_role',          'reset',     'powa_catalog_role_reset',        NULL);
 
 CREATE VIEW @extschema@.powa_functions AS
     SELECT srvid, 'extension' AS kind, extname AS name, operation, external,
@@ -1257,10 +1256,10 @@ BEGIN
     INSERT INTO @extschema@.powa_modules VALUES (_pg_module, _min_version);
     INSERT INTO @extschema@.powa_module_config VALUES (0, _pg_module);
     INSERT INTO @extschema@.powa_module_functions VALUES
-        (_pg_module, 'snapshot',  v_module || '_snapshot',  v_module || '_src', false),
-        (_pg_module, 'aggregate', v_module || '_aggregate', NULL,               false),
-        (_pg_module, 'purge',     v_module || '_purge',     NULL,               false),
-        (_pg_module, 'reset',     v_module || '_reset',     NULL,               false);
+        (_pg_module, 'snapshot',  v_module || '_snapshot',  v_module || '_src'),
+        (_pg_module, 'aggregate', v_module || '_aggregate', NULL),
+        (_pg_module, 'purge',     v_module || '_purge',     NULL),
+        (_pg_module, 'reset',     v_module || '_reset',     NULL);
 
     -- create the underlying record datatype(s) and operators if needed
     EXECUTE @extschema@.powa_generic_datatype_setup(v_module, _counter_cols,
@@ -1678,8 +1677,7 @@ $${
 {query_start, timestamp with time zone},
 {state_change, timestamp with time zone},
 {state, text}, {backend_xid, xid}, {backend_xmin, xid},
-{query_id, bigint}, {backend_type, text},
-{clock_ts, timestamp with time zone}
+{query_id, bigint}, {backend_type, text}
 }$$,
 $${
 cur_txid, datid, leader_pid, usesysid, client_addr, xact_start, query_start,
@@ -2097,7 +2095,7 @@ CREATE TABLE @extschema@.powa_statements_history_current (
     FOREIGN KEY (srvid) REFERENCES @extschema@.powa_servers(id)
       MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
 );
-CREATE INDEX ON @extschema@.powa_statements_history_current(srvid, queryid, dbid);
+CREATE INDEX ON @extschema@.powa_statements_history_current(srvid);
 
 CREATE TABLE @extschema@.powa_statements_history_current_db (
     srvid integer NOT NULL,
@@ -2199,7 +2197,7 @@ CREATE TABLE @extschema@.powa_all_indexes_history_current (
     FOREIGN KEY (srvid) REFERENCES @extschema@.powa_servers(id)
       MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
 );
-CREATE INDEX ON @extschema@.powa_all_indexes_history_current(srvid, dbid, relid);
+CREATE INDEX ON @extschema@.powa_all_indexes_history_current(srvid);
 
 CREATE TABLE @extschema@.powa_all_indexes_history_current_db (
     srvid integer NOT NULL,
@@ -2987,7 +2985,7 @@ CREATE TABLE @extschema@.powa_kcache_metrics_current ( srvid integer NOT NULL,
     FOREIGN KEY (srvid) REFERENCES @extschema@.powa_servers(id)
       MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE
 );
-CREATE INDEX ON @extschema@.powa_kcache_metrics_current(srvid, queryid, top, dbid);
+CREATE INDEX ON @extschema@.powa_kcache_metrics_current(srvid);
 
 CREATE TABLE @extschema@.powa_kcache_metrics_current_db (
     srvid integer NOT NULL,
@@ -3177,7 +3175,7 @@ CREATE TABLE @extschema@.powa_wait_sampling_history_current (
     event text NOT NULL,
     record @extschema@.powa_wait_sampling_history_record NOT NULL
 );
-CREATE INDEX ON @extschema@.powa_wait_sampling_history_current(srvid, queryid, dbid);
+CREATE INDEX ON @extschema@.powa_wait_sampling_history_current(srvid);
 
 CREATE TABLE @extschema@.powa_wait_sampling_history_current_db (
     srvid integer NOT NULL REFERENCES @extschema@.powa_servers(id)
@@ -3215,8 +3213,8 @@ SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_all_tables_history_
 SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_extensions','WHERE added_manually');
 SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_extension_functions','WHERE added_manually');
 SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_extension_config','WHERE added_manually');
-SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_module_functions','WHERE added_manually');
-SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_module_config','WHERE srvid != 0');
+SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_module_functions','');
+SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_module_config','');
 SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_catalog_databases','');
 SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_catalog_roles','');
 SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_catalog_class','');
@@ -4413,8 +4411,7 @@ CREATE OR REPLACE FUNCTION @extschema@.powa_stat_activity_src(IN _srvid integer,
     OUT backend_xid xid,
     OUT backend_xmin xid,
     OUT query_id bigint,
-    OUT backend_type text,
-    OUT clock_ts timestamp with time zone
+    OUT backend_type text
 ) RETURNS SETOF record STABLE AS $PROC$
 DECLARE
     txid xid;
@@ -4442,8 +4439,7 @@ BEGIN
                 s.application_name, s.client_addr, s.backend_start,
                 s.xact_start,
                 s.query_start, s.state_change, s.state, s.backend_xid,
-                s.backend_xmin, s.query_id, s.backend_type,
-                clock_timestamp() AS clock_ts
+                s.backend_xmin, s.query_id, s.backend_type
             FROM pg_catalog.pg_stat_activity AS s;
         -- leader_pid added in pg13+
         ELSIF v_server_version >= 130000 THEN
@@ -4453,8 +4449,7 @@ BEGIN
                 s.application_name, s.client_addr, s.backend_start,
                 s.xact_start,
                 s.query_start, s.state_change, s.state, s.backend_xid,
-                s.backend_xmin, NULL::bigint AS query_id, s.backend_type,
-                clock_timestamp() AS clock_ts
+                s.backend_xmin, NULL::bigint AS query_id, s.backend_type
             FROM pg_catalog.pg_stat_activity AS s;
         -- backend_type added in pg10+
         ELSIF v_server_version >= 100000 THEN
@@ -4464,8 +4459,7 @@ BEGIN
                 s.application_name, s.client_addr, s.backend_start,
                 s.xact_start,
                 s.query_start, s.state_change, s.state, s.backend_xid,
-                s.backend_xmin, NULL::bigint AS query_id, s.backend_type,
-                clock_timestamp() AS clock_ts
+                s.backend_xmin, NULL::bigint AS query_id, s.backend_type
             FROM pg_catalog.pg_stat_activity AS s;
         ELSE
             RETURN QUERY SELECT now(),
@@ -4475,8 +4469,7 @@ BEGIN
                 s.xact_start,
                 s.query_start, s.state_change, s.state, s.backend_xid,
                 s.backend_xmin, NULL::bigint AS query_id,
-                NULL::text AS backend_type,
-                clock_timestamp() AS clock_ts
+                NULL::text AS backend_type
             FROM pg_catalog.pg_stat_activity AS s;
         END IF;
     ELSE
@@ -4486,8 +4479,7 @@ BEGIN
             s.application_name, s.client_addr, s.backend_start,
             s.xact_start,
             s.query_start, s.state_change, s.state, s.backend_xid,
-            s.backend_xmin, s.query_id, s.backend_type,
-            s.clock_ts
+            s.backend_xmin, s.query_id, s.backend_type
         FROM @extschema@.powa_stat_activity_src_tmp AS s
         WHERE s.srvid = _srvid;
     END IF;
