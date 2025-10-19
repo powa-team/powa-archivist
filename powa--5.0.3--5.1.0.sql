@@ -248,3 +248,371 @@ UPDATE @extschema@.powa_module_functions
     );
 SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_module_functions','WHERE added_manually');
 SELECT pg_catalog.pg_extension_config_dump('@extschema@.powa_module_config','WHERE srvid != 0');
+
+ALTER TYPE @extschema@.powa_stat_io_history_db_record
+    ADD ATTRIBUTE read_bytes numeric,
+    ADD ATTRIBUTE write_bytes numeric,
+    ADD ATTRIBUTE extend_bytes numeric;
+
+ALTER TYPE @extschema@.powa_stat_io_history_diff
+    ADD ATTRIBUTE read_bytes numeric,
+    ADD ATTRIBUTE write_bytes numeric,
+    ADD ATTRIBUTE extend_bytes numeric;
+
+ALTER TYPE @extschema@.powa_stat_io_history_rate
+    ADD ATTRIBUTE read_bytes_per_sec numeric,
+    ADD ATTRIBUTE write_bytes_per_sec numeric,
+    ADD ATTRIBUTE extend_bytes_per_sec numeric;
+
+ALTER TYPE @extschema@.powa_stat_io_history_record
+    ADD ATTRIBUTE read_bytes numeric,
+    ADD ATTRIBUTE write_bytes numeric,
+    ADD ATTRIBUTE extend_bytes numeric;
+
+ALTER TABLE @extschema@.powa_stat_io_src_tmp
+    ADD COLUMN read_bytes numeric NOT NULL,
+    ADD COLUMN write_bytes numeric NOT NULL,
+    ADD COLUMN extend_bytes numeric NOT NULL;
+
+DROP FUNCTION @extschema@.powa_stat_io_src(_srvid integer);
+CREATE OR REPLACE FUNCTION @extschema@.powa_stat_io_src(IN _srvid integer,
+    OUT ts timestamp with time zone,
+    OUT backend_type text,
+    OUT object text,
+    OUT context text,
+    OUT reads bigint,
+    OUT read_time double precision,
+    OUT writes bigint,
+    OUT write_time double precision,
+    OUT writebacks bigint,
+    OUT writeback_time double precision,
+    OUT extends bigint,
+    OUT extend_time double precision,
+    OUT op_bytes bigint,
+    OUT hits bigint,
+    OUT evictions bigint,
+    OUT reuses bigint,
+    OUT fsyncs bigint,
+    OUT fsync_time double precision,
+    OUT stats_reset timestamp with time zone,
+    OUT read_bytes numeric,
+    OUT write_bytes numeric,
+    OUT extend_bytes numeric
+) RETURNS SETOF record STABLE AS $PROC$
+BEGIN
+    IF (_srvid = 0) THEN
+        -- pg18, op_bytes split into read_bytes, write_bytes and extend_bytes
+        IF current_setting('server_version_num')::int >= 180000 THEN
+            RETURN QUERY SELECT now(),
+            s.backend_type, s.object, s.context,
+            s.reads, s.read_time,
+            s.writes, s.write_time,
+            s.writebacks, s.writeback_time,
+            s.extends, s.extend_time,
+            0::bigint AS op_bytes, s.hits,
+            s.evictions, s.reuses,
+            s.fsyncs, s.fsync_time,
+            s.stats_reset,
+            s.read_bytes, s.write_bytes, s.extend_bytes
+            FROM pg_catalog.pg_stat_io AS s;
+        -- pg16+, the view is introduced
+        ELSIF current_setting('server_version_num')::int >= 160000 THEN
+            RETURN QUERY SELECT now(),
+            s.backend_type, s.object, s.context,
+            s.reads, s.read_time,
+            s.writes, s.write_time,
+            s.writebacks, s.writeback_time,
+            s.extends, s.extend_time,
+            s.op_bytes, s.hits,
+            s.evictions, s.reuses,
+            s.fsyncs, s.fsync_time,
+            s.stats_reset,
+            0::numeric AS read_bytes, 0::numeric AS write_bytes,
+            0::numeric AS extend_bytes
+            FROM pg_catalog.pg_stat_io AS s;
+        ELSE -- return an empty dataset for pg15- servers
+            RETURN QUERY SELECT now(),
+            NULL::text AS backend_type, NULL::text AS object,
+            NULL::text AS context,
+            0::bigint AS reads, 0::double precision AS read_time,
+            0::bigint AS writes, 0::double precision AS write_time,
+            0::bigint AS writebacks, 0::double precision AS writeback_time,
+            0::bigint AS extends, 0::double precision AS extend_time,
+            NULL::bigint AS op_bytes, 0::bigint AS hits,
+            0::bigint AS evictions, 0::bigint AS reuses,
+            0::bigint AS fsyncs, 0::double precision AS fsync_time,
+            NULL::timestamp with time zone AS stats_reset,
+            NULL::numeric AS read_bytes, NULL::numeric AS write_bytes,
+            NULL::numeric AS extend_bytes
+            WHERE false;
+        END IF;
+    ELSE
+        RETURN QUERY SELECT s.ts,
+            s.backend_type, s.object, s.context,
+            s.reads, s.read_time,
+            s.writes, s.write_time,
+            s.writebacks, s.writeback_time,
+            s.extends, s.extend_time,
+            s.op_bytes, s.hits,
+            s.evictions, s.reuses,
+            s.fsyncs, s.fsync_time,
+            s.stats_reset
+        FROM @extschema@.powa_stat_io_src_tmp AS s
+        WHERE s.srvid = _srvid;
+    END IF;
+END;
+$PROC$ LANGUAGE plpgsql
+SET search_path = pg_catalog; /* end of powa_stat_io_src */
+
+CREATE OR REPLACE FUNCTION @extschema@.powa_stat_io_snapshot(_srvid integer)
+RETURNS void
+AS $PROC$
+DECLARE
+    result boolean;
+    v_funcname    text := format('@extschema@.%I(%s)',
+                                 'powa_stat_io_snapshot', _srvid);
+    v_rowcount    bigint;
+BEGIN
+    PERFORM @extschema@.powa_log(format('running %s', v_funcname));
+
+    PERFORM @extschema@.powa_prevent_concurrent_snapshot(_srvid);
+
+    -- Insert background writer statistics
+    WITH rel AS (
+        SELECT *
+        FROM @extschema@.powa_stat_io_src(_srvid)
+    )
+    INSERT INTO @extschema@.powa_stat_io_history_current
+        SELECT _srvid, backend_type, object, context,
+        ROW(ts, reads, read_time, writes,
+            write_time, writebacks, writeback_time,
+            extends, extend_time, op_bytes,
+            hits, evictions, reuses,
+            fsyncs, fsync_time, stats_reset,
+            read_bytes, write_bytes, extend_bytes)::@extschema@.powa_stat_io_history_record AS record
+        FROM rel;
+
+    GET DIAGNOSTICS v_rowcount = ROW_COUNT;
+    PERFORM @extschema@.powa_log(format('%s - rowcount: %s',
+            v_funcname, v_rowcount));
+
+    IF (_srvid != 0) THEN
+        DELETE FROM @extschema@.powa_stat_io_src_tmp WHERE srvid = _srvid;
+    END IF;
+
+    result := true;
+END;
+$PROC$
+LANGUAGE plpgsql;   /* end of powa_stat_io_snapshot */
+
+CREATE OR REPLACE FUNCTION @extschema@.powa_stat_io_aggregate(_srvid integer)
+RETURNS void
+AS $PROC$
+DECLARE
+    v_funcname    text := format('@extschema@.%I(%s)',
+                                 'powa_stat_io_aggregate', _srvid);
+    v_rowcount    bigint;
+BEGIN
+    PERFORM @extschema@.powa_log(format('running %s', v_funcname));
+
+    PERFORM @extschema@.powa_prevent_concurrent_snapshot(_srvid);
+
+    -- aggregate powa_stat_io history table
+    INSERT INTO @extschema@.powa_stat_io_history
+        SELECT srvid, backend_type, object, context,
+            tstzrange(min((record).ts), max((record).ts),'[]'),
+            array_agg(record),
+            ROW(min((record).ts),
+                    min((record).reads),
+                    min((record).read_time),
+                    min((record).writes),
+                    min((record).write_time),
+                    min((record).writebacks),
+                    min((record).writeback_time),
+                    min((record).extends),
+                    min((record).extend_time),
+                    min((record).op_bytes),
+                    min((record).hits),
+                    min((record).evictions),
+                    min((record).reuses),
+                    min((record).fsyncs),
+                    min((record).fsync_time),
+                    min((record).stats_reset),
+                    min((record).read_bytes),
+                    min((record).write_bytes),
+                    min((record).extend_bytes))::@extschema@.powa_stat_io_history_record,
+            ROW(max((record).ts),
+                    max((record).reads),
+                    max((record).read_time),
+                    max((record).writes),
+                    max((record).write_time),
+                    max((record).writebacks),
+                    max((record).writeback_time),
+                    max((record).extends),
+                    max((record).extend_time),
+                    max((record).op_bytes),
+                    max((record).hits),
+                    max((record).evictions),
+                    max((record).reuses),
+                    max((record).fsyncs),
+                    max((record).fsync_time),
+                    max((record).stats_reset),
+                    max((record).read_bytes),
+                    max((record).write_bytes),
+                    max((record).extend_bytes))::@extschema@.powa_stat_io_history_record
+        FROM @extschema@.powa_stat_io_history_current
+        WHERE srvid = _srvid
+        GROUP BY srvid, backend_type, object, context;
+
+    GET DIAGNOSTICS v_rowcount = ROW_COUNT;
+    PERFORM @extschema@.powa_log(format('%s - rowcount: %s',
+            v_funcname, v_rowcount));
+
+    DELETE FROM @extschema@.powa_stat_io_history_current WHERE srvid = _srvid;
+ END;
+$PROC$
+LANGUAGE plpgsql;   /* end of powa_stat_io_aggregate */
+
+CREATE OR REPLACE FUNCTION @extschema@.powa_stat_io_history_db_div(
+    a @extschema@.powa_stat_io_history_db_record,
+    b @extschema@.powa_stat_io_history_db_record)
+RETURNS @extschema@.powa_stat_io_history_rate
+AS $PROC$
+DECLARE
+    res @extschema@.powa_stat_io_history_rate;
+    sec integer;
+BEGIN
+    res.sec = extract(EPOCH FROM (a.ts - b.ts));
+    IF res.sec = 0 THEN
+        sec = 1;
+    ELSE
+        sec = res.sec;
+    END IF;
+    res.reads_per_sec = (a.reads - b.reads)::double precision / sec;
+    res.read_time_per_sec = (a.read_time - b.read_time)::double precision / sec;
+    res.writes_per_sec = (a.writes - b.writes)::double precision / sec;
+    res.write_time_per_sec = (a.write_time - b.write_time)::double precision / sec;
+    res.writebacks_per_sec = (a.writebacks - b.writebacks)::double precision / sec;
+    res.writeback_time_per_sec = (a.writeback_time - b.writeback_time)::double precision / sec;
+    res.extends_per_sec = (a.extends - b.extends)::double precision / sec;
+    res.extend_time_per_sec = (a.extend_time - b.extend_time)::double precision / sec;
+    res.op_bytes_per_sec = (a.op_bytes - b.op_bytes)::double precision / sec;
+    res.hits_per_sec = (a.hits - b.hits)::double precision / sec;
+    res.evictions_per_sec = (a.evictions - b.evictions)::double precision / sec;
+    res.reuses_per_sec = (a.reuses - b.reuses)::double precision / sec;
+    res.fsyncs_per_sec = (a.fsyncs - b.fsyncs)::double precision / sec;
+    res.fsync_time_per_sec = (a.fsync_time - b.fsync_time)::double precision / sec;
+    res.read_bytes_per_sec = (a.read_bytes - b.read_bytes)::double precision / sec;
+    res.write_bytes_per_sec = (a.write_bytes - b.write_bytes)::double precision / sec;
+    res.extend_bytes_per_sec = (a.extend_bytes - b.extend_bytes)::double precision / sec;
+
+    return res;
+END;
+$PROC$
+LANGUAGE plpgsql
+IMMUTABLE STRICT;   /* end of powa_stat_io_history_db_div */
+
+CREATE OR REPLACE FUNCTION @extschema@.powa_stat_io_history_db_mi(
+    a @extschema@.powa_stat_io_history_db_record,
+    b @extschema@.powa_stat_io_history_db_record)
+RETURNS @extschema@.powa_stat_io_history_diff
+AS $PROC$
+DECLARE
+    res @extschema@.powa_stat_io_history_diff;
+BEGIN
+    res.intvl = a.ts - b.ts;
+    res.reads = a.reads - b.reads;
+    res.read_time = a.read_time - b.read_time;
+    res.writes = a.writes - b.writes;
+    res.write_time = a.write_time - b.write_time;
+    res.writebacks = a.writebacks - b.writebacks;
+    res.writeback_time = a.writeback_time - b.writeback_time;
+    res.extends = a.extends - b.extends;
+    res.extend_time = a.extend_time - b.extend_time;
+    res.op_bytes = a.op_bytes - b.op_bytes;
+    res.hits = a.hits - b.hits;
+    res.evictions = a.evictions - b.evictions;
+    res.reuses = a.reuses - b.reuses;
+    res.fsyncs = a.fsyncs - b.fsyncs;
+    res.fsync_time = a.fsync_time - b.fsync_time;
+    res.read_bytes = a.read_bytes - b.read_bytes;
+    res.write_bytes = a.write_bytes - b.write_bytes;
+    res.extend_bytes = a.extend_bytes - b.extend_bytes;
+
+    return res;
+END;
+$PROC$
+LANGUAGE plpgsql
+IMMUTABLE STRICT;   /* end of powa_stat_io_history_db_mi */
+
+CREATE OR REPLACE FUNCTION @extschema@.powa_stat_io_history_div(
+    a @extschema@.powa_stat_io_history_record,
+    b @extschema@.powa_stat_io_history_record)
+RETURNS @extschema@.powa_stat_io_history_rate
+AS $PROC$
+DECLARE
+    res @extschema@.powa_stat_io_history_rate;
+    sec integer;
+BEGIN
+    res.sec = extract(EPOCH FROM (a.ts - b.ts));
+    IF res.sec = 0 THEN
+        sec = 1;
+    ELSE
+        sec = res.sec;
+    END IF;
+    res.reads_per_sec = (a.reads - b.reads)::double precision / sec;
+    res.read_time_per_sec = (a.read_time - b.read_time)::double precision / sec;
+    res.writes_per_sec = (a.writes - b.writes)::double precision / sec;
+    res.write_time_per_sec = (a.write_time - b.write_time)::double precision / sec;
+    res.writebacks_per_sec = (a.writebacks - b.writebacks)::double precision / sec;
+    res.writeback_time_per_sec = (a.writeback_time - b.writeback_time)::double precision / sec;
+    res.extends_per_sec = (a.extends - b.extends)::double precision / sec;
+    res.extend_time_per_sec = (a.extend_time - b.extend_time)::double precision / sec;
+    res.op_bytes_per_sec = (a.op_bytes - b.op_bytes)::double precision / sec;
+    res.hits_per_sec = (a.hits - b.hits)::double precision / sec;
+    res.evictions_per_sec = (a.evictions - b.evictions)::double precision / sec;
+    res.reuses_per_sec = (a.reuses - b.reuses)::double precision / sec;
+    res.fsyncs_per_sec = (a.fsyncs - b.fsyncs)::double precision / sec;
+    res.fsync_time_per_sec = (a.fsync_time - b.fsync_time)::double precision / sec;
+    res.read_bytes_per_sec = (a.read_bytes - b.read_bytes)::double precision / sec;
+    res.write_bytes_per_sec = (a.write_bytes - b.write_bytes)::double precision / sec;
+    res.extend_bytes_per_sec = (a.extend_bytes - b.extend_bytes)::double precision / sec;
+
+    return res;
+END;
+$PROC$
+LANGUAGE plpgsql
+IMMUTABLE STRICT;   /* end of powa_stat_io_history_div */
+
+CREATE OR REPLACE FUNCTION @extschema@.powa_stat_io_history_mi(
+    a @extschema@.powa_stat_io_history_record,
+    b @extschema@.powa_stat_io_history_record)
+RETURNS @extschema@.powa_stat_io_history_diff
+AS $PROC$
+DECLARE
+    res @extschema@.powa_stat_io_history_diff;
+BEGIN
+    res.intvl = a.ts - b.ts;
+    res.reads = a.reads - b.reads;
+    res.read_time = a.read_time - b.read_time;
+    res.writes = a.writes - b.writes;
+    res.write_time = a.write_time - b.write_time;
+    res.writebacks = a.writebacks - b.writebacks;
+    res.writeback_time = a.writeback_time - b.writeback_time;
+    res.extends = a.extends - b.extends;
+    res.extend_time = a.extend_time - b.extend_time;
+    res.op_bytes = a.op_bytes - b.op_bytes;
+    res.hits = a.hits - b.hits;
+    res.evictions = a.evictions - b.evictions;
+    res.reuses = a.reuses - b.reuses;
+    res.fsyncs = a.fsyncs - b.fsyncs;
+    res.fsync_time = a.fsync_time - b.fsync_time;
+    res.read_bytes = a.read_bytes - b.read_bytes;
+    res.write_bytes = a.write_bytes - b.write_bytes;
+    res.extend_bytes = a.extend_bytes - b.extend_bytes;
+
+    return res;
+END;
+$PROC$
+LANGUAGE plpgsql
+IMMUTABLE STRICT;   /* end of powa_stat_io_history_mi */

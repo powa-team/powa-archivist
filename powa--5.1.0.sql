@@ -1757,7 +1757,8 @@ $${
 {extends, bigint}, {extend_time, double precision},
 {op_bytes, bigint}, {hits, bigint}, {evictions, bigint}, {reuses, bigint},
 {fsyncs, bigint}, {fsync_time, double precision},
-{stats_reset, timestamp with time zone}
+{stats_reset, timestamp with time zone},
+{read_bytes, numeric}, {write_bytes, numeric}, {extend_bytes, numeric}
 }$$,
 $${
 reads, read_time, writebacks, writeback_time, extends, extend_time, hits,
@@ -4776,12 +4777,29 @@ CREATE OR REPLACE FUNCTION @extschema@.powa_stat_io_src(IN _srvid integer,
     OUT reuses bigint,
     OUT fsyncs bigint,
     OUT fsync_time double precision,
-    OUT stats_reset timestamp with time zone
+    OUT stats_reset timestamp with time zone,
+    OUT read_bytes numeric,
+    OUT write_bytes numeric,
+    OUT extend_bytes numeric
 ) RETURNS SETOF record STABLE AS $PROC$
 BEGIN
     IF (_srvid = 0) THEN
+        -- pg18, op_bytes split into read_bytes, write_bytes and extend_bytes
+        IF current_setting('server_version_num')::int >= 180000 THEN
+            RETURN QUERY SELECT now(),
+            s.backend_type, s.object, s.context,
+            s.reads, s.read_time,
+            s.writes, s.write_time,
+            s.writebacks, s.writeback_time,
+            s.extends, s.extend_time,
+            0::bigint AS op_bytes, s.hits,
+            s.evictions, s.reuses,
+            s.fsyncs, s.fsync_time,
+            s.stats_reset,
+            s.read_bytes, s.write_bytes, s.extend_bytes
+            FROM pg_catalog.pg_stat_io AS s;
         -- pg16+, the view is introduced
-        IF current_setting('server_version_num')::int >= 160000 THEN
+        ELSIF current_setting('server_version_num')::int >= 160000 THEN
             RETURN QUERY SELECT now(),
             s.backend_type, s.object, s.context,
             s.reads, s.read_time,
@@ -4791,7 +4809,9 @@ BEGIN
             s.op_bytes, s.hits,
             s.evictions, s.reuses,
             s.fsyncs, s.fsync_time,
-            s.stats_reset
+            s.stats_reset,
+            0::numeric AS read_bytes, 0::numeric AS write_bytes,
+            0::numeric AS extend_bytes
             FROM pg_catalog.pg_stat_io AS s;
         ELSE -- return an empty dataset for pg15- servers
             RETURN QUERY SELECT now(),
@@ -4804,7 +4824,9 @@ BEGIN
             NULL::bigint AS op_bytes, 0::bigint AS hits,
             0::bigint AS evictions, 0::bigint AS reuses,
             0::bigint AS fsyncs, 0::double precision AS fsync_time,
-            NULL::timestamp with time zone AS stats_reset
+            NULL::timestamp with time zone AS stats_reset,
+            NULL::numeric AS read_bytes, NULL::numeric AS write_bytes,
+            NULL::numeric AS extend_bytes
             WHERE false;
         END IF;
     ELSE
