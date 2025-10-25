@@ -5122,8 +5122,18 @@ CREATE OR REPLACE FUNCTION @extschema@.powa_stat_wal_src(IN _srvid integer,
 ) RETURNS SETOF record STABLE AS $PROC$
 BEGIN
     IF (_srvid = 0) THEN
+        -- pg18+, IO related counters are moved to pg_stat_io
+        IF current_setting('server_version_num')::int >= 180000 THEN
+            RETURN QUERY SELECT now(),
+            s.wal_records, s.wal_fpi, s.wal_bytes,
+            s.wal_buffers_full,
+            0::bigint AS wal_write, 0::bigint AS wal_sync,
+            0::double precision AS wal_write_time,
+            0::double precision AS wal_sync_time,
+            s.stats_reset
+            FROM pg_catalog.pg_stat_wal AS s;
         -- pg14+, the view is introduced
-        IF current_setting('server_version_num')::int >= 140000 THEN
+        ELSIF current_setting('server_version_num')::int >= 140000 THEN
             RETURN QUERY SELECT now(),
             s.wal_records, s.wal_fpi, s.wal_bytes,
             s.wal_buffers_full,
