@@ -1,3 +1,15 @@
+## 5.1.0
+
+  - Performance
+    - Improve indexes on `*_current` tables (Julien Rouhaud)
+  - Bugfixes
+    - Improve age accuracy for `pg_stat_activity` metrics (Julien Rouhaud,
+      thanks to Marc Cousin for the report)
+    - Fix powa compatibility with `pg_dump` (Julien Rouhaud)
+    - Fix `pg_stat_wal` compatibility with pg18 (Julien Rouhaud, thanks to
+      Stefan Le Breton for the report)
+    = Fix `pg_stat_io` compatibility with pg18 (Julien Rouhaud)
+
 ## 5.0.3
 
   - Performance
