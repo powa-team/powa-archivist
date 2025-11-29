@@ -1762,7 +1762,7 @@ $${
 }$$,
 $${
 reads, read_time, writebacks, writeback_time, extends, extend_time, hits,
-evictions, reuses, fsyncs, fsync_time
+evictions, reuses, fsyncs, fsync_time, read_bytes, extend_bytes
 }$$,
 _key_cols => $${
 {backend_type, text}, {object, text}, {context, text}
@@ -4839,7 +4839,8 @@ BEGIN
             s.op_bytes, s.hits,
             s.evictions, s.reuses,
             s.fsyncs, s.fsync_time,
-            s.stats_reset
+            s.stats_reset,
+            s.read_bytes, s.write_bytes, s.extend_bytes
         FROM @extschema@.powa_stat_io_src_tmp AS s
         WHERE s.srvid = _srvid;
     END IF;
