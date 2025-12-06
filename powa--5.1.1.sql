@@ -346,7 +346,8 @@ INSERT INTO @extschema@.powa_db_module_src_queries
         heap_blks_read, heap_blks_hit, idx_blks_read, idx_blks_hit,
         toast_blks_read, toast_blks_hit, tidx_blks_read, tidx_blks_hit
      FROM pg_catalog.pg_stat_all_tables st
-     JOIN pg_catalog.pg_statio_all_tables sit USING (relid)'),
+     JOIN pg_catalog.pg_statio_all_tables sit USING (relid)
+     WHERE st.schemaname NOT LIKE ''pg_toast%'''),
     -- pg_stat_all_tables pg13+, n_ins_since_vacuum added
     ('pg_stat_all_tables', 130000, false,
      'SELECT relid, pg_table_size(relid) AS tbl_size,
@@ -359,7 +360,8 @@ INSERT INTO @extschema@.powa_db_module_src_queries
         heap_blks_read, heap_blks_hit, idx_blks_read, idx_blks_hit,
         toast_blks_read, toast_blks_hit, tidx_blks_read, tidx_blks_hit
      FROM pg_catalog.pg_stat_all_tables st
-     JOIN pg_catalog.pg_statio_all_tables sit USING (relid)'),
+     JOIN pg_catalog.pg_statio_all_tables sit USING (relid)
+     WHERE st.schemaname NOT LIKE ''pg_toast%'''),
     -- pg_stat_all_tables pg16+, last_seq_scan, last_idx_scan and
     -- n_tup_newpage_upd added
     ('pg_stat_all_tables', 160000, false,
@@ -373,7 +375,8 @@ INSERT INTO @extschema@.powa_db_module_src_queries
         heap_blks_read, heap_blks_hit, idx_blks_read, idx_blks_hit,
         toast_blks_read, toast_blks_hit, tidx_blks_read, tidx_blks_hit
      FROM pg_catalog.pg_stat_all_tables st
-     JOIN pg_catalog.pg_statio_all_tables sit USING (relid)'),
+     JOIN pg_catalog.pg_statio_all_tables sit USING (relid)
+     WHERE st.schemaname NOT LIKE ''pg_toast%'''),
     -- pg_stat_all_indexes
     ('pg_stat_all_indexes', 0, false,
      'SELECT si.relid, indexrelid, pg_table_size(indexrelid) AS idx_size,

@@ -145,7 +145,8 @@ ORDER BY db_module COLLATE "C", operation COLLATE "C";
        |                        |           |                               |         |         heap_blks_read, heap_blks_hit, idx_blks_read, idx_blks_hit,            +|                                    |         | 
        |                        |           |                               |         |         toast_blks_read, toast_blks_hit, tidx_blks_read, tidx_blks_hit         +|                                    |         | 
        |                        |           |                               |         |      FROM pg_catalog.pg_stat_all_tables st                                     +|                                    |         | 
-       |                        |           |                               |         |      JOIN pg_catalog.pg_statio_all_tables sit USING (relid)                     |                                    |         | 
+       |                        |           |                               |         |      JOIN pg_catalog.pg_statio_all_tables sit USING (relid)                    +|                                    |         | 
+       |                        |           |                               |         |      WHERE st.schemaname NOT LIKE 'pg_toast%'                                   |                                    |         | 
      1 | pg_stat_user_functions | aggregate | powa_user_functions_aggregate |         |                                                                                 |                                    | f       |       10
      1 | pg_stat_user_functions | purge     | powa_user_functions_purge     |         |                                                                                 |                                    | f       |       10
      1 | pg_stat_user_functions | reset     | powa_user_functions_reset     |         |                                                                                 |                                    | f       |       10
@@ -168,6 +169,7 @@ WHERE db_module = 'pg_stat_all_tables' AND operation = 'snapshot';
          heap_blks_read, heap_blks_hit, idx_blks_read, idx_blks_hit,            +
          toast_blks_read, toast_blks_hit, tidx_blks_read, tidx_blks_hit         +
       FROM pg_catalog.pg_stat_all_tables st                                     +
-      JOIN pg_catalog.pg_statio_all_tables sit USING (relid)
+      JOIN pg_catalog.pg_statio_all_tables sit USING (relid)                    +
+      WHERE st.schemaname NOT LIKE 'pg_toast%'
 (1 row)
 

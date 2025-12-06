@@ -94,3 +94,54 @@ SET search_path = pg_catalog; /* end of powa_stat_io_src */
 ALTER TABLE @extschema@.powa_stat_io_src_tmp
     ALTER COLUMN read_bytes DROP NOT NULL,
     ALTER COLUMN extend_bytes DROP NOT NULL;
+
+
+DELETE FROM @extschema@.powa_db_module_src_queries
+WHERE db_module = 'pg_stat_all_tables';
+
+INSERT INTO @extschema@.powa_db_module_src_queries
+    (db_module, min_version, added_manually, query_source) VALUES
+    -- pg_stat_all_tables
+    ('pg_stat_all_tables', 0, false,
+     'SELECT relid, pg_table_size(relid) AS tbl_size,
+        seq_scan, NULL AS last_seq_scan, seq_tup_read,
+        idx_scan, NULL AS last_idx_scan, idx_tup_fetch,
+        n_tup_ins, n_tup_upd, n_tup_del, n_tup_hot_upd, 0 AS n_tup_newpage_upd,
+        n_live_tup, n_dead_tup, n_mod_since_analyze, 0 AS n_ins_since_vacuum,
+        last_vacuum, last_autovacuum, last_analyze, last_autoanalyze,
+        vacuum_count, autovacuum_count, analyze_count, autoanalyze_count,
+        heap_blks_read, heap_blks_hit, idx_blks_read, idx_blks_hit,
+        toast_blks_read, toast_blks_hit, tidx_blks_read, tidx_blks_hit
+     FROM pg_catalog.pg_stat_all_tables st
+     JOIN pg_catalog.pg_statio_all_tables sit USING (relid)
+     WHERE st.schemaname NOT LIKE ''pg_toast%'''),
+    -- pg_stat_all_tables pg13+, n_ins_since_vacuum added
+    ('pg_stat_all_tables', 130000, false,
+     'SELECT relid, pg_table_size(relid) AS tbl_size,
+        seq_scan, NULL AS last_seq_scan, seq_tup_read,
+        idx_scan, NULL AS last_idx_scan, idx_tup_fetch,
+        n_tup_ins, n_tup_upd, n_tup_del, n_tup_hot_upd, 0 AS n_tup_newpage_upd,
+        n_live_tup, n_dead_tup, n_mod_since_analyze, n_ins_since_vacuum,
+        last_vacuum, last_autovacuum, last_analyze, last_autoanalyze,
+        vacuum_count, autovacuum_count, analyze_count, autoanalyze_count,
+        heap_blks_read, heap_blks_hit, idx_blks_read, idx_blks_hit,
+        toast_blks_read, toast_blks_hit, tidx_blks_read, tidx_blks_hit
+     FROM pg_catalog.pg_stat_all_tables st
+     JOIN pg_catalog.pg_statio_all_tables sit USING (relid)
+     WHERE st.schemaname NOT LIKE ''pg_toast%'''),
+    -- pg_stat_all_tables pg16+, last_seq_scan, last_idx_scan and
+    -- n_tup_newpage_upd added
+    ('pg_stat_all_tables', 160000, false,
+     'SELECT relid, pg_table_size(relid) AS tbl_size,
+        seq_scan,  last_seq_scan, seq_tup_read,
+        idx_scan,  last_idx_scan, idx_tup_fetch,
+        n_tup_ins, n_tup_upd, n_tup_del, n_tup_hot_upd, n_tup_newpage_upd,
+        n_live_tup, n_dead_tup, n_mod_since_analyze, n_ins_since_vacuum,
+        last_vacuum, last_autovacuum, last_analyze, last_autoanalyze,
+        vacuum_count, autovacuum_count, analyze_count, autoanalyze_count,
+        heap_blks_read, heap_blks_hit, idx_blks_read, idx_blks_hit,
+        toast_blks_read, toast_blks_hit, tidx_blks_read, tidx_blks_hit
+     FROM pg_catalog.pg_stat_all_tables st
+     JOIN pg_catalog.pg_statio_all_tables sit USING (relid)
+     WHERE st.schemaname NOT LIKE ''pg_toast%''');
+
