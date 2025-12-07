@@ -1,3 +1,9 @@
+## 5.1.1
+
+  - Bugfixes
+    - Fix TOAST table size double counting (Marc Cousin)
+    - Fix various `pg_stat_io` with pg18+ (Julien Rouhaud)
+
 ## 5.1.0
 
   - Performance
@@ -8,7 +14,7 @@
     - Fix powa compatibility with `pg_dump` (Julien Rouhaud)
     - Fix `pg_stat_wal` compatibility with pg18 (Julien Rouhaud, thanks to
       Stefan Le Breton for the report)
-    = Fix `pg_stat_io` compatibility with pg18 (Julien Rouhaud)
+    - Fix `pg_stat_io` compatibility with pg18 (Julien Rouhaud)
 
 ## 5.0.3
 
