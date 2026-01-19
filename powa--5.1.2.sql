@@ -196,6 +196,7 @@ CREATE TABLE @extschema@.powa_extension_config (
     version text,
     enabled bool NOT NULL default true,
     added_manually boolean NOT NULL default true,
+    retention interval,
     PRIMARY KEY (srvid, extname),
     FOREIGN KEY (srvid) REFERENCES @extschema@.powa_servers(id)
       MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE,
@@ -225,6 +226,7 @@ CREATE TABLE @extschema@.powa_module_config (
     srvid integer NOT NULL,
     module text NOT NULL,
     enabled bool NOT NULL default true,
+    retention interval,
     PRIMARY KEY (srvid, module),
     FOREIGN KEY (srvid) REFERENCES @extschema@.powa_servers(id)
       MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE,
@@ -280,6 +282,8 @@ INSERT INTO @extschema@.powa_db_modules (db_module, tmp_table, external, added_m
     ('pg_stat_all_tables', '@extschema@.powa_all_tables_src_tmp', false, false),
     ('pg_stat_user_functions', '@extschema@.powa_user_functions_src_tmp', false, false);
 
+
+    
 -- No default rows for this table as this is a remote-server only feature.
 -- A NULL dbnames means that the module is activated for all databases,
 -- otherwise the module is only activated for the specified database names.
@@ -288,6 +292,7 @@ CREATE TABLE @extschema@.powa_db_module_config (
     db_module text NOT NULL,
     dbnames text[],
     enabled boolean NOT NULL default true,
+    retention interval,
     PRIMARY KEY (srvid, db_module),
     FOREIGN KEY (srvid) REFERENCES @extschema@.powa_servers(id)
       MATCH FULL ON UPDATE CASCADE ON DELETE CASCADE,
@@ -1223,7 +1228,7 @@ END;
 $$ LANGUAGE plpgsql
 SET search_path = pg_catalog; /* end of powa_generic_datatype_setup */
 
-CREATE FUNCTION @extschema@.powa_generic_module_setup(_pg_module text,
+CREATE OR REPLACE FUNCTION @extschema@.powa_generic_module_setup(_pg_module text,
                                                       _counter_cols text[],
                                                       _nullable text[] DEFAULT '{}',
                                                       _need_operators boolean default true,
@@ -1549,7 +1554,7 @@ BEGIN
 
     PERFORM @extschema@.powa_prevent_concurrent_snapshot(_srvid);
 
-    SELECT @extschema@.powa_get_server_retention(_srvid) INTO v_retention;
+    SELECT @extschema@.powa_get_server_retention(_srvid,%3$L) INTO v_retention;
 
     -- Delete obsolete datas. We only bother with already coalesced data
     DELETE FROM @extschema@.%2$I
@@ -1562,7 +1567,7 @@ BEGIN
 END;
 $PROC$ LANGUAGE plpgsql
         ',
-                    v_module || '_purge', v_module || '_history');
+                    v_module || '_purge', v_module || '_history', _pg_module);
     EXECUTE v_sql;
 
     -- create the *_reset function
@@ -2891,24 +2896,43 @@ END;
 $_$
 SET search_path = pg_catalog;
 
-CREATE FUNCTION @extschema@.powa_get_server_retention(_srvid integer)
+CREATE FUNCTION @extschema@.powa_get_server_retention(_srvid integer, _module_name text)
 RETURNS interval AS $_$
 DECLARE
+    v_module_retention interval = NULL;
     v_ret interval = NULL;
 BEGIN
+    -- Do we have a retention setting for this module (or extension)
+    WITH module_retention AS
+    (SELECT retention FROM @extschema@.powa_module_config
+       WHERE module = _module_name
+         AND srvid = _srvid
+     UNION ALL 
+     SELECT retention FROM @extschema@.powa_extension_config
+       WHERE extname = _module_name
+         AND srvid = _srvid
+     UNION ALL
+     SELECT retention FROM @extschema@.powa_db_module_config
+       WHERE db_module = _module_name
+         AND srvid = _srvid)
+    SELECT retention INTO v_module_retention retention
+    FROM module_retention;
+    IF v_module_retention IS NOT NULL THEN
+        RETURN v_module_retention;
+    END IF;
+
     IF (_srvid = 0) THEN
-        v_ret := current_setting('powa.retention')::interval;
-    ELSE
-        SELECT retention INTO v_ret
-        FROM @extschema@.powa_servers
-        WHERE id = _srvid;
+        RETURN current_setting('powa.retention')::interval;
     END IF;
 
-    IF (v_ret IS NULL) THEN
-        RAISE EXCEPTION 'Not retention found for server %', _srvid;
-    END IF;
+    SELECT retention INTO v_ret
+    FROM @extschema@.powa_servers
+    WHERE id = _srvid;
 
-    RETURN v_ret;
+    IF v_ret IS NOT NULL THEN
+        RETURN v_ret;
+    END IF;
+    RAISE EXCEPTION 'Not retention found for server %', _srvid;
 END;
 $_$ LANGUAGE plpgsql
 SET search_path = pg_catalog; /* end of powa_get_server_retention */
@@ -5574,7 +5598,7 @@ BEGIN
 
     PERFORM @extschema@.powa_prevent_concurrent_snapshot(_srvid);
 
-    SELECT @extschema@.powa_get_server_retention(_srvid) INTO v_retention;
+    SELECT @extschema@.powa_get_server_retention(_srvid,'pg_database') INTO v_retention;
 
     -- Cleanup old dropped databases, over retention
     -- This will cascade automatically to powa_statements and other
@@ -5605,7 +5629,7 @@ BEGIN
 
     PERFORM @extschema@.powa_prevent_concurrent_snapshot(_srvid);
 
-    SELECT @extschema@.powa_get_server_retention(_srvid) INTO v_retention;
+    SELECT @extschema@.powa_get_server_retention(_srvid,'pg_stat_statements') INTO v_retention;
 
     -- Delete obsolete data. We only bother with already coalesced data
     DELETE FROM @extschema@.powa_statements_history
@@ -5646,7 +5670,7 @@ BEGIN
 
     PERFORM @extschema@.powa_prevent_concurrent_snapshot(_srvid);
 
-    SELECT @extschema@.powa_get_server_retention(_srvid) INTO v_retention;
+    SELECT @extschema@.powa_get_server_retention(_srvid,'pg_stat_user_functions') INTO v_retention;
 
     -- Delete obsolete datas. We only bother with already coalesced data
     DELETE FROM @extschema@.powa_user_functions_history
@@ -5680,7 +5704,7 @@ BEGIN
 
     PERFORM @extschema@.powa_prevent_concurrent_snapshot(_srvid);
 
-    SELECT @extschema@.powa_get_server_retention(_srvid) INTO v_retention;
+    SELECT @extschema@.powa_get_server_retention(_srvid,'pg_stat_all_indexes') INTO v_retention;
 
     -- Delete obsolete datas. We only bother with already coalesced data
     DELETE FROM @extschema@.powa_all_indexes_history
@@ -5713,7 +5737,7 @@ BEGIN
 
     PERFORM @extschema@.powa_prevent_concurrent_snapshot(_srvid);
 
-    SELECT @extschema@.powa_get_server_retention(_srvid) INTO v_retention;
+    SELECT @extschema@.powa_get_server_retention(_srvid,'pg_stat_all_tables') INTO v_retention;
 
     -- Delete obsolete datas. We only bother with already coalesced data
     DELETE FROM @extschema@.powa_all_tables_history
@@ -6611,7 +6635,7 @@ BEGIN
 
     PERFORM @extschema@.powa_prevent_concurrent_snapshot(_srvid);
 
-    SELECT @extschema@.powa_get_server_retention(_srvid) INTO v_retention;
+    SELECT @extschema@.powa_get_server_retention(_srvid,'pg_stat_kcache') INTO v_retention;
 
     -- Delete obsolete datas. We only bother with already coalesced data
     DELETE FROM @extschema@.powa_kcache_metrics
@@ -6988,7 +7012,7 @@ DECLARE
 BEGIN
     PERFORM @extschema@.powa_log('running powa_qualstats_purge(' || _srvid || ')');
 
-    PERFORM @extschema@.powa_prevent_concurrent_snapshot(_srvid);
+    PERFORM @extschema@.powa_prevent_concurrent_snapshot(_srvid,'pg_qualstats');
 
     SELECT @extschema@.powa_get_server_retention(_srvid) INTO v_retention;
 
@@ -7212,7 +7236,7 @@ BEGIN
 
     PERFORM @extschema@.powa_prevent_concurrent_snapshot(_srvid);
 
-    SELECT @extschema@.powa_get_server_retention(_srvid) INTO v_retention;
+    SELECT @extschema@.powa_get_server_retention(_srvid,'pg_wait_sampling') INTO v_retention;
 
     -- Delete obsolete datas. We only bother with already coalesced data
     DELETE FROM @extschema@.powa_wait_sampling_history
