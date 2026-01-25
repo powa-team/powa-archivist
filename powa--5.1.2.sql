@@ -2900,6 +2900,11 @@ DECLARE
     v_module_retention interval = NULL;
     v_ret interval = NULL;
 BEGIN
+    -- Address the local use case. We just short circuit the logic, it's a "limited" mode
+    IF (_srvid = 0) THEN
+        RETURN current_setting('powa.retention')::interval;
+    END IF;
+    -- Collector case
     -- Do we have a retention setting for this module (or extension)
     WITH module_retention AS
     (SELECT retention FROM @extschema@.powa_module_config
