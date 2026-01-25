@@ -282,8 +282,6 @@ INSERT INTO @extschema@.powa_db_modules (db_module, tmp_table, external, added_m
     ('pg_stat_all_tables', '@extschema@.powa_all_tables_src_tmp', false, false),
     ('pg_stat_user_functions', '@extschema@.powa_user_functions_src_tmp', false, false);
 
-
-    
 -- No default rows for this table as this is a remote-server only feature.
 -- A NULL dbnames means that the module is activated for all databases,
 -- otherwise the module is only activated for the specified database names.
@@ -1228,7 +1226,7 @@ END;
 $$ LANGUAGE plpgsql
 SET search_path = pg_catalog; /* end of powa_generic_datatype_setup */
 
-CREATE OR REPLACE FUNCTION @extschema@.powa_generic_module_setup(_pg_module text,
+CREATE FUNCTION @extschema@.powa_generic_module_setup(_pg_module text,
                                                       _counter_cols text[],
                                                       _nullable text[] DEFAULT '{}',
                                                       _need_operators boolean default true,
@@ -2907,7 +2905,7 @@ BEGIN
     (SELECT retention FROM @extschema@.powa_module_config
        WHERE module = _module_name
          AND srvid = _srvid
-     UNION ALL 
+     UNION ALL
      SELECT retention FROM @extschema@.powa_extension_config
        WHERE extname = _module_name
          AND srvid = _srvid

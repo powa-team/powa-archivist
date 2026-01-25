@@ -23,7 +23,7 @@ BEGIN
     (SELECT retention FROM @extschema@.powa_module_config
        WHERE module = _module_name
          AND srvid = _srvid
-     UNION ALL 
+     UNION ALL
      SELECT retention FROM @extschema@.powa_extension_config
        WHERE extname = _module_name
          AND srvid = _srvid
@@ -317,7 +317,7 @@ BEGIN
 END;
 $PROC$ language plpgsql
 SET search_path = pg_catalog; /* end of powa_wait_sampling_purge */
-    
+
 CREATE OR REPLACE FUNCTION @extschema@.powa_replication_slots_purge(_srvid integer)
  RETURNS void
  LANGUAGE plpgsql
