@@ -2917,10 +2917,12 @@ BEGIN
          SELECT retention INTO v_feature_retention FROM @extschema@.powa_extension_config
            WHERE extname = _feature_name
              AND srvid = _srvid;
-    ELSE -- _feature_type = 'db_module'
+    ELSEIF _feature_type = 'db_module'
          SELECT retention INTO v_feature_retention FROM @extschema@.powa_db_module_config
            WHERE db_module = _feature_name
              AND srvid = _srvid;
+    ELSE -- Should never happen
+        RAISE EXCEPTION 'unknown feature type %', _feature_type;
     END IF;
     IF v_feature_retention IS NOT NULL THEN
         RETURN v_feature_retention;
