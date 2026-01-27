@@ -72,7 +72,7 @@ BEGIN
 
     PERFORM @extschema@.powa_prevent_concurrent_snapshot(_srvid);
 
-    SELECT @extschema@.powa_get_server_retention(_srvid,'pg_database', 'module'::@extschema@.feature_type_name) INTO v_retention;
+    SELECT @extschema@.powa_get_server_retention(_srvid,'pg_database','module'::@extschema@.feature_type_name) INTO v_retention;
 
     -- Cleanup old dropped databases, over retention
     -- This will cascade automatically to powa_statements and other
@@ -102,7 +102,7 @@ BEGIN
 
     PERFORM @extschema@.powa_prevent_concurrent_snapshot(_srvid);
 
-    SELECT @extschema@.powa_get_server_retention(_srvid,'pg_stat_statements', 'extension'::@extschema@.feature_type_name) INTO v_retention;
+    SELECT @extschema@.powa_get_server_retention(_srvid,'pg_stat_statements','extension'::@extschema@.feature_type_name) INTO v_retention;
 
     -- Delete obsolete data. We only bother with already coalesced data
     DELETE FROM @extschema@.powa_statements_history
