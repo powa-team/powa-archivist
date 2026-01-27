@@ -11,6 +11,7 @@ ALTER TABLE @extschema@.powa_extension_config ADD COLUMN retention interval;
 ALTER TABLE @extschema@.powa_module_config ADD COLUMN retention interval;
 ALTER TABLE @extschema@.powa_db_module_config ADD COLUMN retention interval;
 
+CREATE TYPE @extschema@.feature_type_name AS ENUM ('module','extension','db_module');
 
 CREATE FUNCTION @extschema@.powa_get_server_retention(_srvid integer, _feature_name text, _feature_type @extschema@.feature_type_name)
 RETURNS interval AS $_$
