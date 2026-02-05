@@ -11,9 +11,9 @@ ALTER TABLE @extschema@.powa_extension_config ADD COLUMN retention interval;
 ALTER TABLE @extschema@.powa_module_config ADD COLUMN retention interval;
 ALTER TABLE @extschema@.powa_db_module_config ADD COLUMN retention interval;
 
-CREATE TYPE @extschema@.feature_type_name AS ENUM ('module','extension','db_module');
+CREATE TYPE @extschema@.datasource_type AS ENUM ('module','extension','db_module');
 
-CREATE FUNCTION @extschema@.powa_get_server_retention(_srvid integer, _feature_name text, _feature_type @extschema@.feature_type_name)
+CREATE FUNCTION @extschema@.powa_get_server_retention(_srvid integer, _feature_name text, _feature_type @extschema@.datasource_type)
 RETURNS interval AS $_$
 DECLARE
     v_feature_retention interval = NULL;
@@ -72,7 +72,7 @@ BEGIN
 
     PERFORM @extschema@.powa_prevent_concurrent_snapshot(_srvid);
 
-    SELECT @extschema@.powa_get_server_retention(_srvid,'pg_database','module'::@extschema@.feature_type_name) INTO v_retention;
+    SELECT @extschema@.powa_get_server_retention(_srvid,'pg_database','module'::@extschema@.datasource_type) INTO v_retention;
 
     -- Cleanup old dropped databases, over retention
     -- This will cascade automatically to powa_statements and other
@@ -102,7 +102,7 @@ BEGIN
 
     PERFORM @extschema@.powa_prevent_concurrent_snapshot(_srvid);
 
-    SELECT @extschema@.powa_get_server_retention(_srvid,'pg_stat_statements','extension'::@extschema@.feature_type_name) INTO v_retention;
+    SELECT @extschema@.powa_get_server_retention(_srvid,'pg_stat_statements','extension'::@extschema@.datasource_type) INTO v_retention;
 
     -- Delete obsolete data. We only bother with already coalesced data
     DELETE FROM @extschema@.powa_statements_history
@@ -143,7 +143,7 @@ BEGIN
 
     PERFORM @extschema@.powa_prevent_concurrent_snapshot(_srvid);
 
-    SELECT @extschema@.powa_get_server_retention(_srvid,'pg_stat_user_functions','db_module'::@extschema@.feature_type_name) INTO v_retention;
+    SELECT @extschema@.powa_get_server_retention(_srvid,'pg_stat_user_functions','db_module'::@extschema@.datasource_type) INTO v_retention;
 
     -- Delete obsolete datas. We only bother with already coalesced data
     DELETE FROM @extschema@.powa_user_functions_history
@@ -177,7 +177,7 @@ BEGIN
 
     PERFORM @extschema@.powa_prevent_concurrent_snapshot(_srvid);
 
-    SELECT @extschema@.powa_get_server_retention(_srvid,'pg_stat_all_indexes','db_module'::@extschema@.feature_type_name) INTO v_retention;
+    SELECT @extschema@.powa_get_server_retention(_srvid,'pg_stat_all_indexes','db_module'::@extschema@.datasource_type) INTO v_retention;
 
     -- Delete obsolete datas. We only bother with already coalesced data
     DELETE FROM @extschema@.powa_all_indexes_history
@@ -210,7 +210,7 @@ BEGIN
 
     PERFORM @extschema@.powa_prevent_concurrent_snapshot(_srvid);
 
-    SELECT @extschema@.powa_get_server_retention(_srvid,'pg_stat_all_tables','db_module'::@extschema@.feature_type_name) INTO v_retention;
+    SELECT @extschema@.powa_get_server_retention(_srvid,'pg_stat_all_tables','db_module'::@extschema@.datasource_type) INTO v_retention;
 
     -- Delete obsolete datas. We only bother with already coalesced data
     DELETE FROM @extschema@.powa_all_tables_history
@@ -244,7 +244,7 @@ BEGIN
 
     PERFORM @extschema@.powa_prevent_concurrent_snapshot(_srvid);
 
-    SELECT @extschema@.powa_get_server_retention(_srvid,'pg_stat_kcache','extension'::@extschema@.feature_type_name) INTO v_retention;
+    SELECT @extschema@.powa_get_server_retention(_srvid,'pg_stat_kcache','extension'::@extschema@.datasource_type) INTO v_retention;
 
     -- Delete obsolete datas. We only bother with already coalesced data
     DELETE FROM @extschema@.powa_kcache_metrics
@@ -274,7 +274,7 @@ BEGIN
 
     PERFORM @extschema@.powa_prevent_concurrent_snapshot(_srvid,'pg_qualstats');
 
-    SELECT @extschema@.powa_get_server_retention(_srvid,'pg_qualstats','extension'::@extschema@.feature_type_name) INTO v_retention;
+    SELECT @extschema@.powa_get_server_retention(_srvid,'pg_qualstats','extension'::@extschema@.datasource_type) INTO v_retention;
 
     -- Delete obsolete datas. We only bother with already coalesced data
     DELETE FROM @extschema@.powa_qualstats_constvalues_history
@@ -300,7 +300,7 @@ BEGIN
 
     PERFORM @extschema@.powa_prevent_concurrent_snapshot(_srvid);
 
-    SELECT @extschema@.powa_get_server_retention(_srvid,'pg_wait_sampling','extension'::@extschema@.feature_type_name) INTO v_retention;
+    SELECT @extschema@.powa_get_server_retention(_srvid,'pg_wait_sampling','extension'::@extschema@.datasource_type) INTO v_retention;
 
     -- Delete obsolete datas. We only bother with already coalesced data
     DELETE FROM @extschema@.powa_wait_sampling_history
@@ -336,7 +336,7 @@ BEGIN
 
     PERFORM @extschema@.powa_prevent_concurrent_snapshot(_srvid);
 
-    SELECT @extschema@.powa_get_server_retention(_srvid,'pg_replication_slots','module'::@extschema@.feature_type_name) INTO v_retention;
+    SELECT @extschema@.powa_get_server_retention(_srvid,'pg_replication_slots','module'::@extschema@.datasource_type) INTO v_retention;
 
     -- Delete obsolete datas. We only bother with already coalesced data
     DELETE FROM @extschema@.powa_replication_slots_history
@@ -363,7 +363,7 @@ BEGIN
 
     PERFORM @extschema@.powa_prevent_concurrent_snapshot(_srvid);
 
-    SELECT @extschema@.powa_get_server_retention(_srvid,'pg_stat_activity','module'::@extschema@.feature_type_name) INTO v_retention;
+    SELECT @extschema@.powa_get_server_retention(_srvid,'pg_stat_activity','module'::@extschema@.datasource_type) INTO v_retention;
 
     -- Delete obsolete datas. We only bother with already coalesced data
     DELETE FROM @extschema@.powa_stat_activity_history
@@ -390,7 +390,7 @@ BEGIN
 
     PERFORM @extschema@.powa_prevent_concurrent_snapshot(_srvid);
 
-    SELECT @extschema@.powa_get_server_retention(_srvid,'pg_stat_archiver','module'::@extschema@.feature_type_name) INTO v_retention;
+    SELECT @extschema@.powa_get_server_retention(_srvid,'pg_stat_archiver','module'::@extschema@.datasource_type) INTO v_retention;
 
     -- Delete obsolete datas. We only bother with already coalesced data
     DELETE FROM @extschema@.powa_stat_archiver_history
@@ -417,7 +417,7 @@ BEGIN
 
     PERFORM @extschema@.powa_prevent_concurrent_snapshot(_srvid);
 
-    SELECT @extschema@.powa_get_server_retention(_srvid,'pg_stat_bgwriter','module'::@extschema@.feature_type_name) INTO v_retention;
+    SELECT @extschema@.powa_get_server_retention(_srvid,'pg_stat_bgwriter','module'::@extschema@.datasource_type) INTO v_retention;
 
     -- Delete obsolete datas. We only bother with already coalesced data
     DELETE FROM @extschema@.powa_stat_bgwriter_history
@@ -444,7 +444,7 @@ BEGIN
 
     PERFORM @extschema@.powa_prevent_concurrent_snapshot(_srvid);
 
-    SELECT @extschema@.powa_get_server_retention(_srvid,'pg_stat_checkpointer','module'::@extschema@.feature_type_name) INTO v_retention;
+    SELECT @extschema@.powa_get_server_retention(_srvid,'pg_stat_checkpointer','module'::@extschema@.datasource_type) INTO v_retention;
 
     -- Delete obsolete datas. We only bother with already coalesced data
     DELETE FROM @extschema@.powa_stat_checkpointer_history
@@ -471,7 +471,7 @@ BEGIN
 
     PERFORM @extschema@.powa_prevent_concurrent_snapshot(_srvid);
 
-    SELECT @extschema@.powa_get_server_retention(_srvid,'pg_stat_database','module'::@extschema@.feature_type_name) INTO v_retention;
+    SELECT @extschema@.powa_get_server_retention(_srvid,'pg_stat_database','module'::@extschema@.datasource_type) INTO v_retention;
 
     -- Delete obsolete datas. We only bother with already coalesced data
     DELETE FROM @extschema@.powa_stat_database_history
@@ -498,7 +498,7 @@ BEGIN
 
     PERFORM @extschema@.powa_prevent_concurrent_snapshot(_srvid);
 
-    SELECT @extschema@.powa_get_server_retention(_srvid,'pg_stat_database_conflicts','module'::@extschema@.feature_type_name) INTO v_retention;
+    SELECT @extschema@.powa_get_server_retention(_srvid,'pg_stat_database_conflicts','module'::@extschema@.datasource_type) INTO v_retention;
 
     -- Delete obsolete datas. We only bother with already coalesced data
     DELETE FROM @extschema@.powa_stat_database_conflicts_history
@@ -525,7 +525,7 @@ BEGIN
 
     PERFORM @extschema@.powa_prevent_concurrent_snapshot(_srvid);
 
-    SELECT @extschema@.powa_get_server_retention(_srvid,'pg_stat_io','module'::@extschema@.feature_type_name) INTO v_retention;
+    SELECT @extschema@.powa_get_server_retention(_srvid,'pg_stat_io','module'::@extschema@.datasource_type) INTO v_retention;
 
     -- Delete obsolete datas. We only bother with already coalesced data
     DELETE FROM @extschema@.powa_stat_io_history
@@ -552,7 +552,7 @@ BEGIN
 
     PERFORM @extschema@.powa_prevent_concurrent_snapshot(_srvid);
 
-    SELECT @extschema@.powa_get_server_retention(_srvid,'pg_stat_replication','module'::@extschema@.feature_type_name) INTO v_retention;
+    SELECT @extschema@.powa_get_server_retention(_srvid,'pg_stat_replication','module'::@extschema@.datasource_type) INTO v_retention;
 
     -- Delete obsolete datas. We only bother with already coalesced data
     DELETE FROM @extschema@.powa_stat_replication_history
@@ -579,7 +579,7 @@ BEGIN
 
     PERFORM @extschema@.powa_prevent_concurrent_snapshot(_srvid);
 
-    SELECT @extschema@.powa_get_server_retention(_srvid,'pg_stat_slru','module'::@extschema@.feature_type_name) INTO v_retention;
+    SELECT @extschema@.powa_get_server_retention(_srvid,'pg_stat_slru','module'::@extschema@.datasource_type) INTO v_retention;
 
     -- Delete obsolete datas. We only bother with already coalesced data
     DELETE FROM @extschema@.powa_stat_slru_history
@@ -606,7 +606,7 @@ BEGIN
 
     PERFORM @extschema@.powa_prevent_concurrent_snapshot(_srvid);
 
-    SELECT @extschema@.powa_get_server_retention(_srvid,'pg_stat_subscription','module'::@extschema@.feature_type_name) INTO v_retention;
+    SELECT @extschema@.powa_get_server_retention(_srvid,'pg_stat_subscription','module'::@extschema@.datasource_type) INTO v_retention;
 
     -- Delete obsolete datas. We only bother with already coalesced data
     DELETE FROM @extschema@.powa_stat_subscription_history
@@ -633,7 +633,7 @@ BEGIN
 
     PERFORM @extschema@.powa_prevent_concurrent_snapshot(_srvid);
 
-    SELECT @extschema@.powa_get_server_retention(_srvid,'pg_stat_subscription_stats','module'::@extschema@.feature_type_name) INTO v_retention;
+    SELECT @extschema@.powa_get_server_retention(_srvid,'pg_stat_subscription_stats','module'::@extschema@.datasource_type) INTO v_retention;
 
     -- Delete obsolete datas. We only bother with already coalesced data
     DELETE FROM @extschema@.powa_stat_subscription_stats_history
@@ -660,7 +660,7 @@ BEGIN
 
     PERFORM @extschema@.powa_prevent_concurrent_snapshot(_srvid);
 
-    SELECT @extschema@.powa_get_server_retention(_srvid,'pg_stat_wal','module'::@extschema@.feature_type_name) INTO v_retention;
+    SELECT @extschema@.powa_get_server_retention(_srvid,'pg_stat_wal','module'::@extschema@.datasource_type) INTO v_retention;
 
     -- Delete obsolete datas. We only bother with already coalesced data
     DELETE FROM @extschema@.powa_stat_wal_history
@@ -687,7 +687,7 @@ BEGIN
 
     PERFORM @extschema@.powa_prevent_concurrent_snapshot(_srvid);
 
-    SELECT @extschema@.powa_get_server_retention(_srvid,'pg_stat_wal_receiver','module'::@extschema@.feature_type_name) INTO v_retention;
+    SELECT @extschema@.powa_get_server_retention(_srvid,'pg_stat_wal_receiver','module'::@extschema@.datasource_type) INTO v_retention;
 
     -- Delete obsolete datas. We only bother with already coalesced data
     DELETE FROM @extschema@.powa_stat_wal_receiver_history
