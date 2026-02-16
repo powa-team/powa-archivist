@@ -18,6 +18,7 @@ RETURNS interval AS $_$
 DECLARE
     v_feature_retention interval = NULL;
     v_ret interval = NULL;
+    v_row_count bigint = NULL;
 BEGIN
     -- Address the local use case. We just short circuit the logic, it's a "limited" mode
     IF (_srvid = 0) THEN
@@ -41,6 +42,11 @@ BEGIN
     ELSE -- Should never happen
         RAISE EXCEPTION 'unknown feature type %', _feature_type;
     END IF;
+    -- Will get the row count for one of those 3 selects
+    GET DIAGNOSTICS v_row_count = ROW_COUNT;
+    IF v_row_count <> 1 THEN
+        RAISE EXCEPTION 'The % % is not declared in the config table', _feature_type, _feature_name;
+    END IF;
     IF v_feature_retention IS NOT NULL THEN
         RETURN v_feature_retention;
     END IF;
@@ -55,7 +61,7 @@ BEGIN
     RAISE EXCEPTION 'Not retention found for server %', _srvid;
 END;
 $_$ LANGUAGE plpgsql
-SET search_path = pg_catalog; /* end of powa_f */
+SET search_path = pg_catalog; /* end of powa_get_server_retention */
 
 DROP FUNCTION @extschema@.powa_get_server_retention(_srvid integer);
 

@@ -227,6 +227,28 @@ SELECT alias FROM "PoWA".powa_servers WHERE id = 1;
  test server
 (1 row)
 
+-- Test retention
+SELECT "PoWA".powa_get_server_retention(1,'pg_stat_statements','extension');
+ powa_get_server_retention 
+---------------------------
+ @ 1 day
+(1 row)
+
+UPDATE "PoWA".powa_extension_config SET retention='2 hours'::interval WHERE extname = 'pg_stat_statements';
+SELECT "PoWA".powa_get_server_retention(1,'pg_stat_statements','extension');
+ powa_get_server_retention 
+---------------------------
+ @ 2 hours
+(1 row)
+
+SELECT "PoWA".powa_get_server_retention(1,'pg_stat_statements','db_module');
+ERROR:  The db_module pg_stat_statements is not declared in the config table
+SELECT "PoWA".powa_get_server_retention(1,'pg_stat_archiver','module');
+ powa_get_server_retention 
+---------------------------
+ @ 1 day
+(1 row)
+
 -- Test reset function
 SELECT * from "PoWA".powa_reset(1);
  powa_reset 

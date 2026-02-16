@@ -61,6 +61,13 @@ SELECT * FROM "PoWA".powa_configure_server(1, '{"alias": "test server"}');
 
 SELECT alias FROM "PoWA".powa_servers WHERE id = 1;
 
+-- Test retention
+SELECT "PoWA".powa_get_server_retention(1,'pg_stat_statements','extension');
+UPDATE "PoWA".powa_extension_config SET retention='2 hours'::interval WHERE extname = 'pg_stat_statements';
+SELECT "PoWA".powa_get_server_retention(1,'pg_stat_statements','extension');
+SELECT "PoWA".powa_get_server_retention(1,'pg_stat_statements','db_module');
+SELECT "PoWA".powa_get_server_retention(1,'pg_stat_archiver','module');
+
 -- Test reset function
 SELECT * from "PoWA".powa_reset(1);
 
