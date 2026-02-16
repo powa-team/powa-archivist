@@ -136,6 +136,9 @@ SELECT 3, COUNT(*) > 0 FROM "PoWA".powa_statements_history;
 SELECT 3, count(*) > 4 FROM "PoWA".powa_stat_get_activity(0, '-infinity', 'infinity');
 SELECT 3, count(*) = 0 FROM "PoWA".powa_stat_get_activity(42, '-infinity', 'infinity');
 
+-- This snapshot will trigger the purge
+SELECT "PoWA".powa_take_snapshot();
+
 -- Test reset function
 SELECT * from "PoWA".powa_reset(0);
 
