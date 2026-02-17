@@ -3,11 +3,11 @@
 -- registering a remote server should have registered all default db modules
 SELECT * FROM "PoWA".powa_db_module_config
 ORDER BY srvid, db_module COLLATE "C";
- srvid |       db_module        | dbnames | enabled 
--------+------------------------+---------+---------
-     1 | pg_stat_all_indexes    |         | t
-     1 | pg_stat_all_tables     |         | t
-     1 | pg_stat_user_functions |         | t
+ srvid |       db_module        | dbnames | enabled | retention 
+-------+------------------------+---------+---------+-----------
+     1 | pg_stat_all_indexes    |         | t       | 
+     1 | pg_stat_all_tables     |         | t       | 
+     1 | pg_stat_user_functions |         | t       | 
 (3 rows)
 
 -- Can't deactivate a specific db on an "all databases" config
