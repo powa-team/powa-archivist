@@ -45,6 +45,7 @@
 
 /* We use tuplestore */
 #include "funcapi.h"
+#include "utils/tuplestore.h"
 
 /* pgsats access */
 #include "pgstat.h"
@@ -84,7 +85,7 @@ PG_FUNCTION_INFO_V1(powa_stat_user_functions);
 PG_FUNCTION_INFO_V1(powa_stat_all_rel);
 
 #if (PG_VERSION_NUM >= 180000)
-PGDLLEXPORT pg_noreturn void powa_main(Datum main_arg);
+pg_noreturn PGDLLEXPORT void powa_main(Datum main_arg);
 #elif (PG_VERSION_NUM >= 90500)
 PGDLLEXPORT void powa_main(Datum main_arg) pg_attribute_noreturn();
 #else
