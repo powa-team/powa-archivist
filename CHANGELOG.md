@@ -1,3 +1,8 @@
+## 5.1.2
+
+  - New feature
+    - Support per-module retention (Marc Cousin)
+
 ## 5.1.1
 
   - Bugfixes
