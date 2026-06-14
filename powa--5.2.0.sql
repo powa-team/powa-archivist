@@ -1825,8 +1825,17 @@ _min_version => 130000
 -- we don't save subname, it can be found in pg_stat_subscription
 SELECT @extschema@.powa_generic_module_setup('pg_stat_subscription_stats',
 $${
-{apply_error_count, bigint}, {sync_error_count, bigint},
-{stats_reset, timestamp with time zone}
+{apply_error_count, bigint}, {sync_table_error_count, bigint},
+{stats_reset, timestamp with time zone},
+{sync_seq_error_count, bigint},
+{confl_insert_exists, bigint},
+{confl_update_origin_differs, bigint},
+{confl_update_exists, bigint},
+{confl_update_deleted, bigint},
+{confl_update_missing, bigint},
+{confl_delete_origin_differs, bigint},
+{confl_delete_missing, bigint},
+{confl_multiple_unique_conflicts, bigint}
 }$$,
 $${
 stats_reset
@@ -5107,12 +5116,21 @@ END;
 $PROC$ LANGUAGE plpgsql
 SET search_path = pg_catalog; /* end of powa_stat_subscription_src */
 
-CREATE OR REPLACE FUNCTION @extschema@.powa_stat_subscription_stats_src(IN _srvid integer,
+CREATE FUNCTION @extschema@.powa_stat_subscription_stats_src(IN _srvid integer,
     OUT ts timestamp with time zone,
     OUT subid oid,
     OUT apply_error_count bigint,
-    OUT sync_error_count bigint,
-    OUT stats_reset timestamp with time zone
+    OUT sync_table_error_count bigint,
+    OUT stats_reset timestamp with time zone,
+    OUT sync_seq_error_count bigint,
+    OUT confl_insert_exists bigint,
+    OUT confl_update_origin_differs bigint,
+    OUT confl_update_exists bigint,
+    OUT confl_update_deleted bigint,
+    OUT confl_update_missing bigint,
+    OUT confl_delete_origin_differs bigint,
+    OUT confl_delete_missing bigint,
+    OUT confl_multiple_unique_conflicts bigint
 ) RETURNS SETOF record STABLE AS $PROC$
 DECLARE
     v_pg_version_num int;
@@ -5120,25 +5138,87 @@ BEGIN
     IF (_srvid = 0) THEN
         v_pg_version_num := current_setting('server_version_num')::int;
 
-        -- pg15+, the view is introduced
-        IF v_pg_version_num >= 150000 THEN
+        -- pg19+:
+        -- sync_error_count renamed to sync_table_error_count,
+        -- sync_seq_error_count added
+        -- confl_update_deleted added
+        IF v_pg_version_num >= 190000 THEN
             RETURN QUERY SELECT now(),
             s.subid,
-            s.apply_error_count, s.sync_error_count,
-            s.stats_reset
+            s.apply_error_count, s.sync_table_error_count,
+            s.stats_reset,
+            s.sync_seq_error_count,
+            s.confl_insert_exists,
+            s.confl_update_origin_differs,
+            s.confl_update_exists,
+            s.confl_update_deleted,
+            s.confl_update_missing,
+            s.confl_delete_origin_differs,
+            s.confl_delete_missing,
+            s.confl_multiple_unique_conflicts
+            FROM pg_catalog.pg_stat_subscription_stats AS s;
+        -- pg18+, confl_* columns added
+        ELSIF v_pg_version_num >= 180000 THEN
+            RETURN QUERY SELECT now(),
+            s.subid,
+            s.apply_error_count, s.sync_error_count AS sync_table_error_count,
+            s.stats_reset,
+            0::bigint AS sync_seq_error_count,
+            s.confl_insert_exists,
+            s.confl_update_origin_differs,
+            s.confl_update_exists,
+            0::bigint AS confl_update_deleted,
+            s.confl_update_missing,
+            s.confl_delete_origin_differs,
+            s.confl_delete_missing,
+            s.confl_multiple_unique_conflicts
+            FROM pg_catalog.pg_stat_subscription_stats AS s;
+        -- pg15+, the view is introduced
+        ELSIF v_pg_version_num >= 150000 THEN
+            RETURN QUERY SELECT now(),
+            s.subid,
+            s.apply_error_count, s.sync_error_count AS sync_table_error_count,
+            s.stats_reset,
+            0::bigint AS sync_seq_error_count,
+            0::bigint AS confl_insert_exists,
+            0::bigint AS confl_update_origin_differs,
+            0::bigint AS confl_update_exists,
+            0::bigint AS confl_update_deleted,
+            0::bigint AS confl_update_missing,
+            0::bigint AS confl_delete_origin_differs,
+            0::bigint AS confl_delete_missing,
+            0::bigint AS confl_multiple_unique_conflicts
             FROM pg_catalog.pg_stat_subscription_stats AS s;
         ELSE -- return an empty dataset for pg9.6- servers
             RETURN QUERY SELECT now(),
             0::oid AS subid,
             0::bigint AS apply_error_count, 0::bigint AS sync_error_count,
-            NULL::timestamp with time zone AS stats_reset
+            NULL::timestamp with time zone AS stats_reset,
+            0::bigint AS sync_seq_error_count,
+            0::bigint AS confl_insert_exists,
+            0::bigint AS confl_update_origin_differs,
+            0::bigint AS confl_update_exists,
+            0::bigint AS confl_update_deleted,
+            0::bigint AS confl_update_missing,
+            0::bigint AS confl_delete_origin_differs,
+            0::bigint AS confl_delete_missing,
+            0::bigint AS confl_multiple_unique_conflicts
             WHERE false;
         END IF;
     ELSE
         RETURN QUERY SELECT s.ts,
             s.subid,
             s.apply_error_count, s.sync_error_count,
-            s.stats_reset
+            s.stats_reset,
+            s.sync_seq_error_count,
+            s.confl_insert_exists,
+            s.confl_update_origin_differs,
+            s.confl_update_exists,
+            s.confl_update_deleted,
+            s.confl_update_missing,
+            s.confl_delete_origin_differs,
+            s.confl_delete_missing,
+            s.confl_multiple_unique_conflicts
         FROM @extschema@.powa_stat_subscription_stats_src_tmp AS s
         WHERE s.srvid = _srvid;
     END IF;
