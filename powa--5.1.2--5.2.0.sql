@@ -1077,6 +1077,71 @@ BEGIN
 END;
 $PROC$ LANGUAGE plpgsql; /* end of powa_stat_recovery_src */
 
+-------------------
+-- pg_stat_lock
+-------------------
+SELECT @extschema@.powa_generic_module_setup('pg_stat_lock',
+$${
+{waits, bigint}, {wait_time, bigint},
+{fastpath_exceeded, bigint},
+{stats_reset, timestamp with time zone}
+}$$,
+$${
+stats_reset
+}$$,
+_key_cols => $${
+{locktype, text}
+}$$,
+-- pg_stat_lock only exists on pg19+
+_min_version => 190000
+);
+
+CREATE OR REPLACE FUNCTION @extschema@.powa_stat_lock_src(IN _srvid integer,
+    OUT ts timestamp with time zone,
+    OUT locktype text,
+    OUT waits bigint,
+    OUT wait_time bigint,
+    OUT fastpath_exceeded bigint,
+    OUT stats_reset timestamp with time zone
+) RETURNS SETOF record STABLE AS $PROC$
+DECLARE
+    v_current_lsn pg_lsn;
+    v_pg_version_num int;
+BEGIN
+    IF (_srvid = 0) THEN
+        v_pg_version_num := current_setting('server_version_num')::int;
+
+        -- pg19+, view is added
+        IF v_pg_version_num >= 190000 THEN
+            RETURN QUERY SELECT now,
+                s.locktype,
+                s.waits, s.wait_time,
+                s.fastpath_exceeded,
+                s.stats_reset
+            FROM (SELECT now() AS now) n
+            LEFT JOIN pg_catalog.pg_stat_lock AS s ON true;
+        ELSE
+            RETURN QUERY SELECT now(),
+                NULL::text AS locktype,
+                0::bigint AS waits,
+                0::bigint AS wait_time,
+                0::bigint AS fastpath_exceeded,
+                NULL::timestamp with time zone AS stats_reset
+            WHERE false;
+        END IF;
+    ELSE
+        RETURN QUERY SELECT s.ts,
+                s.locktype,
+                s.waits,
+                s.wait_time,
+                s.fastpath_exceeded,
+                s.stats_reset
+        FROM @extschema@.powa_stat_lock_src_tmp AS s
+        WHERE s.srvid = _srvid;
+    END IF;
+END;
+$PROC$ LANGUAGE plpgsql; /* end of powa_stat_lock_src */
+
 
 ---------------------------------------
 -- cleanup data sources generic support
