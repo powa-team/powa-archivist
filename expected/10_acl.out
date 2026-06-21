@@ -99,6 +99,7 @@ FROM check_has_privilege('powa_read_all_data',
  powa_read_all_data | powa_stat_database_conflicts_src_tmp | SELECT
  powa_read_all_data | powa_stat_database_src_tmp           | SELECT
  powa_read_all_data | powa_stat_io_src_tmp                 | SELECT
+ powa_read_all_data | powa_stat_recovery_src_tmp           | SELECT
  powa_read_all_data | powa_stat_replication_src_tmp        | SELECT
  powa_read_all_data | powa_stat_slru_src_tmp               | SELECT
  powa_read_all_data | powa_stat_subscription_src_tmp       | SELECT
@@ -108,7 +109,7 @@ FROM check_has_privilege('powa_read_all_data',
  powa_read_all_data | powa_statements_src_tmp              | SELECT
  powa_read_all_data | powa_user_functions_src_tmp          | SELECT
  powa_read_all_data | powa_wait_sampling_src_tmp           | SELECT
-(31 rows)
+(32 rows)
 
 -- powa_read_all_data should not have non-SELECT privilege on any table, and no
 -- privilege on sequences
@@ -152,6 +153,7 @@ FROM check_has_privilege('powa_read_all_metrics',
  powa_read_all_metrics | powa_stat_database_conflicts_src_tmp       | SELECT
  powa_read_all_metrics | powa_stat_database_src_tmp                 | SELECT
  powa_read_all_metrics | powa_stat_io_src_tmp                       | SELECT
+ powa_read_all_metrics | powa_stat_recovery_src_tmp                 | SELECT
  powa_read_all_metrics | powa_stat_replication_src_tmp              | SELECT
  powa_read_all_metrics | powa_stat_slru_src_tmp                     | SELECT
  powa_read_all_metrics | powa_stat_subscription_src_tmp             | SELECT
@@ -161,7 +163,7 @@ FROM check_has_privilege('powa_read_all_metrics',
  powa_read_all_metrics | powa_statements_src_tmp                    | SELECT
  powa_read_all_metrics | powa_user_functions_src_tmp                | SELECT
  powa_read_all_metrics | powa_wait_sampling_src_tmp                 | SELECT
-(33 rows)
+(34 rows)
 
 SELECT powa_role, relname, priv
 FROM check_has_not_privilege('powa_read_all_metrics',

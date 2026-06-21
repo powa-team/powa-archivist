@@ -1774,6 +1774,19 @@ _key_cols => $${
 {backend_type, text}, {object, text}, {context, text}
 }$$);
 
+SELECT @extschema@.powa_generic_module_setup('pg_stat_recovery',
+$${
+{last_replayed_read_lsn, pg_lsn}, {last_replayed_end_lsn, pg_lsn},
+{last_replayed_tli, integer},
+{replay_end_lsn, pg_lsn}, {replay_end_tli, integer},
+{recovery_last_xact_time, timestamp with time zone},
+{current_chunk_start_time, timestamp with time zone},
+{pause_state, text}
+}$$,
+-- pg_stat_recovery only exists on pg19+
+_min_version => 190000
+);
+
 SELECT @extschema@.powa_generic_module_setup('pg_stat_replication',
 $${
 {current_lsn, pg_lsn},
@@ -4892,6 +4905,65 @@ BEGIN
 END;
 $PROC$ LANGUAGE plpgsql
 SET search_path = pg_catalog; /* end of powa_stat_io_src */
+
+CREATE OR REPLACE FUNCTION @extschema@.powa_stat_recovery_src(IN _srvid integer,
+    OUT ts timestamp with time zone,
+    OUT last_replayed_read_lsn pg_lsn,
+    OUT last_replayed_end_lsn pg_lsn,
+    OUT last_replayed_tli integer,
+    OUT replay_end_lsn pg_lsn,
+    OUT replay_end_tli integer,
+    OUT recovery_last_xact_time timestamp with time zone,
+    OUT current_chunk_start_time timestamp with time zone,
+    OUT pause_state text
+) RETURNS SETOF record STABLE AS $PROC$
+DECLARE
+    v_current_lsn pg_lsn;
+    v_pg_version_num int;
+BEGIN
+    IF (_srvid = 0) THEN
+        v_pg_version_num := current_setting('server_version_num')::int;
+
+        -- pg19+, view is added
+        IF v_pg_version_num >= 190000 THEN
+            RETURN QUERY SELECT now,
+                s.last_replayed_read_lsn,
+                s.last_replayed_end_lsn,
+                s.last_replayed_tli,
+                s.replay_end_lsn,
+                s.replay_end_tli,
+                s.recovery_last_xact_time,
+                s.current_chunk_start_time,
+                s.pause_state
+            FROM (SELECT now() AS now) n
+            LEFT JOIN pg_catalog.pg_stat_recovery AS s ON true;
+        ELSE
+            RETURN QUERY SELECT now(),
+                '0/0'::pg_lsn AS last_replayed_read_lsn,
+                '0/0'::pg_lsn AS last_replayed_end_lsn,
+                0::integer AS last_replayed_tli,
+                '0/0'::pg_lsn AS replay_end_lsn,
+                0::integer AS replay_end_tli,
+                NULL::timestamp with time zone AS recovery_last_xact_time,
+                NULL::timestamp with time zone AS current_chunk_start_time,
+                NULL::text AS pause_state
+            WHERE false;
+        END IF;
+    ELSE
+        RETURN QUERY SELECT s.ts,
+                s.last_replayed_read_lsn,
+                s.last_replayed_end_lsn,
+                s.last_replayed_tli,
+                s.replay_end_lsn,
+                s.replay_end_tli,
+                s.recovery_last_xact_time,
+                s.current_chunk_start_time,
+                s.pause_state
+        FROM @extschema@.powa_stat_recovery_src_tmp AS s
+        WHERE s.srvid = _srvid;
+    END IF;
+END;
+$PROC$ LANGUAGE plpgsql; /* end of powa_stat_recovery_src */
 
 CREATE OR REPLACE FUNCTION @extschema@.powa_stat_replication_src(IN _srvid integer,
     OUT ts timestamp with time zone,
