@@ -1014,6 +1014,11 @@ $${
 {current_chunk_start_time, timestamp with time zone},
 {pause_state, text}
 }$$,
+$${
+last_replayed_read_lsn, last_replayed_end_lsn, last_replayed_tli,
+replay_end_lsn, replay_end_tli,
+recovery_last_xact_time, current_chunk_start_time, pause_state
+}$$,
 -- pg_stat_recovery only exists on pg19+
 _min_version => 190000
 );
