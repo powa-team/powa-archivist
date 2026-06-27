@@ -149,7 +149,7 @@ BEGIN
         ELSE -- return an empty dataset for pg9.6- servers
             RETURN QUERY SELECT now(),
             0::oid AS subid,
-            0::bigint AS apply_error_count, 0::bigint AS sync_error_count,
+            0::bigint AS apply_error_count, 0::bigint AS sync_table_error_count,
             NULL::timestamp with time zone AS stats_reset,
             0::bigint AS sync_seq_error_count,
             0::bigint AS confl_insert_exists,
@@ -165,7 +165,7 @@ BEGIN
     ELSE
         RETURN QUERY SELECT s.ts,
             s.subid,
-            s.apply_error_count, s.sync_error_count,
+            s.apply_error_count, s.sync_table_error_count,
             s.stats_reset,
             s.sync_seq_error_count,
             s.confl_insert_exists,
