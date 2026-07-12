@@ -1,3 +1,9 @@
+## 5.2.0
+
+  - New feature
+    - Add support for pg19, including new stat viewpg_stat_recovery and
+      pg_stat_lock (Julien Rouhaud, Georgy Shelkovy)
+
 ## 5.1.2
 
   - New feature
