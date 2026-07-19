@@ -1776,7 +1776,7 @@ _key_cols => $${
 
 SELECT @extschema@.powa_generic_module_setup('pg_stat_lock',
 $${
-{waits, bigint}, {wait_time, bigint},
+{waits, bigint}, {wait_time, double precision},
 {fastpath_exceeded, bigint},
 {stats_reset, timestamp with time zone}
 }$$,
@@ -4927,11 +4927,11 @@ END;
 $PROC$ LANGUAGE plpgsql
 SET search_path = pg_catalog; /* end of powa_stat_io_src */
 
-CREATE OR REPLACE FUNCTION @extschema@.powa_stat_lock_src(IN _srvid integer,
+CREATE FUNCTION @extschema@.powa_stat_lock_src(IN _srvid integer,
     OUT ts timestamp with time zone,
     OUT locktype text,
     OUT waits bigint,
-    OUT wait_time bigint,
+    OUT wait_time double precision,
     OUT fastpath_exceeded bigint,
     OUT stats_reset timestamp with time zone
 ) RETURNS SETOF record STABLE AS $PROC$
