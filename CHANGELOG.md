@@ -1,3 +1,9 @@
+## 5.3.0
+
+  - Miscellaneous
+    - Fix pg19 compatibility with pg19beta2 pg_stat_lock.wait_time datatype
+      change (Julien Rouhaud)
+
 ## 5.2.0
 
   - New feature
