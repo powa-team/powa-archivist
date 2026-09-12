@@ -30,6 +30,8 @@ Contributors to PoWA :
   * pessonnier
   * Andriy Bartash
   * TezkaRabota
+  * Alexander Kukushkin
+  * github user banlex73
   * github user alepaes1975
   * Denis Laxalde
   * Gowtham Raj Elangovan
@@ -43,4 +45,6 @@ Contributors to PoWA :
   * Yuriy Vountesmery
   * Georgy Shelkovy
   * github user Nickuru
+  * github user guruguruguru
+  * Michael Vitale
   * Stefan Le Breton
