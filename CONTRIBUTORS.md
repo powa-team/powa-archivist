@@ -48,3 +48,4 @@ Contributors to PoWA :
   * github user guruguruguru
   * Michael Vitale
   * Stefan Le Breton
+  * github user AimbotNooby

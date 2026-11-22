@@ -7240,7 +7240,7 @@ DECLARE
 BEGIN
     PERFORM @extschema@.powa_log('running powa_qualstats_purge(' || _srvid || ')');
 
-    PERFORM @extschema@.powa_prevent_concurrent_snapshot(_srvid,'pg_qualstats');
+    PERFORM @extschema@.powa_prevent_concurrent_snapshot(_srvid);
 
     SELECT @extschema@.powa_get_server_retention(_srvid,'pg_qualstats','extension'::@extschema@.datasource_type) INTO v_retention;
 
